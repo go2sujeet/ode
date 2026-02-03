@@ -1,17 +1,17 @@
 import pino from "pino";
-const level = "info";
+import pretty from "pino-pretty";
 
-export const logger = pino({
-  level,
-  transport: {
-    target: "pino-pretty",
-    options: {
-      colorize: true,
-      translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
-      ignore: "pid,hostname",
-    },
-  },
+const level = "info";
+const prettyStream = pretty({
+  colorize: true,
+  translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
+  ignore: "pid,hostname",
 });
+
+export const logger = pino(
+  { level },
+  process.stdout.isTTY ? prettyStream : undefined,
+);
 
 export const log = {
   info: (msg: string, data?: Record<string, unknown>) => logger.info(data, msg),
