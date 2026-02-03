@@ -6,6 +6,8 @@ export {
   setupMessageHandlers,
   recoverPendingRequests,
   initializeWorkspaceAuth,
+  clearSlackAuthState,
+  resetSlackState,
   type MessageContext,
 } from "./client";
 

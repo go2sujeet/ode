@@ -48,22 +48,35 @@
     export let initialSection: "profile" | "dev" | "slack" = "profile";
     export let initialSlug: string | null = null;
 
-    const initialConfig = data.config as DashboardConfig;
+    const normalizeConfig = (config: DashboardConfig) => {
+        const nextUser: UserProfile = { ...config.user };
+        const nextDevServers: DevServer[] = config.devServers.map((server) => ({
+            ...server,
+            models: [...server.models],
+        }));
+        const nextDefaultDevServerId = nextDevServers[0]?.id ?? null;
+        const nextWorkspaces: Workspace[] = config.workspaces.map((workspace) => ({
+            ...workspace,
+            slackAppToken: workspace.slackAppToken ?? "",
+            slackBotToken: workspace.slackBotToken ?? "",
+            channelDetails: workspace.channelDetails.map((channel) => ({
+                ...channel,
+                devServerId: channel.devServerId ?? nextDefaultDevServerId,
+            })),
+        }));
+        return {
+            user: nextUser,
+            devServers: nextDevServers,
+            workspaces: nextWorkspaces,
+            defaultDevServerId: nextDefaultDevServerId,
+        };
+    };
+
+    const initialConfig = normalizeConfig(data.config as DashboardConfig);
     let user: UserProfile = { ...initialConfig.user };
-    let devServers: DevServer[] = initialConfig.devServers.map((server) => ({
-        ...server,
-        models: [...server.models],
-    }));
-    const defaultDevServerId = devServers[0]?.id ?? null;
-    let workspaces: Workspace[] = initialConfig.workspaces.map((workspace) => ({
-        ...workspace,
-        slackAppToken: workspace.slackAppToken ?? "",
-        slackBotToken: workspace.slackBotToken ?? "",
-        channelDetails: workspace.channelDetails.map((channel) => ({
-            ...channel,
-            devServerId: channel.devServerId ?? defaultDevServerId,
-        })),
-    }));
+    let devServers: DevServer[] = initialConfig.devServers;
+    let workspaces: Workspace[] = initialConfig.workspaces;
+    let defaultDevServerId = initialConfig.defaultDevServerId;
     let modelOptions: string[] = [];
 
     const slugify = (value: string) =>
@@ -92,6 +105,10 @@
     let newServerName = "";
     let newServerUrl = "http://localhost:4096";
     let addServerError = "";
+    let isAddSlackBotOpen = false;
+    let newSlackAppToken = "";
+    let newSlackBotToken = "";
+    let addSlackBotError = "";
     let isSaving = false;
     let isSyncingModels = false;
     let isSyncingSlack = false;
@@ -151,6 +168,8 @@
             ),
         ]),
     ).sort();
+
+    $: defaultDevServerId = devServers[0]?.id ?? null;
 
     $: if (devServers.length === 1) {
         const onlyServerId = devServers[0]?.id ?? null;
@@ -214,6 +233,68 @@
         await syncModelsForServer(newServer);
     };
 
+    const applyConfig = (config: DashboardConfig) => {
+        const normalized = normalizeConfig(config);
+        user = normalized.user;
+        devServers = normalized.devServers;
+        workspaces = normalized.workspaces;
+        defaultDevServerId = normalized.defaultDevServerId;
+
+        const nextDevServerId =
+            normalized.devServers.find((server) => server.id === selectedDevServerId)
+                ?.id ?? normalized.devServers[0]?.id ?? null;
+        selectedDevServerId = nextDevServerId;
+
+        const nextWorkspaceId =
+            normalized.workspaces.find((workspace) => workspace.id === selectedWorkspaceId)
+                ?.id ?? normalized.workspaces[0]?.id ?? null;
+        selectedWorkspaceId = nextWorkspaceId;
+    };
+
+    const openAddSlackBot = () => {
+        addSlackBotError = "";
+        newSlackAppToken = "";
+        newSlackBotToken = "";
+        isAddSlackBotOpen = true;
+    };
+
+    const confirmAddSlackBot = async () => {
+        const appToken = newSlackAppToken.trim();
+        const botToken = newSlackBotToken.trim();
+        if (!appToken || !botToken) {
+            addSlackBotError = "Please enter both Slack tokens.";
+            return;
+        }
+        if (!appToken.startsWith("xapp-")) {
+            addSlackBotError = "Slack app token should start with xapp-.";
+            return;
+        }
+        if (!botToken.startsWith("xoxb-")) {
+            addSlackBotError = "Slack bot token should start with xoxb-.";
+            return;
+        }
+        const newWorkspace: Workspace = {
+            id: createId(),
+            name: "Slack Workspace",
+            domain: "",
+            status: "active",
+            channels: 0,
+            members: 0,
+            lastSync: "",
+            slackAppToken: appToken,
+            slackBotToken: botToken,
+            channelDetails: [],
+        };
+        workspaces = [newWorkspace];
+        selectedWorkspaceId = newWorkspace.id;
+        activeSection = "slack";
+        isAddSlackBotOpen = false;
+        addSlackBotError = "";
+        void goto(getWorkspacePath(newWorkspace));
+        await saveConfig({ showToast: false });
+        await syncSlackWorkspace(newWorkspace.id);
+    };
+
     const saveConfig = async (options: { showToast?: boolean } = {}) => {
         if (isSaving) return;
         isSaving = true;
@@ -249,6 +330,14 @@
                 variant: "destructive",
             });
             return;
+        }
+        try {
+            const result = await response.json();
+            if (result?.config) {
+                applyConfig(result.config as DashboardConfig);
+            }
+        } catch {
+            // ignore parse errors
         }
         if (options.showToast !== false) {
             pushToast({
@@ -434,8 +523,12 @@
         return match ?? model;
     };
 
-    const syncSlackWorkspace = async () => {
-        if (!currentWorkspace || isSyncingSlack) return;
+    const syncSlackWorkspace = async (workspaceId?: string) => {
+        if (isSyncingSlack) return;
+        const targetWorkspace = workspaceId
+            ? workspaces.find((item) => item.id === workspaceId)
+            : currentWorkspace;
+        if (!targetWorkspace) return;
         isSyncingSlack = true;
         try {
             const response = await fetch("/local-setting/slack-sync", {
@@ -443,7 +536,7 @@
                 headers: {
                     "content-type": "application/json",
                 },
-                body: JSON.stringify({ workspaceId: currentWorkspace.id }),
+                body: JSON.stringify({ workspaceId: targetWorkspace.id }),
             });
             const payload = await response.json();
             if (!response.ok || !payload?.ok) {
@@ -668,13 +761,16 @@
                                         <span>{workspace.name}</span>
                                     </button>
                                 {/each}
-                                <button
-                                    class="sidebar-subitem add-btn"
-                                    type="button"
-                                >
-                                    <Plus size={14} />
-                                    <span>Add Workspace</span>
-                                </button>
+                                {#if workspaces.length === 0}
+                                    <button
+                                        class="sidebar-subitem add-btn"
+                                        type="button"
+                                        on:click={openAddSlackBot}
+                                    >
+                                        <Plus size={14} />
+                                        <span>Add Slack Bot</span>
+                                    </button>
+                                {/if}
                             </div>
                         {/if}
                     </div>
@@ -929,7 +1025,7 @@
                                 <button
                                     class="btn-sync"
                                     type="button"
-                                    on:click={syncSlackWorkspace}
+                                    on:click={() => syncSlackWorkspace()}
                                     disabled={isSyncingSlack}
                                 >
                                     <RefreshCw
@@ -1300,6 +1396,81 @@
                         on:click={confirmAddServer}
                     >
                         Add Server
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    {#if isAddSlackBotOpen}
+        <div
+            class="modal-backdrop"
+            role="presentation"
+            on:click={() => (isAddSlackBotOpen = false)}
+        >
+            <div
+                class="modal"
+                role="dialog"
+                aria-modal="true"
+                on:click|stopPropagation
+                on:keydown|stopPropagation
+                tabindex="0"
+            >
+                <div class="modal-header">
+                    <h2>Add Slack Bot</h2>
+                    <button
+                        class="btn-icon"
+                        type="button"
+                        on:click={() => (isAddSlackBotOpen = false)}
+                    >
+                        ✕
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-field">
+                        <label for="new-slack-app-token">Slack App Token</label>
+                        <input
+                            id="new-slack-app-token"
+                            type="password"
+                            value={newSlackAppToken}
+                            on:input={(event) => {
+                                const target =
+                                    event.currentTarget as HTMLInputElement;
+                                newSlackAppToken = target.value;
+                            }}
+                        />
+                    </div>
+                    <div class="input-field">
+                        <label for="new-slack-bot-token">Slack Bot Token</label>
+                        <input
+                            id="new-slack-bot-token"
+                            type="password"
+                            value={newSlackBotToken}
+                            on:input={(event) => {
+                                const target =
+                                    event.currentTarget as HTMLInputElement;
+                                newSlackBotToken = target.value;
+                            }}
+                        />
+                    </div>
+                    {#if addSlackBotError}
+                        <div class="error-message">{addSlackBotError}</div>
+                    {/if}
+                </div>
+                <div class="modal-actions">
+                    <button
+                        class="btn-ghost"
+                        type="button"
+                        on:click={() => (isAddSlackBotOpen = false)}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        class="btn-primary"
+                        type="button"
+                        on:click={confirmAddSlackBot}
+                    >
+                        Add Slack Bot
                     </button>
                 </div>
             </div>

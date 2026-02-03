@@ -111,6 +111,10 @@ export function loadOdeConfig(): OdeConfig {
   }
 }
 
+export function invalidateOdeConfigCache(): void {
+  cachedConfig = null;
+}
+
 export function saveOdeConfig(config: OdeConfig): void {
   ensureConfigDir();
   cachedConfig = normalizeConfig(config);

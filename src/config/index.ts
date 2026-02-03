@@ -2,6 +2,7 @@ export { getRunMode, isLocalMode, isCloudMode, type RunMode } from "./runtime";
 export { normalizeCwd } from "./paths";
 export {
   loadOdeConfig,
+  invalidateOdeConfigCache,
   saveOdeConfig,
   getWorkspaces,
   getDevServers,

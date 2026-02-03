@@ -93,6 +93,18 @@ const enterpriseAuthMap = new Map<string, WorkspaceAuth>();
 const channelWorkspaceMap = new Map<string, string>();
 const channelBotTokenMap = new Map<string, string>();
 
+export function clearSlackAuthState(): void {
+  teamAuthMap.clear();
+  enterpriseAuthMap.clear();
+  channelWorkspaceMap.clear();
+  channelBotTokenMap.clear();
+}
+
+export function resetSlackState(): void {
+  clearSlackAuthState();
+  app = null;
+}
+
 type SlackClient = AllMiddlewareArgs["client"];
 
 type SlackThreadMessage = {
