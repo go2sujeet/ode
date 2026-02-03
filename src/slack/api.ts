@@ -1,5 +1,5 @@
 import { basename } from "path";
-const DEFAULT_ACTION_API_URL = "http://127.0.0.1:3030";
+import { getSlackActionApiUrl } from "./config";
 import { log } from "../logger";
 import { getApp, getChannelBotToken } from "./client";
 
@@ -272,7 +272,7 @@ async function handleSlackAction(payload: SlackActionRequest): Promise<unknown> 
 
 export function startSlackApiServer(): void {
   if (slackApiServer) return;
-  const url = new URL(DEFAULT_ACTION_API_URL);
+  const url = new URL(getSlackActionApiUrl());
   const port = url.port
     ? Number(url.port)
     : url.protocol === "https:"

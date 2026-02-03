@@ -3,6 +3,7 @@ import {
   getChannelAgentInstructions,
 } from "../storage/settings";
 import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext } from "./types";
+import { getSlackActionApiUrl } from "../slack/config";
 
 export function buildSlackSystemPrompt(slack?: SlackContext): string {
   const lines = [
@@ -35,7 +36,7 @@ export function buildSlackSystemPrompt(slack?: SlackContext): string {
   if (slack?.hasCustomSlackTool) {
     lines.push("- Use `ode_action` tool for Slack actions (messages, reactions, thread history, questions, uploads).");
   } else {
-    const baseUrl = slack?.odeSlackApiUrl ?? "http://127.0.0.1:3030";
+    const baseUrl = slack?.odeSlackApiUrl ?? getSlackActionApiUrl();
     lines.push("- Use bash + curl to call the Ode Slack API.");
     lines.push(`- Endpoint: ${baseUrl}/action`);
     lines.push("- Payload: {\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}");

@@ -62,6 +62,7 @@ import {
 } from "../agents";
 import { getSessionClient, statusFromEvent, type ProgressEvent } from "../agents/opencode";
 import { log } from "../logger";
+import { getSlackActionApiUrl } from "./config";
 import { getAllBotTokens, getProfileBySlackUserId, getSlackAppTokenFromServer } from "../db";
 
 export interface MessageContext {
@@ -115,10 +116,8 @@ const GLOBAL_UPDATE_INTERVAL_MS = 1000;
 let globalUpdateQueue: Array<{ channelId: string; messageTs: string; text: string; asMarkdown: boolean; resolve: () => void }> = [];
 let globalQueueProcessing = false;
 
-const DEFAULT_ACTION_API_URL = "http://127.0.0.1:3030";
-
 function getOdeSlackApiUrl(): string | undefined {
-  return DEFAULT_ACTION_API_URL;
+  return getSlackActionApiUrl();
 }
 
 function buildGitEnvironmentForUser(userId: string): Record<string, string> {

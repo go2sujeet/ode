@@ -9,7 +9,8 @@ Ode is a Slack bot that bridges chat messages to OpenCode, enabling AI-assisted 
 - **Per-Channel Agents.md**: Custom system instructions per Slack channel
 - **Thread Tracking**: Maintains context within conversation threads
 - **OAuth Flow**: Connect OpenAI Codex for provider authentication
-- **Auto-Restart**: Built-in nodemon integration for reliability
+- **Local Settings UI**: Web interface to manage Ode config in local mode
+- **CLI App**: Run the bot with `ode --local` or `ode --cloud`
 
 ## Setup
 
@@ -25,6 +26,14 @@ Ode is a Slack bot that bridges chat messages to OpenCode, enabling AI-assisted 
 bun install
 ```
 
+This also installs the settings UI dependencies under `web/`.
+
+Optional: make the CLI available on your PATH:
+
+```bash
+bun link
+```
+
 ### Configuration
 
 Copy `.env.example` to `.env` and fill in your Slack credentials:
@@ -33,54 +42,35 @@ Copy `.env.example` to `.env` and fill in your Slack credentials:
 cp .env.example .env
 ```
 
-Required environment variables:
-- `SLACK_BOT_TOKEN` - Bot User OAuth Token (xoxb-...)
-- `SLACK_APP_TOKEN` - App-Level Token with Socket Mode (xapp-...)
-- `SLACK_SIGNING_SECRET` - Signing secret from Slack app settings
-
 Optional:
-- `SLACK_TARGET_CHANNELS` - Comma-separated channel IDs to restrict bot
-- `OPENCODE_BINARY` - Path to opencode (default: "opencode")
-- `OPENCODE_PORT` - OpenCode server port (default: 4096)
-- `DEFAULT_CWD` - Default working directory
+- `ODE_SLACK_API_HOST` - Slack action API host (default: 127.0.0.1)
+- `ODE_SLACK_API_PORT` - Slack action API port (default: 9292)
+- `ODE_WEB_HOST` - Settings UI host (default: 127.0.0.1)
+- `ODE_WEB_PORT` - Settings UI port (default: 9293)
 
-### Running
+Local settings UI:
+- Start the app in local mode and open `http://127.0.0.1:9293/local-setting`
+- Changes are saved to `~/.config/ode/ode.json`
 
-Development mode (with hot reload):
+## Running
+
+Local mode (starts the settings UI automatically):
+
 ```bash
-bun run dev
+ode --local
 ```
 
-Production mode (with nodemon auto-restart):
+or
+
 ```bash
-./start.sh
+bun dev
 ```
 
-Check status:
-```bash
-./status.sh
+Settings UI:
+
 ```
-
-Stop:
-```bash
-./stop.sh
+http://127.0.0.1:9293/local-setting
 ```
-
-## Slack Commands
-
-- `/ode help` - Show available commands
-- `/ode cwd [path]` - View or set working directory
-- `/ode agents` - View channel's agents.md
-- `/ode agents edit` - Edit channel's agents.md (opens modal)
-- `/ode agents clear` - Clear channel's agents.md
-- `/ode stop` - Stop current operation
-- `/ode clear` - Clear all sessions
-- `/ode config` - View OpenCode configuration
-- `/ode config edit` - Edit OpenCode config (agent, model, provider)
-- `/ode gh auth` - Authenticate GitHub CLI (per Slack user, with base fallback, SSH)
-- `/ode oauth` - Start OpenAI Codex OAuth flow
-
-GitHub auth notes: Git operations use SSH, so ensure your SSH key is added to GitHub. PAT should include `repo`, plus `read:org` for org repositories, and `workflow` if managing Actions.
 
 ## Usage
 
@@ -88,20 +78,13 @@ GitHub auth notes: Git operations use SSH, so ensure your SSH key is added to Gi
 2. Mention the bot or reply in an active thread
 3. The bot will process your message with OpenCode and reply
 
-### Per-Channel Instructions
+## Local Settings UI
 
-Use `/ode agents edit` to set custom system instructions for a channel. These are prepended to every OpenCode request in that channel.
-
-## Architecture
-
-```
-src/
-├── config/       # Environment configuration
-├── opencode/     # OpenCode server management and HTTP client
-├── slack/        # Slack app, commands, and formatting
-├── storage/      # Settings and session persistence
-└── index.ts      # Main entry point
-```
+The local settings UI exposes `http://<ODE_WEB_HOST>:<ODE_WEB_PORT>/local-setting` and lets you edit:
+- OpenCode server list and models
+- Slack workspace tokens and channels
+- Per-channel model + dev server selection
+- Working directory per channel
 
 ## License
 

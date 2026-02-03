@@ -1,4 +1,9 @@
 node_modules/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.env
+dist/
 .env
 data/
 *.log
