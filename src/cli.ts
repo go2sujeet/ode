@@ -55,6 +55,19 @@ async function upgrade(): Promise<void> {
     process.exit(1);
   }
 
+  let latestVersion: string | null = null;
+  try {
+    const latestResponse = await fetch("https://api.github.com/repos/odefun/ode/releases/latest");
+    if (latestResponse.ok) {
+      const latest = (await latestResponse.json()) as { tag_name?: string };
+      if (latest.tag_name) {
+        latestVersion = latest.tag_name.replace(/^v/, "");
+      }
+    }
+  } catch {
+    latestVersion = null;
+  }
+
   const asset = resolveAsset();
   const url = `https://github.com/odefun/ode/releases/latest/download/${asset}`;
   const response = await fetch(url);
@@ -83,7 +96,12 @@ async function upgrade(): Promise<void> {
     await rm(tempDir, { recursive: true, force: true });
   }
 
-  console.log(`ode upgraded (current version: ${CURRENT_VERSION}).`);
+  if (latestVersion) {
+    console.log(`ode upgraded (current version: ${latestVersion}).`);
+    return;
+  }
+
+  console.log("ode upgraded.");
 }
 
 if (args.includes("--help") || args.includes("-h")) {
