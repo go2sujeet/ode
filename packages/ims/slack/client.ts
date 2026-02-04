@@ -60,8 +60,8 @@ import {
   type OpenCodeMessageContext,
   type OpenCodeOptions,
 } from "@ode/agents";
-import { getSessionClient, statusFromEvent, type ProgressEvent } from "@ode/agents/opencode";
-import { log } from "@ode/utils";
+import { getSessionClient } from "@ode/agents/opencode";
+import { buildSessionMessageState, type SessionEvent, log } from "@ode/utils";
 import { getSlackActionApiUrl } from "./config";
 import { getAllBotTokens, getProfileBySlackUserId, getSlackAppTokenFromServer } from "@ode/config/db";
 
@@ -1027,6 +1027,30 @@ async function startEventStreamWatcher(
   // Ensure the session instance exists before subscribing
   await ensureSession(request.sessionId);
 
+  const eventHistory: SessionEvent[] = [];
+
+  function applyStateFromEvents(): void {
+    const state = buildSessionMessageState(eventHistory, {
+      workingDirectory: workingPath,
+      baseState: { startedAt: request.startedAt },
+    });
+    request.currentStatus = state.currentStatus;
+    request.currentStep = state.currentStep;
+    request.currentText = state.currentText;
+    request.tools = state.tools.map((tool) => ({
+      id: tool.id,
+      name: tool.name,
+      status: tool.status as TrackedTool["status"],
+      title: tool.title,
+      output: tool.output,
+      error: tool.error,
+    }));
+    request.todos = state.todos.map((todo) => ({
+      content: todo.content,
+      status: todo.status as TrackedTodo["status"],
+    }));
+  }
+
   // Subscribe to events for this session via the shared dispatcher
   const unsubscribe = subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
@@ -1036,6 +1060,13 @@ async function startEventStreamWatcher(
       properties: (event as any)?.properties,
       directory: (globalEvent as any)?.directory,
     });
+
+    const sessionEvent: SessionEvent = {
+      timestamp: Date.now(),
+      type: event.type || "unknown",
+      data: event as Record<string, unknown>,
+    };
+    eventHistory.push(sessionEvent);
 
     if (shouldStoreEvents) {
       void storeSessionEvent({
@@ -1064,50 +1095,7 @@ async function startEventStreamWatcher(
       }
     }
 
-    if (event.type === "message.part.updated") {
-      const part = event.properties?.part;
-      if (!part) return;
-
-      if (part.type === "tool") {
-        const state = part.state || {};
-        const existingIdx = request.tools.findIndex(t => t.id === part.id);
-        const toolInfo: TrackedTool = {
-          id: part.id,
-          name: part.tool || "Unknown tool",
-          status: state.status || "pending",
-          title: state.title,
-          output: state.output,
-          error: state.error,
-        };
-
-        if (existingIdx >= 0) {
-          request.tools[existingIdx] = toolInfo;
-        } else {
-          request.tools.push(toolInfo);
-        }
-
-        const status = statusFromEvent({
-          directory: (globalEvent as any).directory,
-          payload: event,
-        } as ProgressEvent, request.sessionId);
-
-        if (status) {
-          request.currentStatus = status;
-          request.currentStep = 'Tool Calling...'
-        }
-      } else if (part.type === "text" && part.text) {
-        request.currentText = part.text;
-        request.currentStatus = "Writing response";
-      } else if (part.type === "step-start") {
-        request.currentStep = part.metadata?.title || "Thinking";
-      } else if (part.type === "step-finish") {
-        request.currentStep = undefined;
-      } else if (part.type === "reasoning") {
-        request.currentStep = "Thinking deeply...";
-      }
-
-      onUpdate();
-    } else if (event.type === "message.updated") {
+    if (event.type === "message.updated") {
       const info = event.properties?.info as { role?: string; sessionID?: string; agent?: unknown; mode?: unknown } | undefined;
       if (!info || info.role !== "assistant" || info.sessionID !== request.sessionId) {
         return;
@@ -1121,8 +1109,6 @@ async function startEventStreamWatcher(
             : undefined;
 
       if (agent === "plan") {
-        request.currentStatus = "Planning";
-
         const session = loadSession(request.channelId, request.threadId);
         if (session) {
           session.plan = session.plan ?? { status: "planning", todos: [] };
@@ -1132,25 +1118,21 @@ async function startEventStreamWatcher(
           }
         }
       } else if (agent) {
-        request.currentStatus = "Building";
-
         const session = loadSession(request.channelId, request.threadId);
         if (session?.plan && (session.plan.status === "planning" || session.plan.status === "awaiting_input")) {
           session.plan.status = "building";
           saveSession(session);
         }
       }
+    }
 
-      onUpdate();
-    } else if (event.type === "todo.updated") {
-      const todos = event.properties?.todos || [];
-      request.todos = todos.map((t: any) => ({
-        content: t.content || t.text || "",
-        status: t.status || "pending",
-      }));
+    applyStateFromEvents();
+
+    if (event.type === "todo.updated") {
       void onTodoUpdate?.(request.todos);
-      onUpdate();
-    } else if (event.type === "question.asked") {
+    }
+
+    if (event.type === "question.asked") {
       const properties = event.properties as {
         id?: string;
         sessionID?: string;
@@ -1187,20 +1169,10 @@ async function startEventStreamWatcher(
           messageTs: request.statusMessageTs,
         });
       })();
-    } else if (event.type === "session.status") {
-      const status = event.properties?.status;
-      if (status?.type === "busy") {
-        request.currentStatus = "Working";
-      } else if (status?.type === "retry") {
-        const seconds = status.next
-          ? Math.max(0, Math.ceil((status.next - Date.now()) / 1000))
-          : undefined;
-        request.currentStatus = seconds !== undefined
-          ? `Retrying in ${seconds}s`
-          : "Retrying...";
-      }
-      onUpdate();
+      return;
     }
+
+    onUpdate();
   });
 
   return unsubscribe;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import SlackMessage from "./SlackMessage.svelte";
+  import { buildSessionMessageState, type SessionMessageState } from "@ode/utils";
 
   export let events: Array<{
     timestamp: number;
@@ -9,38 +10,7 @@
   export let selectedEventIndex: number;
   export let workingDirectory: string;
 
-  interface MessageState {
-    sessionTitle?: string;
-    tokenUsage?: {
-      input: number;
-      output: number;
-      reasoning: number;
-      cacheRead: number;
-      cacheWrite: number;
-      total: number;
-      cost?: number;
-    };
-    currentStatus: string;
-    currentStep?: string;
-    currentText: string;
-    tools: Array<{
-      id: string;
-      name: string;
-      status: string;
-      title?: string;
-      input?: Record<string, unknown>;
-      output?: string;
-      error?: string;
-      metadata?: Record<string, unknown>;
-    }>;
-    todos: Array<{
-      content: string;
-      status: string;
-    }>;
-    startedAt: number;
-  }
-
-  let state: MessageState = {
+  let state: SessionMessageState = {
     currentStatus: "Starting",
     currentText: "",
     tools: [],
@@ -48,150 +18,10 @@
     startedAt: Date.now(),
   };
 
-  $: {
-    const reconstructedState: MessageState = {
-      sessionTitle: undefined,
-      tokenUsage: undefined,
-      currentStatus: "Starting",
-      currentText: "",
-      tools: [],
-      todos: [],
-      startedAt: events[0]?.timestamp || Date.now(),
-    };
-
-    const relevantEvents = events.slice(0, selectedEventIndex + 1);
-
-    for (const event of relevantEvents) {
-      const eventData = event.data as any;
-      const type = event.type;
-
-      if (type === "session.updated") {
-        const title = eventData?.properties?.info?.title;
-        if (typeof title === "string" && title.trim()) {
-          reconstructedState.sessionTitle = title.trim();
-        }
-      }
-
-      if (type === "message.updated") {
-        const info = eventData?.properties?.info;
-        const tokens = info?.tokens;
-        if (tokens && typeof tokens === "object") {
-          const input = Number(tokens.input ?? 0) || 0;
-          const output = Number(tokens.output ?? 0) || 0;
-          const reasoning = Number(tokens.reasoning ?? 0) || 0;
-          const cacheRead = Number(tokens.cache?.read ?? 0) || 0;
-          const cacheWrite = Number(tokens.cache?.write ?? 0) || 0;
-          const total = input + output + reasoning;
-          const cost = typeof info?.cost === "number" ? info.cost : undefined;
-          reconstructedState.tokenUsage = {
-            input,
-            output,
-            reasoning,
-            cacheRead,
-            cacheWrite,
-            total,
-            cost,
-          };
-        }
-      }
-
-      if (type === "message.part.updated") {
-        const part = eventData.properties?.part as any;
-        if (!part) continue;
-
-        if (part.type === "tool") {
-          const toolState = part.state || {};
-          const existingIdx = reconstructedState.tools.findIndex((t) => t.id === part.id);
-          const toolInfo = {
-            id: part.id,
-            name: part.tool || "Unknown tool",
-            status: toolState.status || "pending",
-            title: toolState.title,
-            input: toolState.input,
-            output: toolState.output,
-            error: toolState.error,
-            metadata: toolState.metadata,
-          };
-
-          if (existingIdx >= 0) {
-            reconstructedState.tools[existingIdx] = toolInfo;
-          } else {
-            reconstructedState.tools.push(toolInfo);
-          }
-
-          if (toolState.status === "running") {
-            const label = formatToolLabel(toolInfo);
-            reconstructedState.currentStatus = label ? `Running: ${label}` : "Running";
-          }
-        } else if (part.type === "text" && part.text) {
-          reconstructedState.currentText = part.text;
-          reconstructedState.currentStatus = "Writing response";
-        } else if (part.type === "step-start") {
-          reconstructedState.currentStep = part.metadata?.title || "Thinking";
-          reconstructedState.currentStatus = "Thinking";
-        } else if (part.type === "step-finish") {
-          reconstructedState.currentStep = undefined;
-        } else if (part.type === "reasoning") {
-          reconstructedState.currentStatus = "Reasoning";
-          reconstructedState.currentStep = "Thinking deeply...";
-        }
-      } else if (type === "todo.updated") {
-        const todos = (eventData.properties?.todos as any[]) || [];
-        reconstructedState.todos = todos.map((t: any) => ({
-          content: t.content || t.text || "",
-          status: t.status || "pending",
-        }));
-      } else if (type === "session.status") {
-        const status = eventData.properties?.status as any;
-        if (status?.type === "busy") {
-          reconstructedState.currentStatus = "Working";
-        } else if (status?.type === "retry") {
-          reconstructedState.currentStatus = "Retrying...";
-        }
-      }
-    }
-
-    state = reconstructedState;
-  }
-
-  function formatToolLabel(tool: any): string | null {
-    const title = tool.title?.trim() ?? "";
-    const name = tool.name?.trim() ?? "";
-    if (!title && !name) return null;
-
-    const normalizedTitle = title ? trimToolPath(title) : "";
-    const toolName = name.toLowerCase();
-
-    const SEARCH_TOOL_NAMES = new Set(["glob", "grep", "rg", "ripgrep", "search"]);
-    const EDIT_TOOL_NAMES = new Set(["edit", "write"]);
-    const READ_TOOL_NAMES = new Set(["read"]);
-
-    if (READ_TOOL_NAMES.has(toolName)) return null;
-
-    if (SEARCH_TOOL_NAMES.has(toolName)) {
-      return "Searching files";
-    }
-
-    if (EDIT_TOOL_NAMES.has(toolName)) {
-      if (!normalizedTitle) return "Editing files";
-      return `Editing ${normalizedTitle}`;
-    }
-
-    return normalizedTitle || name;
-  }
-
-  function trimToolPath(label: string): string {
-    let trimmed = label.trim();
-    if (!trimmed) return trimmed;
-
-    if (workingDirectory && trimmed.startsWith(`${workingDirectory}/`)) {
-      trimmed = trimmed.slice(workingDirectory.length + 1);
-    }
-
-    trimmed = trimmed.replace(/(^|\/)\.worktrees\/[^/]+\//, "");
-    trimmed = trimmed.replace(/^\//, "");
-    return trimmed;
-  }
+  $: state = buildSessionMessageState(events, {
+    endIndex: selectedEventIndex,
+    workingDirectory,
+  });
 </script>
 
 <div class="im-preview">
