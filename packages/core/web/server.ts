@@ -8,7 +8,14 @@ import {
 import {
   defaultDashboardConfig,
   sanitizeDashboardConfig,
+  isLocalMode,
 } from "@ode/config";
+import {
+  getAllSessions,
+  getSessionEvents,
+  getSessionMeta,
+  type SessionEvent,
+} from "@ode/config/local/redis";
 import { handleSlackActionPayload } from "@ode/ims";
 import { log } from "@ode/utils";
 
@@ -32,6 +39,12 @@ function parsePort(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+function isRedisSessionApiEnabled(): boolean {
+  if (!isLocalMode()) return false;
+  const flag = process.env.ODE_REDIS_ENABLED?.trim().toLowerCase();
+  return flag === "true" || flag === "1" || flag === "yes";
 }
 
 function getWebHost(): string {
@@ -95,6 +108,38 @@ function getContentType(pathname: string): string {
   return "application/octet-stream";
 }
 
+function collapseTextDeltas(events: SessionEvent[]): SessionEvent[] {
+  const result: SessionEvent[] = [];
+  const textPartIndices = new Map<string, number>();
+
+  for (const event of events) {
+    const eventType = event.type || (event.data as any)?.type;
+    const props = (event.data?.properties || event.data) as Record<string, unknown> | undefined;
+    const part = props?.part as Record<string, unknown> | undefined;
+
+    if (eventType === "message.part.updated" && part?.type === "text") {
+      const partId = part.id as string;
+      if (!partId) {
+        result.push(event);
+        continue;
+      }
+
+      const existingIdx = textPartIndices.get(partId);
+      if (existingIdx !== undefined) {
+        result[existingIdx] = event;
+      } else {
+        textPartIndices.set(partId, result.length);
+        result.push(event);
+      }
+      continue;
+    }
+
+    result.push(event);
+  }
+
+  return result;
+}
+
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const pathname = url.pathname;
@@ -130,6 +175,69 @@ async function handleRequest(request: Request): Promise<Response> {
       }
     }
     return jsonResponse(405, { ok: false, error: "Method not allowed" });
+  }
+
+  if (pathname.startsWith("/api/sessions")) {
+    if (!isRedisSessionApiEnabled()) {
+      return jsonResponse(404, { ok: false, error: "Session inspector disabled" });
+    }
+
+    if (request.method !== "GET") {
+      return jsonResponse(405, { ok: false, error: "Method not allowed" });
+    }
+
+    try {
+      if (pathname === "/api/sessions") {
+        const sessions = await getAllSessions();
+        return jsonResponse(200, { ok: true, result: sessions });
+      }
+
+      const eventsMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/events$/);
+      if (eventsMatch) {
+        const sessionId = eventsMatch[1];
+        if (!sessionId) {
+          return jsonResponse(400, { ok: false, error: "Missing session id" });
+        }
+        const events = await getSessionEvents(sessionId);
+
+        const url = new URL(request.url);
+        const expand = url.searchParams.get("expand") === "true";
+        const since = url.searchParams.get("since");
+        const sinceTs = since ? parseInt(since, 10) : null;
+
+        let result: SessionEvent[];
+        if (expand) {
+          result = sinceTs && !Number.isNaN(sinceTs)
+            ? events.filter((event) => event.timestamp > sinceTs)
+            : events;
+        } else {
+          const collapsed = collapseTextDeltas(events);
+          result = sinceTs && !Number.isNaN(sinceTs)
+            ? collapsed.filter((event) => event.timestamp > sinceTs)
+            : collapsed;
+        }
+
+        return jsonResponse(200, { ok: true, result });
+      }
+
+      const metaMatch = pathname.match(/^\/api\/sessions\/([^/]+)$/);
+      if (metaMatch) {
+        const sessionId = metaMatch[1];
+        if (!sessionId) {
+          return jsonResponse(400, { ok: false, error: "Missing session id" });
+        }
+        const meta = await getSessionMeta(sessionId);
+        if (!meta) {
+          return jsonResponse(404, { ok: false, error: "Session not found" });
+        }
+        return jsonResponse(200, { ok: true, result: meta });
+      }
+
+      return jsonResponse(404, { ok: false, error: "Not found" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal server error";
+      return jsonResponse(500, { ok: false, error: message });
+    }
   }
 
   if (pathname === "/api/slack-sync") {

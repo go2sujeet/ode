@@ -49,6 +49,7 @@ import {
   type TrackedTool,
   type TrackedTodo,
 } from "@ode/config/local/sessions";
+import { storeSessionEvent, storeSessionMeta } from "@ode/config/local/redis";
 import {
   getOrCreateSession,
   sendMessage as sendOpenCodeMessage,
@@ -128,6 +129,12 @@ const GLOBAL_UPDATE_INTERVAL_MS = 1000;
 let globalUpdateQueue: Array<{ channelId: string; messageTs: string; text: string; asMarkdown: boolean; resolve: () => void }> = [];
 let globalQueueProcessing = false;
 
+function isRedisTrackingEnabled(): boolean {
+  if (!isLocalMode()) return false;
+  const flag = process.env.ODE_REDIS_ENABLED?.trim().toLowerCase();
+  return flag === "true" || flag === "1" || flag === "yes";
+}
+
 function getOdeSlackApiUrl(): string | undefined {
   return getSlackActionApiUrl();
 }
@@ -167,6 +174,11 @@ async function processGlobalUpdateQueue(): Promise<void> {
     globalLastUpdate = Date.now();
 
     try {
+      log.info("[SLACK] Outgoing update", {
+        channel: item.channelId,
+        messageTs: item.messageTs,
+        text: item.text,
+      });
       const slackApp = getApp();
       const formattedText = item.asMarkdown ? markdownToSlack(item.text) : item.text;
       const truncatedText = formattedText.length > 3900
@@ -436,12 +448,11 @@ export async function sendMessage(
     log.warn("No Slack bot token available for channel", { channelId });
   }
 
-  log.info("[SEND] Slack message", {
-
+  log.info("[SLACK] Outgoing message", {
     workspace,
     channel: channelId,
     thread: threadId,
-    text: text.slice(0, 100) + (text.length > 100 ? "..." : ""),
+    text,
     chunks: chunks.length,
   });
 
@@ -1012,12 +1023,31 @@ async function startEventStreamWatcher(
     return () => { };
   }
 
+  const shouldStoreEvents = isRedisTrackingEnabled();
+
   // Ensure the session instance exists before subscribing
   await ensureSession(request.sessionId);
 
   // Subscribe to events for this session via the shared dispatcher
   const unsubscribe = subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
+    log.info("[OPENCODE] Event", {
+      sessionId: request.sessionId,
+      type: (event as any)?.type ?? "unknown",
+      properties: (event as any)?.properties,
+      directory: (globalEvent as any)?.directory,
+    });
+
+    if (shouldStoreEvents) {
+      void storeSessionEvent({
+        timestamp: Date.now(),
+        type: event.type || "unknown",
+        sessionId: request.sessionId,
+        channelId: request.channelId,
+        threadId: request.threadId,
+        data: event as Record<string, unknown>,
+      });
+    }
     const pendingQuestion = getPendingQuestion(request.channelId, request.threadId);
 
     if (pendingQuestion) {
@@ -1230,6 +1260,18 @@ async function runOpenCodeRequest(
   request.currentStatus = phaseLabel;
   session.activeRequest = request;
   saveSession(session);
+
+  if (isRedisTrackingEnabled()) {
+    void storeSessionMeta({
+      sessionId: session.sessionId,
+      channelId: session.channelId,
+      threadId: session.threadId,
+      workingDirectory: session.workingDirectory,
+      createdAt: session.createdAt,
+      lastActivityAt: Date.now(),
+      threadOwnerUserId: session.threadOwnerUserId,
+    });
+  }
 
   let lastHeartbeat = Date.now();
   const progressTimer = setInterval(async () => {
@@ -1792,14 +1834,6 @@ export function setupMessageHandlers(): void {
 
   // Handle messages
   slackApp.message(async ({ message, say, client }) => {
-    log.info("[RECV] Slack message event", {
-      channel: message.channel,
-      subtype: (message as any).subtype ?? null,
-      hasText: "text" in message,
-      hasUser: "user" in message,
-      threadTs: "thread_ts" in message ? (message as any).thread_ts ?? null : null,
-      ts: (message as any).ts ?? null,
-    });
     // Ignore all message subtypes (edits, deletes, etc) - only process new messages
     if (message.subtype !== undefined) return;
     if (!("text" in message) || !message.text) return;
@@ -1900,15 +1934,6 @@ export function setupMessageHandlers(): void {
 
     const workspaceName = channelWorkspaceMap.get(channelId) || "unknown";
 
-    log.info("[RECV] Slack message", {
-      workspace: workspaceName,
-      channel: channelId,
-      thread: threadId,
-      user: userId,
-      text: cleanText.slice(0, 100) + (cleanText.length > 100 ? "..." : ""),
-    });
-
-    log.info("[RECV] Slack user id", { workspace: workspaceName, userId });
     const localMode = isLocalMode();
     const channelServerUrl = getChannelOpenCodeServerUrl(channelId);
     let profile = null;
@@ -1925,13 +1950,6 @@ export function setupMessageHandlers(): void {
       }
     }
     if (!localMode) {
-      log.info("[RECV] Supabase profile lookup", {
-        workspace: workspaceName,
-        userId,
-        found: Boolean(profile),
-        profile,
-        opencodeServerUrl: profile?.opencode_server_url ?? null,
-      });
     }
 
     if (localMode && !channelServerUrl) {

@@ -45,6 +45,9 @@ Optional:
 - `ODE_SLACK_API_PORT` - Slack action API port (default: 9292)
 - `ODE_WEB_HOST` - Settings UI host (default: 127.0.0.1)
 - `ODE_WEB_PORT` - Settings UI port (default: 9293)
+- `ODE_REDIS_ENABLED` - Enable session inspector storage in local mode (default: false)
+- `REDIS_HOST` - Redis host for session inspector (default: localhost)
+- `REDIS_PORT` - Redis port for session inspector (default: 6379)
 
 Local settings UI:
 - Start the app in local mode and open `http://127.0.0.1:9293/local-setting`
