@@ -690,7 +690,7 @@ function buildToolDetails(tool: SessionMessageState["tools"][number], workingPat
   return title ? trimToolPath(title, workingPath) : "";
 }
 
-const TOOL_DETAIL_LIMIT = 60;
+const TOOL_DETAIL_LIMIT = 100;
 
 function truncateToolDetail(detail: string): string {
   if (detail.length <= TOOL_DETAIL_LIMIT) return detail;
