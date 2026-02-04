@@ -2,12 +2,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import {
-  getChannelWorkingDirectory,
-  getChannelCwd as getChannelCwdFromConfig,
   setChannelCwd as setChannelCwdInConfig,
 } from "./ode";
+import { loadSession } from "./sessions";
 
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
+const SETTINGS_FILE = join(ODE_CONFIG_DIR, "settings.json");
 const AGENTS_DIR = join(ODE_CONFIG_DIR, "agents");
 const GH_CONFIG_DIR = join(homedir(), ".config", "gh");
 const GH_HOSTS_FILENAME = "hosts.yml";
@@ -15,7 +15,6 @@ const GH_HOSTS_FILE = join(GH_CONFIG_DIR, GH_HOSTS_FILENAME);
 const GH_USERS_DIR = join(ODE_CONFIG_DIR, "gh-users");
 
 export interface ChannelSettings {
-  customCwd?: string;
   threadSessions: Record<string, string>; // threadId -> sessionId
   activeThreads: Record<string, number>; // threadId -> timestamp
 }
@@ -52,11 +51,35 @@ export function loadSettings(): Settings {
   if (cachedSettings) return cachedSettings;
 
   ensureDataDir();
+  const emptySettings: Settings = { channels: {} };
 
-  cachedSettings = {
-    channels: {},
-  };
-  return cachedSettings;
+  if (!existsSync(SETTINGS_FILE)) {
+    cachedSettings = emptySettings;
+    return cachedSettings;
+  }
+
+  try {
+    const raw = readFileSync(SETTINGS_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    const rawChannels = parsed.channels ?? {};
+    const normalizedChannels: Record<string, ChannelSettings> = {};
+
+    for (const [channelId, settings] of Object.entries(rawChannels)) {
+      normalizedChannels[channelId] = normalizeChannelSettings(
+        settings as ChannelSettings
+      );
+    }
+
+    cachedSettings = {
+      ...emptySettings,
+      ...parsed,
+      channels: normalizedChannels,
+    };
+    return cachedSettings;
+  } catch {
+    cachedSettings = emptySettings;
+    return cachedSettings;
+  }
 }
 
 function normalizeChannelSettings(settings: ChannelSettings): ChannelSettings {
@@ -65,17 +88,17 @@ function normalizeChannelSettings(settings: ChannelSettings): ChannelSettings {
   return { ...settings, threadSessions, activeThreads };
 }
 
-function mergeChannelConfig(channelId: string, settings: ChannelSettings): ChannelSettings {
-  const customCwd = getChannelWorkingDirectory(channelId) ?? undefined;
-  return {
-    ...settings,
-    customCwd,
-  };
-}
-
 export function saveSettings(settings: Settings): void {
   ensureDataDir();
-  cachedSettings = settings;
+  const normalizedChannels: Record<string, ChannelSettings> = {};
+  for (const [channelId, channelSettings] of Object.entries(settings.channels ?? {})) {
+    normalizedChannels[channelId] = normalizeChannelSettings(channelSettings);
+  }
+  cachedSettings = {
+    ...settings,
+    channels: normalizedChannels,
+  };
+  writeFileSync(SETTINGS_FILE, JSON.stringify(cachedSettings, null, 2));
 }
 
 export function getPendingRestartMessages(): PendingRestartMessage[] {
@@ -117,7 +140,7 @@ export function getChannelSettings(channelId: string): ChannelSettings {
     settings.channels[channelId] = normalized;
     saveSettings(settings);
   }
-  return mergeChannelConfig(channelId, settings.channels[channelId]);
+  return settings.channels[channelId];
 }
 
 export function updateChannelSettings(
@@ -125,8 +148,6 @@ export function updateChannelSettings(
   updates: Partial<ChannelSettings>
 ): void {
   const settings = loadSettings();
-  const runtimeUpdates = { ...updates };
-  delete (runtimeUpdates as Partial<ChannelSettings>).customCwd;
 
   const existing = settings.channels[channelId] ?? {
     threadSessions: {},
@@ -134,14 +155,10 @@ export function updateChannelSettings(
   };
   const merged = {
     ...existing,
-    ...runtimeUpdates,
+    ...updates,
   };
   settings.channels[channelId] = normalizeChannelSettings(merged);
   saveSettings(settings);
-}
-
-export function getChannelCwd(channelId: string): string {
-  return getChannelCwdFromConfig(channelId);
 }
 
 export function setChannelCwd(channelId: string, cwd: string): void {
@@ -210,7 +227,15 @@ export function deleteChannelAgentInstructions(
 // Session management (one session per thread)
 export function getOpenCodeSession(channelId: string, threadId: string): string | null {
   const channelSettings = getChannelSettings(channelId);
-  return channelSettings.threadSessions[threadId] || null;
+  const stored = channelSettings.threadSessions[threadId];
+  if (stored) return stored;
+
+  const session = loadSession(channelId, threadId);
+  if (!session?.sessionId) return null;
+
+  channelSettings.threadSessions[threadId] = session.sessionId;
+  updateChannelSettings(channelId, { threadSessions: channelSettings.threadSessions });
+  return session.sessionId;
 }
 
 export function setOpenCodeSession(channelId: string, threadId: string, sessionId: string): void {

@@ -200,16 +200,23 @@ export function getChannelDetails(channelId: string): ChannelDetail | null {
   return null;
 }
 
-export function getChannelWorkingDirectory(channelId: string): string | null {
+export type ChannelCwdInfo = {
+  cwd: string;
+  workingDirectory: string | null;
+  hasCustomCwd: boolean;
+};
+
+export function resolveChannelCwd(channelId: string): ChannelCwdInfo {
   const channel = getChannelDetails(channelId);
   const workingDirectory = channel?.workingDirectory?.trim();
-  return workingDirectory && workingDirectory.length > 0 ? workingDirectory : null;
-}
-
-export function getChannelCwd(channelId: string): string {
-  const workingDirectory = getChannelWorkingDirectory(channelId);
-  if (workingDirectory) return normalizeCwd(workingDirectory);
-  return getDefaultCwd();
+  const normalized = workingDirectory && workingDirectory.length > 0
+    ? normalizeCwd(workingDirectory)
+    : null;
+  return {
+    cwd: normalized ?? getDefaultCwd(),
+    workingDirectory: normalized,
+    hasCustomCwd: Boolean(normalized),
+  };
 }
 
 export function setChannelCwd(channelId: string, cwd: string): void {

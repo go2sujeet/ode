@@ -10,16 +10,15 @@ import {
   getChannelDevServerId,
   getChannelModel,
   getChannelOpenCodeServerUrl,
-  getChannelWorkingDirectory,
   getDevServers,
   getDefaultOpenCodeServerUrl,
   isLocalMode,
+  resolveChannelCwd,
 } from "@ode/config";
 import { markdownToSlack, splitForSlack } from "./formatter";
 import {
   markThreadActive,
   isThreadActive,
-  getChannelCwd,
   getChannelSettings,
   getOpenCodeSession,
   setOpenCodeSession,
@@ -300,7 +299,7 @@ function describeSettingsIssues(channelId: string): string[] {
   const devServers = getDevServers();
   const devServerId = getChannelDevServerId(channelId);
   const model = getChannelModel(channelId);
-  const workingDirectory = getChannelWorkingDirectory(channelId);
+  const { workingDirectory } = resolveChannelCwd(channelId);
 
   if (!devServerId) {
     issues.push("Dev server not configured.");
@@ -1409,7 +1408,7 @@ async function handleUserMessageInternal(
   const { channelId, threadId, messageId } = context;
   let cwd: string;
   try {
-    cwd = getChannelCwd(channelId);
+    cwd = resolveChannelCwd(channelId).cwd;
   } catch (err) {
     await sendMessage(channelId, threadId, `Error: ${String(err)}`, false);
     return;
@@ -1713,7 +1712,7 @@ export async function handleButtonSelection(
 ): Promise<void> {
   let cwd: string;
   try {
-    cwd = getChannelCwd(channelId);
+    cwd = resolveChannelCwd(channelId).cwd;
   } catch (err) {
     await sendMessage(channelId, threadId, `Error: ${String(err)}`, false);
     return;

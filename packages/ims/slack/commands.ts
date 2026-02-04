@@ -2,7 +2,7 @@ import { getApp } from "./client";
 import {
   getChannelDevServerId,
   getChannelModel,
-  getChannelWorkingDirectory,
+  resolveChannelCwd,
   getDevServers,
   isLocalMode,
   setChannelDevServerId,
@@ -143,7 +143,7 @@ export function setupInteractiveHandlers(): void {
       devServers,
       selectedDevServerId: getChannelDevServerId(channelId),
       selectedModel: getChannelModel(channelId),
-      workingDirectory: getChannelWorkingDirectory(channelId),
+      workingDirectory: resolveChannelCwd(channelId).workingDirectory,
     });
 
     await client.views.open({
