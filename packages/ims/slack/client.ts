@@ -133,6 +133,19 @@ const GLOBAL_UPDATE_INTERVAL_MS = 1000;
 let globalUpdateQueue: Array<{ channelId: string; messageTs: string; text: string; asMarkdown: boolean; resolve: () => void }> = [];
 let globalQueueProcessing = false;
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 function isRedisTrackingEnabled(): boolean {
   if (!isLocalMode()) return false;
   const flag = process.env.ODE_REDIS_ENABLED?.trim().toLowerCase();
@@ -198,11 +211,6 @@ async function processGlobalUpdateQueue(): Promise<void> {
     globalLastUpdate = Date.now();
 
     try {
-      log.info("[SLACK] Outgoing update", {
-        channel: item.channelId,
-        messageTs: item.messageTs,
-        text: item.text,
-      });
       const slackApp = getApp();
       const formattedText = item.asMarkdown ? markdownToSlack(item.text) : item.text;
       const truncatedText = truncateForSlack(formattedText);
@@ -978,7 +986,8 @@ async function handlePendingQuestionReply(
 async function startEventStreamWatcher(
   request: ActiveRequest,
   workingPath: string,
-  onUpdate: () => void
+  onUpdate: () => void,
+  onStop?: () => void
 ): Promise<() => void> {
   if (!supportsEventStream) {
     return () => { };
@@ -1016,6 +1025,8 @@ async function startEventStreamWatcher(
     }));
   }
 
+  let stopNotified = false;
+
   // Subscribe to events for this session via the shared dispatcher
   const unsubscribe = subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
@@ -1025,6 +1036,14 @@ async function startEventStreamWatcher(
       properties: (event as any)?.properties,
       directory: (globalEvent as any)?.directory,
     });
+
+    if (!stopNotified && event?.type === "message.part.updated") {
+      const part = (event as any)?.properties?.part;
+      if (part?.type === "step-finish" && part?.reason === "stop") {
+        stopNotified = true;
+        onStop?.();
+      }
+    }
 
     const sessionEvent: SessionEvent = {
       timestamp: Date.now(),
@@ -1168,10 +1187,13 @@ async function runOpenCodeRequest(
     });
   }, 2000);
 
-  const stopWatcher = await startEventStreamWatcher(request, cwd, () => { });
+  const stopSignal = createDeferred<void>();
+  const stopWatcher = await startEventStreamWatcher(request, cwd, () => { }, () => {
+    stopSignal.resolve();
+  });
 
   try {
-    const responses = await sendOpenCodeMessage(
+    const promptPromise = sendOpenCodeMessage(
       channelId,
       sessionId,
       message,
@@ -1179,6 +1201,10 @@ async function runOpenCodeRequest(
       options,
       context
     );
+    const result = await Promise.race([
+      promptPromise.then((responses) => ({ type: "prompt" as const, responses })),
+      stopSignal.promise.then(() => ({ type: "stop" as const })),
+    ]);
 
     clearInterval(progressTimer);
     stopWatcher();
@@ -1188,14 +1214,26 @@ async function runOpenCodeRequest(
     liveParsedState.delete(getStatusMessageKey(request));
     completeActiveRequest(channelId, threadId);
 
-    if (responses.length === 0) {
+    if (result.type === "stop") {
+      const fallbackText = request.currentText?.trim();
+      const finalText = fallbackText || "_Done_";
+      await updateMessageThrottled(channelId, statusTs, finalText, true);
+      void promptPromise.catch((err) => {
+        log.debug("OpenCode prompt rejected after stop", { error: String(err) });
+      });
+      return fallbackText
+        ? [{ text: fallbackText, messageType: "assistant" }]
+        : [];
+    }
+
+    if (result.responses.length === 0) {
       log.warn("No text responses from model - tool-only response");
     }
 
-    const finalText = buildFinalResponseText(responses) ?? "_Done_";
+    const finalText = buildFinalResponseText(result.responses) ?? "_Done_";
     await updateMessageThrottled(channelId, statusTs, finalText, true);
 
-    return responses;
+    return result.responses;
   } catch (err) {
     clearInterval(progressTimer);
     stopWatcher();
@@ -1526,7 +1564,10 @@ export async function handleButtonSelection(
   }, 2000); // 2 seconds to reduce Slack API load
 
   // Event watcher
-  const stopWatcher = await startEventStreamWatcher(request, cwd, () => { });
+  const stopSignal = createDeferred<void>();
+  const stopWatcher = await startEventStreamWatcher(request, cwd, () => { }, () => {
+    stopSignal.resolve();
+  });
 
   try {
     // Build context - the selection is the user's response
@@ -1538,7 +1579,7 @@ export async function handleButtonSelection(
     );
 
     // Send to OpenCode - the selection as the user's message
-    const responses = await sendOpenCodeMessage(
+    const promptPromise = sendOpenCodeMessage(
       channelId,
       sessionId,
       `User selected: ${selection}`,
@@ -1546,6 +1587,10 @@ export async function handleButtonSelection(
       agent ? { agent } : undefined,
       messageContext
     );
+    const result = await Promise.race([
+      promptPromise.then((responses) => ({ type: "prompt" as const, responses })),
+      stopSignal.promise.then(() => ({ type: "stop" as const })),
+    ]);
 
     clearInterval(progressTimer);
     stopWatcher();
@@ -1554,7 +1599,18 @@ export async function handleButtonSelection(
     liveEventHistory.delete(getStatusMessageKey(request));
     liveParsedState.delete(getStatusMessageKey(request));
 
-    const finalText = buildFinalResponseText(responses) ?? "_Done_";
+    if (result.type === "stop") {
+      const fallbackText = request.currentText?.trim();
+      const finalText = fallbackText || "_Done_";
+      await updateMessageThrottled(channelId, statusTs, finalText, true);
+      completeActiveRequest(channelId, threadId);
+      void promptPromise.catch((err) => {
+        log.debug("OpenCode prompt rejected after stop", { error: String(err) });
+      });
+      return;
+    }
+
+    const finalText = buildFinalResponseText(result.responses) ?? "_Done_";
     await updateMessageThrottled(channelId, statusTs, finalText, true);
 
     completeActiveRequest(channelId, threadId);
