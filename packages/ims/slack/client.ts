@@ -2,6 +2,7 @@ import { App, type AllMiddlewareArgs } from "@slack/bolt";
 import { WebClient } from "@slack/web-api";
 import type { QuestionInfo } from "@opencode-ai/sdk/v2";
 import { existsSync } from "fs";
+import { spawnSync } from "child_process";
 import { join } from "path";
 import {
   getSlackTargetChannels,
@@ -1426,6 +1427,29 @@ async function handleUserMessageInternal(
     });
     await sendMessage(channelId, threadId, `Error: Failed to prepare worktree. ${message}`, false);
     return;
+  }
+
+  if (githubInfo?.gitName || githubInfo?.gitEmail) {
+    const updates: Array<[string, string | undefined]> = [
+      ["user.name", githubInfo?.gitName],
+      ["user.email", githubInfo?.gitEmail],
+    ];
+    for (const [key, value] of updates) {
+      if (!value) continue;
+      const result = spawnSync("git", ["config", "--local", key, value], {
+        cwd,
+        env: { ...process.env },
+        encoding: "utf-8",
+      });
+      if (result.status !== 0) {
+        log.warn("Failed to set git config for worktree", {
+          channelId,
+          threadId,
+          key,
+          error: String(result.stderr || result.stdout || "unknown error").trim(),
+        });
+      }
+    }
   }
 
   if (!session) {
