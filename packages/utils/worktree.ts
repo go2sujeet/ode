@@ -108,6 +108,17 @@ function ensureWorktreeGitignore(repoRoot: string): void {
   writeFileSync(gitignorePath, `${contents}${suffix}${entry}\n`);
 }
 
+function ensureWorktreeConfig(repoRoot: string, env?: Record<string, string>): void {
+  try {
+    const output = runGit(["config", "--bool", "--get", "extensions.worktreeConfig"], repoRoot, env).trim();
+    if (output === "true") return;
+  } catch {
+    // Fall through to enable.
+  }
+
+  runGit(["config", "extensions.worktreeConfig", "true"], repoRoot, env);
+}
+
 export async function ensureSessionWorktree(params: {
   cwd: string;
   worktreeId: string;
@@ -120,6 +131,7 @@ export async function ensureSessionWorktree(params: {
   }
 
   ensureWorktreeGitignore(repoRoot);
+  ensureWorktreeConfig(repoRoot, env);
 
   const worktreeDir = join(repoRoot, ".worktree");
   const worktreePath = join(worktreeDir, worktreeId);
