@@ -710,7 +710,7 @@ type MessageFrequency = "minimum" | "medium" | "aggressive";
 
 const TOOL_DISPLAY_CONFIG: Record<MessageFrequency, { itemLimit: number; detailLimit: number | null }> = {
   minimum: { itemLimit: 4, detailLimit: 30 },
-  medium: { itemLimit: 6, detailLimit: 60 },
+  medium: { itemLimit: 6, detailLimit: 100 },
   aggressive: { itemLimit: 8, detailLimit: null },
 };
 
@@ -746,11 +746,12 @@ function buildToolLines(
     : "Tool execution";
 
   const lines = [header];
+  const codeMark = "`";
   for (const tool of items) {
     const details = buildToolDetails(tool, workingPath);
     const truncated = details ? truncateToolDetail(details, detailLimit) : "";
     const suffix = truncated ? ` — ${truncated}` : "";
-    lines.push(`${getToolIcon(tool.status)} ${tool.name}${suffix}`);
+    lines.push(`${getToolIcon(tool.status)} ${codeMark}${tool.name}${codeMark}${suffix}`);
   }
 
   return lines;
