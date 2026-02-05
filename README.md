@@ -82,5 +82,3 @@ The local settings UI exposes `http://<ODE_WEB_HOST>:<ODE_WEB_PORT>/local-settin
 ## License
 
 MIT
-
-Hello World from Slack
