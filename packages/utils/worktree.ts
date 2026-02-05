@@ -60,12 +60,23 @@ function getCurrentBranch(repoRoot: string, env?: Record<string, string>): strin
   }
 }
 
-function isRepoDirty(repoRoot: string, env?: Record<string, string>): boolean {
+function getDirtyPaths(repoRoot: string, env?: Record<string, string>): string[] {
   try {
     const output = runGit(["status", "--porcelain"], repoRoot, env).trim();
-    return output.length > 0;
+    if (!output) return [];
+    return output
+      .split(/\r?\n/)
+      .map((line) => {
+        const trimmed = line.trimEnd();
+        if (trimmed.length <= 3) return "";
+        const pathPart = trimmed.slice(3);
+        const arrowIndex = pathPart.indexOf(" -> ");
+        const rawPath = arrowIndex === -1 ? pathPart : pathPart.slice(arrowIndex + 4);
+        return rawPath.replace(/^"|"$/g, "");
+      })
+      .filter(Boolean);
   } catch {
-    return false;
+    return [];
   }
 }
 
@@ -92,20 +103,37 @@ function copyEnvFile(repoRoot: string, worktreePath: string): void {
   copyFileSync(source, target);
 }
 
-function ensureWorktreeGitignore(repoRoot: string): void {
+function ensureWorktreeGitignore(repoRoot: string): boolean {
   const gitignorePath = join(repoRoot, ".gitignore");
   const entry = ".worktree/";
   if (!existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, `${entry}\n`);
-    return;
+    return true;
   }
 
   const contents = readFileSync(gitignorePath, "utf-8");
   const pattern = /(^|\r?\n)\.worktree\/\s*(\r?\n|$)/;
-  if (pattern.test(contents)) return;
+  if (pattern.test(contents)) return false;
 
   const suffix = contents.endsWith("\n") ? "" : "\n";
   writeFileSync(gitignorePath, `${contents}${suffix}${entry}\n`);
+  return true;
+}
+
+function maybeCommitWorktreeGitignore(repoRoot: string, env?: Record<string, string>): boolean {
+  const dirtyPaths = getDirtyPaths(repoRoot, env);
+  if (dirtyPaths.length !== 1 || dirtyPaths[0] !== ".gitignore") return false;
+  try {
+    runGit(["add", ".gitignore"], repoRoot, env);
+    runGit(["commit", "-m", "chore: ignore worktree dir"], repoRoot, env);
+    return true;
+  } catch (error) {
+    log.warn("Failed to commit .gitignore after adding .worktree", {
+      repoRoot,
+      error: String(error),
+    });
+    return false;
+  }
 }
 
 function ensureWorktreeConfig(repoRoot: string, env?: Record<string, string>): void {
@@ -130,8 +158,11 @@ export async function ensureSessionWorktree(params: {
     return { worktreePath: cwd, repoRoot: null, created: false, reused: false, skipped: true };
   }
 
-  ensureWorktreeGitignore(repoRoot);
+  const gitignoreUpdated = ensureWorktreeGitignore(repoRoot);
   ensureWorktreeConfig(repoRoot, env);
+  if (gitignoreUpdated) {
+    maybeCommitWorktreeGitignore(repoRoot, env);
+  }
 
   const worktreeDir = join(repoRoot, ".worktree");
   const worktreePath = join(worktreeDir, worktreeId);
@@ -148,7 +179,8 @@ export async function ensureSessionWorktree(params: {
   }
 
   const currentBranch = getCurrentBranch(repoRoot, env);
-  if (currentBranch === "main" && isRepoDirty(repoRoot, env)) {
+  const dirtyPaths = getDirtyPaths(repoRoot, env);
+  if (currentBranch === "main" && dirtyPaths.length > 0) {
     const message = "Main has uncommitted changes, skipping worktree and staying on main.";
     log.warn(message, { repoRoot });
     return {
