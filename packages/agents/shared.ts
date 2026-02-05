@@ -20,7 +20,7 @@ export function buildSlackSystemPrompt(slack?: SlackContext): string {
     "GIT AUTHORING:",
     "- If GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL are set, use them explicitly in commit commands.",
     "- Prefer: git commit --author=\"$GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>\" -m \"...\"",
-    "- Use GH_TOKEN for gh commands when available.",
+    "- Use GH_TOKEN for gh commands when available; fall back to git commands when GH_TOKEN is not set.",
     "",
     "SLACK CONTEXT:",
   ];

@@ -117,10 +117,11 @@ function buildSettingsModal(params: {
 function buildGitHubTokenModal(params: {
   channelId: string;
   hasToken: boolean;
+  token?: string;
   gitName?: string;
   gitEmail?: string;
 }) {
-  const { channelId, hasToken, gitName, gitEmail } = params;
+  const { channelId, hasToken, token, gitName, gitEmail } = params;
   const statusText = hasToken
     ? "A GitHub token is already set for your account. Submit a new value to update it."
     : "Set a GitHub token to enable GitHub CLI actions and git identity.";
@@ -144,13 +145,13 @@ function buildGitHubTokenModal(params: {
         element: {
           type: "plain_text_input" as const,
           action_id: GITHUB_TOKEN_ACTION,
+          initial_value: token ?? "",
           placeholder: { type: "plain_text" as const, text: "ghp_..." },
         },
       },
       {
         type: "input" as const,
         block_id: GITHUB_NAME_BLOCK,
-        optional: true,
         label: { type: "plain_text" as const, text: "Git Name" },
         element: {
           type: "plain_text_input" as const,
@@ -162,7 +163,6 @@ function buildGitHubTokenModal(params: {
       {
         type: "input" as const,
         block_id: GITHUB_EMAIL_BLOCK,
-        optional: true,
         label: { type: "plain_text" as const, text: "Git Email" },
         element: {
           type: "plain_text_input" as const,
@@ -244,6 +244,7 @@ export function setupInteractiveHandlers(): void {
     const view = buildGitHubTokenModal({
       channelId,
       hasToken: Boolean(info?.token),
+      token: info?.token,
       gitName: info?.gitName,
       gitEmail: info?.gitEmail,
     });
