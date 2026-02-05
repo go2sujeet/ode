@@ -29,6 +29,9 @@ export function buildSlackSystemPrompt(slack?: SlackContext): string {
     lines.push(`- Channel: ${slack.channelId}`);
     lines.push(`- Thread: ${slack.threadId}`);
     lines.push(`- User: <@${slack.userId}>`);
+    if (slack.hasGitHubToken !== undefined) {
+      lines.push(`- GitHub token available: ${slack.hasGitHubToken ? "yes" : "no"}`);
+    }
   }
 
   lines.push("");

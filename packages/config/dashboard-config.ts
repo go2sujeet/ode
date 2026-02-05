@@ -4,7 +4,6 @@ export type DashboardConfig = {
     email: string;
     initials?: string;
     avatar?: string;
-    githubToken: string;
     defaultMessageFrequency: "aggressive" | "medium" | "minimum";
   };
   devServers: {
@@ -37,7 +36,6 @@ export const defaultDashboardConfig: DashboardConfig = {
   user: {
     name: "",
     email: "",
-    githubToken: "",
     defaultMessageFrequency: "medium",
   },
   devServers: [],
@@ -140,7 +138,6 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       email: asString(user.email),
       initials: asString(user.initials, "") || undefined,
       avatar: asString(user.avatar, "") || undefined,
-      githubToken: asString(user.githubToken),
       defaultMessageFrequency: asFrequency(user.defaultMessageFrequency),
     },
     devServers,

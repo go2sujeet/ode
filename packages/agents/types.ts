@@ -19,6 +19,7 @@ export interface SlackContext {
   threadHistory?: string;
   hasCustomSlackTool?: boolean;
   odeSlackApiUrl?: string;
+  hasGitHubToken?: boolean;
 }
 
 export interface OpenCodeMessageContext {

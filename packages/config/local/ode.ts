@@ -13,7 +13,6 @@ const userSchema = z.object({
   email: z.string().optional().default(""),
   initials: z.string().optional().default(""),
   avatar: z.string().optional().default(""),
-  githubToken: z.string().optional().default(""),
   defaultMessageFrequency: z.enum([
     "minimum",
     "medium",
@@ -61,6 +60,17 @@ const workspaceSchema = z.object({
 
 const odeConfigSchema = z.object({
   user: userSchema,
+  githubInfos: z
+    .record(
+      z.string(),
+      z.object({
+        token: z.string().optional().default(""),
+        gitName: z.string().optional().default(""),
+        gitEmail: z.string().optional().default(""),
+      })
+    )
+    .optional()
+    .default({}),
   devServers: z.array(devServerSchema),
   workspaces: z.array(workspaceSchema),
   updates: updateSchema.optional().default({
@@ -84,9 +94,9 @@ const EMPTY_TEMPLATE: OdeConfig = {
     email: "",
     initials: "",
     avatar: "",
-    githubToken: "",
     defaultMessageFrequency: "medium",
   },
+  githubInfos: {},
   devServers: [],
   workspaces: [],
   updates: {
@@ -229,6 +239,46 @@ export function getChannelDetails(channelId: string): ChannelDetail | null {
     if (match) return match;
   }
   return null;
+}
+
+export type GitHubInfo = {
+  token: string;
+  gitName?: string;
+  gitEmail?: string;
+};
+
+export function getGitHubInfoForUser(userId: string): GitHubInfo | null {
+  const info = loadOdeConfig().githubInfos?.[userId];
+  if (!info) return null;
+  const token = info.token?.trim();
+  if (!token) return null;
+  const gitName = info.gitName?.trim() || undefined;
+  const gitEmail = info.gitEmail?.trim() || undefined;
+  return { token, gitName, gitEmail };
+}
+
+export function setGitHubInfoForUser(userId: string, info: GitHubInfo): void {
+  const config = loadOdeConfig();
+  const githubInfos = { ...(config.githubInfos ?? {}) };
+  const token = info.token.trim();
+  if (token.length === 0) {
+    delete githubInfos[userId];
+  } else {
+    githubInfos[userId] = {
+      token,
+      gitName: info.gitName?.trim() || "",
+      gitEmail: info.gitEmail?.trim() || "",
+    };
+  }
+  saveOdeConfig({ ...config, githubInfos });
+}
+
+export function clearGitHubInfoForUser(userId: string): void {
+  const config = loadOdeConfig();
+  const githubInfos = { ...(config.githubInfos ?? {}) };
+  if (!(userId in githubInfos)) return;
+  delete githubInfos[userId];
+  saveOdeConfig({ ...config, githubInfos });
 }
 
 export type ChannelCwdInfo = {

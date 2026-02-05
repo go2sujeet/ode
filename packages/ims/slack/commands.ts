@@ -4,14 +4,24 @@ import {
   getChannelModel,
   resolveChannelCwd,
   getDevServers,
+  getGitHubInfoForUser,
   isLocalMode,
   setChannelDevServerId,
   setChannelModel,
   setChannelWorkingDirectory,
+  setGitHubInfoForUser,
 } from "@ode/config";
 
 const SETTINGS_LAUNCH_ACTION = "open_settings_modal";
 const SETTINGS_MODAL_ID = "settings_modal";
+const GITHUB_LAUNCH_ACTION = "open_github_token_modal";
+const GITHUB_MODAL_ID = "github_token_modal";
+const GITHUB_TOKEN_BLOCK = "github_token";
+const GITHUB_TOKEN_ACTION = "github_token_input";
+const GITHUB_NAME_BLOCK = "github_name";
+const GITHUB_NAME_ACTION = "github_name_input";
+const GITHUB_EMAIL_BLOCK = "github_email";
+const GITHUB_EMAIL_ACTION = "github_email_input";
 const DEV_SERVER_BLOCK = "dev_server";
 const DEV_SERVER_ACTION = "dev_server_select";
 const MODEL_BLOCK = "model";
@@ -104,6 +114,67 @@ function buildSettingsModal(params: {
   };
 }
 
+function buildGitHubTokenModal(params: {
+  channelId: string;
+  hasToken: boolean;
+  gitName?: string;
+  gitEmail?: string;
+}) {
+  const { channelId, hasToken, gitName, gitEmail } = params;
+  const statusText = hasToken
+    ? "A GitHub token is already set for your account. Submit a new value to update it."
+    : "Set a GitHub token to enable GitHub CLI actions and git identity.";
+
+  return {
+    type: "modal" as const,
+    callback_id: GITHUB_MODAL_ID,
+    private_metadata: channelId,
+    title: { type: "plain_text" as const, text: "GitHub Token" },
+    submit: { type: "plain_text" as const, text: "Save" },
+    close: { type: "plain_text" as const, text: "Cancel" },
+    blocks: [
+      {
+        type: "section" as const,
+        text: { type: "mrkdwn" as const, text: statusText },
+      },
+      {
+        type: "input" as const,
+        block_id: GITHUB_TOKEN_BLOCK,
+        label: { type: "plain_text" as const, text: "GitHub Token" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: GITHUB_TOKEN_ACTION,
+          placeholder: { type: "plain_text" as const, text: "ghp_..." },
+        },
+      },
+      {
+        type: "input" as const,
+        block_id: GITHUB_NAME_BLOCK,
+        optional: true,
+        label: { type: "plain_text" as const, text: "Git Name" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: GITHUB_NAME_ACTION,
+          initial_value: gitName ?? "",
+          placeholder: { type: "plain_text" as const, text: "Jane Doe" },
+        },
+      },
+      {
+        type: "input" as const,
+        block_id: GITHUB_EMAIL_BLOCK,
+        optional: true,
+        label: { type: "plain_text" as const, text: "Git Email" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: GITHUB_EMAIL_ACTION,
+          initial_value: gitEmail ?? "",
+          placeholder: { type: "plain_text" as const, text: "jane@example.com" },
+        },
+      },
+    ],
+  };
+}
+
 export function setupInteractiveHandlers(): void {
   const slackApp = getApp();
 
@@ -144,6 +215,37 @@ export function setupInteractiveHandlers(): void {
       selectedDevServerId: getChannelDevServerId(channelId),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
+    });
+
+    await client.views.open({
+      trigger_id: (body as any).trigger_id,
+      view,
+    });
+  });
+
+  slackApp.action(GITHUB_LAUNCH_ACTION, async ({ ack, body, client }) => {
+    await ack();
+
+    const channelId = (body as any).actions?.[0]?.value
+      ?? (body as any).channel?.id;
+    const userId = (body as any).user?.id;
+    if (!channelId || !userId) return;
+
+    if (!isLocalMode()) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: "GitHub info updates are not implemented in cloud mode.",
+      });
+      return;
+    }
+
+    const info = getGitHubInfoForUser(userId);
+    const view = buildGitHubTokenModal({
+      channelId,
+      hasToken: Boolean(info?.token),
+      gitName: info?.gitName,
+      gitEmail: info?.gitEmail,
     });
 
     await client.views.open({
@@ -242,6 +344,52 @@ export function setupInteractiveHandlers(): void {
         text: "Channel settings updated.",
       });
     }
+  });
+
+  slackApp.view(GITHUB_MODAL_ID, async ({ ack, view, body, client }) => {
+    const values = view.state.values;
+    const token = values?.[GITHUB_TOKEN_BLOCK]?.[GITHUB_TOKEN_ACTION]?.value || "";
+    const gitName = values?.[GITHUB_NAME_BLOCK]?.[GITHUB_NAME_ACTION]?.value || "";
+    const gitEmail = values?.[GITHUB_EMAIL_BLOCK]?.[GITHUB_EMAIL_ACTION]?.value || "";
+    const trimmed = token.trim();
+    const errors: Record<string, string> = {};
+
+    if (!trimmed) {
+      errors[GITHUB_TOKEN_BLOCK] = "Enter a GitHub token.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      await ack({ response_action: "errors", errors });
+      return;
+    }
+
+    await ack();
+
+    const userId = (body as any).user?.id;
+    const channelId = (body as any).view?.private_metadata
+      ?? (body as any).channel?.id;
+    if (!userId || !channelId) return;
+
+    try {
+      setGitHubInfoForUser(userId, {
+        token: trimmed,
+        gitName,
+        gitEmail,
+      });
+    } catch (err) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `Failed to save GitHub info: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      return;
+    }
+
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: "GitHub info updated.",
+    });
   });
 
   // Handle user choice button clicks (from Ode ask_user actions)

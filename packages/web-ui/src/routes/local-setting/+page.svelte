@@ -36,7 +36,6 @@
         email: string;
         initials?: string;
         avatar?: string;
-        githubToken: string;
         defaultMessageFrequency: "aggressive" | "medium" | "minimum";
     };
 
@@ -865,25 +864,6 @@
                                     }}
                                 />
                             </div>
-                        </div>
-
-                        <div class="input-field">
-                            <label for="github-token">GitHub Access Token</label
-                            >
-                            <input
-                                id="github-token"
-                                type="password"
-                                value={user.githubToken}
-                                on:input={(event) => {
-                                    const target =
-                                        event.currentTarget as HTMLInputElement;
-                                    user = {
-                                        ...user,
-                                        githubToken: target.value,
-                                    };
-                                    scheduleAutoSave();
-                                }}
-                            />
                         </div>
 
                         <div class="message-freq-group">
