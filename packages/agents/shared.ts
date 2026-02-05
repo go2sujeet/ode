@@ -3,7 +3,7 @@ import {
   getChannelAgentInstructions,
 } from "@ode/config/local/settings";
 import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext } from "./types";
-import { getSlackActionApiUrl } from "@ode/ims/slack/config";
+import { getSlackActionApiUrl } from "@ode/config";
 
 export function buildSlackSystemPrompt(slack?: SlackContext): string {
   const lines = [

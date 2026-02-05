@@ -4,6 +4,8 @@
     "paths": {
       "@ode/config": ["packages/config/index.ts"],
       "@ode/config/*": ["packages/config/*"],
+      "@ode/core": ["packages/core/index.ts"],
+      "@ode/core/*": ["packages/core/*"],
       "@ode/utils": ["packages/utils/index.ts"],
       "@ode/utils/*": ["packages/utils/*"],
       "@ode/ims": ["packages/ims/index.ts"],

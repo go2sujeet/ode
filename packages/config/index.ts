@@ -39,5 +39,7 @@ export {
   type DashboardConfig,
 } from "./dashboard-config";
 
+export { getSlackActionApiUrl } from "./slack";
+
 export * as local from "./local";
 export * as db from "./db";

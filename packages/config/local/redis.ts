@@ -108,7 +108,17 @@ export async function getSessionMeta(sessionId: string): Promise<SessionMeta | n
     const client = getRedisClient();
     const key = `session:meta:${sessionId}`;
     const data = await client.hgetall(key);
-    if (!data || !data.sessionId) return null;
+    if (
+      !data ||
+      !data.sessionId ||
+      !data.channelId ||
+      !data.threadId ||
+      !data.workingDirectory ||
+      !data.createdAt ||
+      !data.lastActivityAt
+    ) {
+      return null;
+    }
     return {
       sessionId: data.sessionId,
       channelId: data.channelId,

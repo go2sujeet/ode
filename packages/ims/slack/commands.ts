@@ -427,7 +427,7 @@ export function setupInteractiveHandlers(): void {
     // Send the selection to OpenCode so the model can respond
     const { handleButtonSelection } = await import("./client");
     if (selectionMsg.ts) {
-      await handleButtonSelection(channel, threadTs, userId || "unknown", value, selectionMsg.ts, client);
+      await handleButtonSelection(channel, threadTs, userId || "unknown", value, selectionMsg.ts);
     }
   });
 }
