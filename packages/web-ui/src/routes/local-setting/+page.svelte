@@ -2,11 +2,12 @@
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
     import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-    import {
-        defaultDashboardConfig,
-        TOOL_DISPLAY_CONFIG,
-        type MessageFrequency,
-    } from "$lib/localConfig";
+	import {
+		defaultDashboardConfig,
+		TOOL_DISPLAY_CONFIG,
+		type GitStrategy,
+		type MessageFrequency,
+	} from "$lib/localConfig";
     import { Settings, ChevronDown, RefreshCw, Plus } from "lucide-svelte";
 
     type Workspace = {
@@ -35,13 +36,14 @@
         models: string[];
     };
 
-    type UserProfile = {
-        name: string;
-        email: string;
-        initials?: string;
-        avatar?: string;
-        defaultMessageFrequency: MessageFrequency;
-    };
+	type UserProfile = {
+		name: string;
+		email: string;
+		initials?: string;
+		avatar?: string;
+		gitStrategy: GitStrategy;
+		defaultMessageFrequency: MessageFrequency;
+	};
 
     type DashboardConfig = {
         user: UserProfile;
@@ -53,8 +55,11 @@
     export let initialSection: "profile" | "dev" | "slack" = "profile";
     export let initialSlug: string | null = null;
 
-    const normalizeConfig = (config: DashboardConfig) => {
-        const nextUser: UserProfile = { ...config.user };
+	const normalizeConfig = (config: DashboardConfig) => {
+		const nextUser: UserProfile = {
+			...config.user,
+			gitStrategy: config.user.gitStrategy ?? "worktree",
+		};
         const nextDevServers: DevServer[] = config.devServers.map((server) => ({
             ...server,
             models: [...server.models],
@@ -102,10 +107,11 @@
     let selectedWorkspaceId: string | null = null;
     let preferredDevServerId: string | null = null;
     let preferredWorkspaceId: string | null = null;
-    let isDevServersOpen = true;
-    let isWorkspacesOpen = true;
-    let messageFrequency: MessageFrequency = user.defaultMessageFrequency;
-    let isAddServerOpen = false;
+	let isDevServersOpen = true;
+	let isWorkspacesOpen = true;
+	let messageFrequency: MessageFrequency = user.defaultMessageFrequency;
+	let gitStrategy: GitStrategy = user.gitStrategy ?? "worktree";
+	let isAddServerOpen = false;
     let newServerName = "";
     let newServerUrl = "http://localhost:4096";
     let addServerError = "";
@@ -131,9 +137,14 @@
         variant?: "default" | "destructive";
     };
     let toasts: Toast[] = [];
-    const messageFrequencyOptions = Object.keys(
-        TOOL_DISPLAY_CONFIG,
-    ) as MessageFrequency[];
+	const messageFrequencyOptions = Object.keys(
+		TOOL_DISPLAY_CONFIG,
+	) as MessageFrequency[];
+	const gitStrategyOptions: GitStrategy[] = ["worktree", "default"];
+	const gitStrategyLabels: Record<GitStrategy, string> = {
+		worktree: "Worktree",
+		default: "Default",
+	};
 
     $: if (initialSection === "dev" && initialSlug && devServers.length) {
         preferredDevServerId =
@@ -243,9 +254,10 @@
 
     const applyConfig = (config: DashboardConfig) => {
         const normalized = normalizeConfig(config);
-        user = normalized.user;
-        messageFrequency = normalized.user.defaultMessageFrequency;
-        devServers = normalized.devServers;
+		user = normalized.user;
+		messageFrequency = normalized.user.defaultMessageFrequency;
+		gitStrategy = normalized.user.gitStrategy ?? "worktree";
+		devServers = normalized.devServers;
         workspaces = normalized.workspaces;
         defaultDevServerId = normalized.defaultDevServerId;
 
@@ -336,11 +348,12 @@
     const saveConfig = async (options: { showToast?: boolean } = {}) => {
         if (isSaving) return;
         isSaving = true;
-        const payload: DashboardConfig = {
-            user: {
-                ...user,
-                defaultMessageFrequency: messageFrequency,
-            },
+		const payload: DashboardConfig = {
+			user: {
+				...user,
+				gitStrategy,
+				defaultMessageFrequency: messageFrequency,
+			},
             devServers,
             workspaces: workspaces.map((workspace) => ({
                 ...workspace,
@@ -872,36 +885,61 @@
                             </div>
                         </div>
 
-                        <div class="message-freq-group">
-                            <span class="message-freq-label"
-                                >Message Update Frequency</span
-                            >
-                            <div class="message-freq-toggle">
-                                {#each messageFrequencyOptions as option}
-                                    <button
-                                        class="message-freq-option {messageFrequency ===
-                                        option
-                                            ? 'active'
-                                            : ''}"
-                                        type="button"
-                                        on:click={() => {
-                                            messageFrequency = option;
-                                            user = {
-                                                ...user,
-                                                defaultMessageFrequency:
-                                                    messageFrequency,
-                                            };
-                                            scheduleAutoSave();
-                                        }}
-                                    >
-                                        {option.charAt(0).toUpperCase() +
-                                            option.slice(1)}
-                                    </button>
-                                {/each}
-                            </div>
-                        </div>
-                    </div>
-                {:else if activeSection === "dev"}
+						<div class="message-freq-group">
+							<span class="message-freq-label"
+								>Message Update Frequency</span
+							>
+							<div class="message-freq-toggle">
+								{#each messageFrequencyOptions as option}
+									<button
+										class="message-freq-option {messageFrequency ===
+										option
+											? 'active'
+											: ''}"
+										type="button"
+										on:click={() => {
+											messageFrequency = option;
+											user = {
+												...user,
+												defaultMessageFrequency:
+													messageFrequency,
+											};
+											scheduleAutoSave();
+										}}
+									>
+										{option.charAt(0).toUpperCase() +
+											option.slice(1)}
+									</button>
+								{/each}
+							</div>
+						</div>
+
+						<div class="git-strategy-group">
+							<span class="git-strategy-label">Git Strategy</span>
+							<div class="git-strategy-toggle">
+								{#each gitStrategyOptions as option}
+									<button
+										class="git-strategy-option {gitStrategy === option
+											? 'active'
+											: ''}"
+										type="button"
+										on:click={() => {
+											gitStrategy = option;
+											user = { ...user, gitStrategy };
+											scheduleAutoSave();
+										}}
+									>
+										{gitStrategyLabels[option]}
+									</button>
+								{/each}
+							</div>
+							<p class="git-strategy-help">
+								Worktree isolates changes per thread. Default uses the current
+								working directory.
+							</p>
+						</div>
+					</div>
+				{:else if activeSection === "dev"}
                     {#if currentDevServer}
                         <div class="page-header">
                             <div class="header-main">
@@ -1873,6 +1911,56 @@
 
     .message-freq-option:hover:not(.active) {
         background: rgba(0, 0, 0, 0.05);
+    }
+
+    /* Git Strategy Toggle */
+    .git-strategy-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .git-strategy-label {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+    }
+
+    .git-strategy-toggle {
+        display: flex;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 2px;
+        width: fit-content;
+    }
+
+    .git-strategy-option {
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink-soft);
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+        min-width: 90px;
+    }
+
+    .git-strategy-option.active {
+        background: var(--accent);
+        color: white;
+    }
+
+    .git-strategy-option:hover:not(.active) {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .git-strategy-help {
+        font-size: 12px;
+        color: var(--ink-soft);
     }
 
     /* Form Elements */

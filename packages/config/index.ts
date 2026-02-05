@@ -45,6 +45,8 @@ export {
   type MessageFrequency,
 } from "./message-frequency";
 
+export { resolveGitStrategy, type GitStrategy } from "./git-strategy";
+
 export { getSlackActionApiUrl } from "./slack";
 
 export * as local from "./local";

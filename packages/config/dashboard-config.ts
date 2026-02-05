@@ -4,6 +4,7 @@ export type DashboardConfig = {
     email: string;
     initials?: string;
     avatar?: string;
+    gitStrategy: "default" | "worktree";
     defaultMessageFrequency: "aggressive" | "medium" | "minimum";
   };
   devServers: {
@@ -36,6 +37,7 @@ export const defaultDashboardConfig: DashboardConfig = {
   user: {
     name: "",
     email: "",
+    gitStrategy: "worktree",
     defaultMessageFrequency: "medium",
   },
   devServers: [],
@@ -59,6 +61,11 @@ const asFrequency = (
   if (value === "aggressive" || value === "minimum") return value;
   return "medium";
 };
+
+const asGitStrategy = (
+  value: unknown
+): DashboardConfig["user"]["gitStrategy"] =>
+  value === "default" ? "default" : "worktree";
 
 const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status"] =>
   value === "paused" ? "paused" : "active";
@@ -138,6 +145,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       email: asString(user.email),
       initials: asString(user.initials, "") || undefined,
       avatar: asString(user.avatar, "") || undefined,
+      gitStrategy: asGitStrategy(user.gitStrategy),
       defaultMessageFrequency: asFrequency(user.defaultMessageFrequency),
     },
     devServers,

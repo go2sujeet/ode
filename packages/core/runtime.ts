@@ -3,6 +3,7 @@ import {
   isLocalMode,
   resolveMessageFrequency,
   resolveChannelCwd,
+  resolveGitStrategy,
 } from "@/config";
 import {
   loadSession,
@@ -606,31 +607,38 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       return;
     }
 
-    try {
-      stateMachine.transition("prepare_worktree");
-      const worktreeId = `ode_${threadId}`;
-      const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
-        channelId,
-        threadId,
-        cwd,
-        worktreeId,
-        sessionEnv,
-        gitIdentity,
-      });
-      if (worktree.skipped && worktree.message) {
-        await deps.im.sendMessage(channelId, threadId, worktree.message, false);
+    if (resolveGitStrategy() === "worktree") {
+      try {
+        stateMachine.transition("prepare_worktree");
+        const worktreeId = `ode_${threadId}`;
+        const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
+          channelId,
+          threadId,
+          cwd,
+          worktreeId,
+          sessionEnv,
+          gitIdentity,
+        });
+        if (worktree.skipped && worktree.message) {
+          await deps.im.sendMessage(channelId, threadId, worktree.message, false);
+        }
+        cwd = resolvedCwd;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error("Failed to prepare worktree", {
+          channelId,
+          threadId,
+          sessionId,
+          error: message,
+        });
+        await deps.im.sendMessage(
+          channelId,
+          threadId,
+          `Error: Failed to prepare worktree. ${message}`,
+          false,
+        );
+        return;
       }
-      cwd = resolvedCwd;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error("Failed to prepare worktree", {
-        channelId,
-        threadId,
-        sessionId,
-        error: message,
-      });
-      await deps.im.sendMessage(channelId, threadId, `Error: Failed to prepare worktree. ${message}`, false);
-      return;
     }
 
     if (!session) {

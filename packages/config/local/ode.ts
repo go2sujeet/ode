@@ -13,6 +13,7 @@ const userSchema = z.object({
   email: z.string().optional().default(""),
   initials: z.string().optional().default(""),
   avatar: z.string().optional().default(""),
+  gitStrategy: z.enum(["default", "worktree"]).optional().default("worktree"),
   defaultMessageFrequency: z.enum([
     "minimum",
     "medium",
@@ -94,6 +95,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     email: "",
     initials: "",
     avatar: "",
+    gitStrategy: "worktree",
     defaultMessageFrequency: "medium",
   },
   githubInfos: {},
@@ -125,6 +127,8 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       : frequency === "high"
         ? "aggressive"
         : frequency;
+  const normalizedGitStrategy =
+    config.user.gitStrategy === "default" ? "default" : "worktree";
   const intervalCandidate = config.updates?.checkIntervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
   const normalizedInterval =
     Number.isFinite(intervalCandidate) && intervalCandidate > 0
@@ -135,6 +139,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
     ...config,
     user: {
       ...config.user,
+      gitStrategy: normalizedGitStrategy,
       defaultMessageFrequency: normalizedFrequency,
     },
     updates: {
