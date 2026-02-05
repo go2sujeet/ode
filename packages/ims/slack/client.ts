@@ -293,7 +293,13 @@ function resolveWorkspaceAuth(
 }
 
 export function getChannelBotToken(channelId: string): string | undefined {
-  return channelBotTokenMap.get(channelId);
+  const mapped = channelBotTokenMap.get(channelId);
+  if (!isLocalMode()) return mapped;
+  if (mapped) return mapped;
+  const tokens = getSlackBotTokens()
+    .map((entry) => entry.token)
+    .filter((token) => token && token.trim().length > 0);
+  return tokens[0];
 }
 
 function registerChannelBotToken(channelId: string, botToken: string | undefined): void {

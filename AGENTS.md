@@ -18,6 +18,7 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 - Status updates include phases, tool progress, and elapsed time
 - Status messages are preserved as an operation record
 - When capturing screenshots, save images to the system temp folder and upload them to Slack as soon as possible
+- When merging PRs, do not delete the branch if the current worktree is on that branch
 
 ## Commands
 - Dev: `bun run dev`
