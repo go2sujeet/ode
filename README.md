@@ -1,6 +1,6 @@
 # Ode
 
-Ode is a Chat bot that bridges your coding agents (currently only opencode, more coming soon) to your favourite chat apps.
+Ode is a chat bot that bridges your coding agents (currently only opencode, more coming soon) to your favorite chat apps.
 
 ![Ode demo](static/ode-demo.png)
 
