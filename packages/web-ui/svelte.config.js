@@ -11,6 +11,8 @@ const config = {
 
 	kit: {
 		alias: {
+			'@ode/config': resolve(dirname(fileURLToPath(import.meta.url)), '../config/index.ts'),
+			'@ode/config/*': resolve(dirname(fileURLToPath(import.meta.url)), '../config/*'),
 			'@ode/config/dashboard-config': resolve(dirname(fileURLToPath(import.meta.url)), '../config/dashboard-config.ts'),
 			'@ode/utils': resolve(dirname(fileURLToPath(import.meta.url)), '../utils/index.ts'),
 			'@ode/utils/*': resolve(dirname(fileURLToPath(import.meta.url)), '../utils/*'),
