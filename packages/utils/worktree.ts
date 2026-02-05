@@ -9,6 +9,7 @@ type WorktreeResult = {
   created: boolean;
   reused: boolean;
   skipped: boolean;
+  message?: string;
 };
 
 function runGit(args: string[], cwd: string, env?: Record<string, string>): string {
@@ -48,6 +49,33 @@ function listWorktrees(repoRoot: string, env?: Record<string, string>): string[]
     }
   }
   return paths;
+}
+
+function getCurrentBranch(repoRoot: string, env?: Record<string, string>): string | null {
+  try {
+    const output = runGit(["rev-parse", "--abbrev-ref", "HEAD"], repoRoot, env).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function isRepoDirty(repoRoot: string, env?: Record<string, string>): boolean {
+  try {
+    const output = runGit(["status", "--porcelain"], repoRoot, env).trim();
+    return output.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function localBranchExists(repoRoot: string, branch: string, env?: Record<string, string>): boolean {
+  try {
+    runGit(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], repoRoot, env);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function ensureDir(path: string): void {
@@ -107,12 +135,30 @@ export async function ensureSessionWorktree(params: {
     return { worktreePath, repoRoot, created: false, reused: true, skipped: false };
   }
 
+  const currentBranch = getCurrentBranch(repoRoot, env);
+  if (currentBranch === "main" && isRepoDirty(repoRoot, env)) {
+    const message = "Main has uncommitted changes, skipping worktree and staying on main.";
+    log.warn(message, { repoRoot });
+    return {
+      worktreePath: repoRoot,
+      repoRoot,
+      created: false,
+      reused: false,
+      skipped: true,
+      message,
+    };
+  }
+
   ensureDir(worktreeDir);
   log.info("Pulling latest main before creating worktree", { repoRoot });
   runGit(["pull", "origin", "main"], repoRoot, env);
 
   log.info("Creating worktree for session", { worktreePath, sessionId });
-  runGit(["worktree", "add", worktreePath, "main"], repoRoot, env);
+  if (localBranchExists(repoRoot, sessionId, env)) {
+    runGit(["worktree", "add", worktreePath, sessionId], repoRoot, env);
+  } else {
+    runGit(["worktree", "add", worktreePath, "-b", sessionId, "main"], repoRoot, env);
+  }
   copyEnvFile(repoRoot, worktreePath);
 
   return { worktreePath, repoRoot, created: true, reused: false, skipped: false };

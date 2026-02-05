@@ -1354,6 +1354,9 @@ async function handleUserMessageInternal(
 
   try {
     const worktree = await ensureSessionWorktree({ cwd, sessionId, env: sessionEnv });
+    if (worktree.skipped && worktree.message) {
+      await sendMessage(channelId, threadId, worktree.message, false);
+    }
     if (!worktree.skipped && worktree.worktreePath !== cwd) {
       cwd = worktree.worktreePath;
     }
