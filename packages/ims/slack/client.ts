@@ -12,6 +12,7 @@ import {
   getChannelOpenCodeServerUrl,
   getDevServers,
   getDefaultOpenCodeServerUrl,
+  loadOdeConfig,
   isLocalMode,
   resolveChannelCwd,
 } from "@ode/config";
@@ -674,26 +675,49 @@ function buildToolDetails(tool: SessionMessageState["tools"][number], workingPat
   return title ? trimToolPath(title, workingPath) : "";
 }
 
-const TOOL_DETAIL_LIMIT = 100;
+type MessageFrequency = "minimum" | "medium" | "aggressive";
 
-function truncateToolDetail(detail: string): string {
-  if (detail.length <= TOOL_DETAIL_LIMIT) return detail;
-  return `${detail.slice(0, TOOL_DETAIL_LIMIT)}...`;
+const TOOL_DISPLAY_CONFIG: Record<MessageFrequency, { itemLimit: number; detailLimit: number | null }> = {
+  minimum: { itemLimit: 4, detailLimit: 30 },
+  medium: { itemLimit: 6, detailLimit: 60 },
+  aggressive: { itemLimit: 8, detailLimit: null },
+};
+
+function resolveMessageFrequency(): MessageFrequency {
+  try {
+    const frequency = loadOdeConfig().user.defaultMessageFrequency;
+    if (frequency === "minimum" || frequency === "medium" || frequency === "aggressive") {
+      return frequency;
+    }
+  } catch {
+    // ignore, fall back to medium
+  }
+  return "medium";
 }
 
-function buildToolLines(state: SessionMessageState, workingPath: string): string[] {
+function truncateToolDetail(detail: string, limit: number | null): string {
+  if (limit === null || detail.length <= limit) return detail;
+  return `${detail.slice(0, limit)}...`;
+}
+
+function buildToolLines(
+  state: SessionMessageState,
+  workingPath: string,
+  frequency: MessageFrequency
+): string[] {
   const tools = state.tools || [];
   if (tools.length === 0) return [];
 
-  const items = tools.length > 5 ? tools.slice(-5) : tools;
-  const header = tools.length > 5
-    ? `Tool execution (Last 5 items in ${tools.length})`
+  const { itemLimit, detailLimit } = TOOL_DISPLAY_CONFIG[frequency];
+  const items = tools.length > itemLimit ? tools.slice(-itemLimit) : tools;
+  const header = tools.length > itemLimit
+    ? `Tool execution (Last ${itemLimit} items in ${tools.length})`
     : "Tool execution";
 
   const lines = [header];
   for (const tool of items) {
     const details = buildToolDetails(tool, workingPath);
-    const truncated = details ? truncateToolDetail(details) : "";
+    const truncated = details ? truncateToolDetail(details, detailLimit) : "";
     const suffix = truncated ? ` — ${truncated}` : "";
     lines.push(`${getToolIcon(tool.status)} ${tool.name}${suffix}`);
   }
@@ -741,7 +765,7 @@ function buildLiveStatusMessage(request: ActiveRequest, workingPath: string): st
     lines.push("Tasks", ...formatTodoLines(todos));
   }
 
-  const toolLines = buildToolLines(state, workingPath);
+  const toolLines = buildToolLines(state, workingPath, resolveMessageFrequency());
   if (toolLines.length > 0) {
     lines.push(...toolLines);
   }
@@ -1202,7 +1226,11 @@ async function runOpenCodeRequest(
     if (result.type === "stop") {
       const fallbackText = request.currentText?.trim();
       const finalText = fallbackText || "_Done_";
-      await updateMessageThrottled(channelId, statusTs, finalText, true);
+      if (resolveMessageFrequency() === "aggressive") {
+        await sendMessage(channelId, threadId, finalText, true);
+      } else {
+        await updateMessageThrottled(channelId, statusTs, finalText, true);
+      }
       void promptPromise.catch((err) => {
         log.debug("OpenCode prompt rejected after stop", { error: String(err) });
       });
@@ -1216,7 +1244,11 @@ async function runOpenCodeRequest(
     }
 
     const finalText = buildFinalResponseText(result.responses) ?? "_Done_";
-    await updateMessageThrottled(channelId, statusTs, finalText, true);
+    if (resolveMessageFrequency() === "aggressive") {
+      await sendMessage(channelId, threadId, finalText, true);
+    } else {
+      await updateMessageThrottled(channelId, statusTs, finalText, true);
+    }
 
     return result.responses;
   } catch (err) {
@@ -1612,7 +1644,11 @@ export async function handleButtonSelection(
     if (result.type === "stop") {
       const fallbackText = request.currentText?.trim();
       const finalText = fallbackText || "_Done_";
-      await updateMessageThrottled(channelId, statusTs, finalText, true);
+      if (resolveMessageFrequency() === "aggressive") {
+        await sendMessage(channelId, threadId, finalText, true);
+      } else {
+        await updateMessageThrottled(channelId, statusTs, finalText, true);
+      }
       completeActiveRequest(channelId, threadId);
       void promptPromise.catch((err) => {
         log.debug("OpenCode prompt rejected after stop", { error: String(err) });
@@ -1621,7 +1657,11 @@ export async function handleButtonSelection(
     }
 
     const finalText = buildFinalResponseText(result.responses) ?? "_Done_";
-    await updateMessageThrottled(channelId, statusTs, finalText, true);
+    if (resolveMessageFrequency() === "aggressive") {
+      await sendMessage(channelId, threadId, finalText, true);
+    } else {
+      await updateMessageThrottled(channelId, statusTs, finalText, true);
+    }
 
     completeActiveRequest(channelId, threadId);
 

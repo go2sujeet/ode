@@ -891,7 +891,7 @@
                                 >Message Update Frequency</span
                             >
                             <div class="message-freq-toggle">
-                                {#each ["aggressive", "medium", "minimum"] as option}
+                                {#each ["minimum", "medium", "aggressive"] as option}
                                     <button
                                         class="message-freq-option {messageFrequency ===
                                         option
