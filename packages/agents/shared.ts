@@ -22,6 +22,10 @@ export function buildSlackSystemPrompt(slack?: SlackContext): string {
     "- Mention searches once with a result count if known",
     "- List edits with the file path and a brief why",
     "",
+    "GIT AUTHORING:",
+    "- If GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL are set, use them explicitly in commit commands.",
+    "- Prefer: git commit --author=\"$GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>\" -m \"...\"",
+    "",
     "SLACK CONTEXT:",
   ];
 
