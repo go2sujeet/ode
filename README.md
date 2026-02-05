@@ -2,6 +2,8 @@
 
 Ode is a Chat bot that bridges your coding agents (currently only opencode, more coming soon) to your favourite chat apps.
 
+![Ode demo](static/ode-demo.png)
+
 ## Motivation
 
 * Why sit in front of your Mac all the time when you have options to work from anywhere, collaborate with your team, and leverage AI-powered coding assistance?
@@ -19,6 +21,8 @@ Ode is a Chat bot that bridges your coding agents (currently only opencode, more
 - **OpenCode Integration**: Execute AI coding tasks via OpenCode's HTTP API
 - **Thread Tracking**: Maintains context within conversation threads
 - **Local Settings UI**: Web interface to manage Ode config in local mode
+- **Live message updates**: OpenCode messages are updated real-time in slack messages
+- **More than text**: Ode bot can send you images, give you buttons that utilize slack's interactive ability.
 
 ## Setup
 
