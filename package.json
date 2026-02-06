@@ -11,8 +11,7 @@
     "dev": "bun --watch run packages/core/index.ts --local",
     "postinstall": "bun install --cwd packages/web-ui",
     "test:ci": "bun run setup && bun test",
-    "build:web": "bun --cwd packages/web-ui build",
-    "check:web": "bun run setup && bun --cwd packages/web-ui run check",
+    "build:web": "bun --cwd packages/web-ui build && bun run embed:web",
     "embed:web": "bun run scripts/embed-web-assets.ts",
     "typecheck": "tsc --noEmit"
   },
