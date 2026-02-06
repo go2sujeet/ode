@@ -24,6 +24,15 @@
       {/if}
     </div>
 
+    <div class="agent-row">
+      <strong>Codex CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <span class="badge {$localSettingStore.cliCheckResult.codex ? 'on' : 'off'}">
+          {$localSettingStore.cliCheckResult.codex ? "Installed" : "Not found"}
+        </span>
+      {/if}
+    </div>
+
     <div class="agent-row opencode-row">
       <strong>OpenCode CLI</strong>
       {#if $localSettingStore.cliCheckResult}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared";
 import { buildOpenCodeCommand } from "../opencode/client";
 import { buildClaudeCommand, buildClaudeCommandArgs } from "../claude/client";
+import { buildCodexCommand, buildCodexCommandArgs } from "../codex/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -45,5 +46,21 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("/session/session-2/prompt");
     expect(command).toContain("--data-raw");
     expect(command).toContain("\"ping\"");
+  });
+
+  it("builds the Codex exec command", () => {
+    const args = buildCodexCommandArgs({
+      sessionId: "session-3",
+      model: "gpt-5-codex",
+      prompt: "hello from codex",
+    });
+    const command = buildCodexCommand(args);
+
+    expect(command).toContain("codex exec resume");
+    expect(command).toContain("--json");
+    expect(command).toContain("--full-auto");
+    expect(command).toContain("--model gpt-5-codex");
+    expect(command).toContain("session-3");
+    expect(command).toContain("'hello from codex'");
   });
 });

@@ -37,6 +37,7 @@ type JsonResponse = {
   agentCheck?: {
     opencode: boolean;
     claude: boolean;
+    codex: boolean;
   };
   providers?: unknown;
   result?: unknown;
@@ -400,6 +401,7 @@ async function handleRequest(request: Request): Promise<Response> {
       result: {
         opencode: opencodeAvailable,
         claude: Boolean(Bun.which("claude")),
+        codex: Boolean(Bun.which("codex")),
         opencodeModels,
         opencodeModelError,
       },

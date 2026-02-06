@@ -4,6 +4,7 @@ import { defaultDashboardConfig, type DashboardConfig } from "../localConfig";
 export type CliCheckResult = {
   opencode: boolean;
   claude: boolean;
+  codex: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
 };
@@ -167,6 +168,10 @@ async function checkAgents(): Promise<void> {
           claudecode: {
             ...state.config.agents.claudecode,
             enabled: result.claude,
+          },
+          codex: {
+            ...state.config.agents.codex,
+            enabled: result.codex,
           },
         },
       },
