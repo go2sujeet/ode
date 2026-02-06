@@ -243,7 +243,26 @@ export function invalidateOdeConfigCache(): void {
 export function saveOdeConfig(config: OdeConfig): void {
   ensureConfigDir();
   cachedConfig = normalizeConfig(config);
-  writeFileSync(ODE_CONFIG_FILE, JSON.stringify(cachedConfig, null, 2));
+  let existingRaw: Record<string, unknown> | null = null;
+  try {
+    const raw = readFileSync(ODE_CONFIG_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      existingRaw = parsed as Record<string, unknown>;
+    }
+  } catch {
+    existingRaw = null;
+  }
+
+  const persisted: Record<string, unknown> = { ...cachedConfig };
+  if (existingRaw && Object.prototype.hasOwnProperty.call(existingRaw, "devServer")) {
+    persisted.devServer = existingRaw.devServer;
+  }
+  if (existingRaw && Object.prototype.hasOwnProperty.call(existingRaw, "devServers")) {
+    persisted.devServers = existingRaw.devServers;
+  }
+
+  writeFileSync(ODE_CONFIG_FILE, JSON.stringify(persisted, null, 2));
 }
 
 export function getWorkspaces(): WorkspaceConfig[] {

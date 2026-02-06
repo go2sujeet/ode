@@ -12,6 +12,7 @@ import {
   setChannelWorkingDirectory,
   setGitHubInfoForUser,
 } from "@/config";
+import { startServer as startOpenCodeServer } from "@/agents/opencode";
 
 const SETTINGS_LAUNCH_ACTION = "open_settings_modal";
 const SETTINGS_MODAL_ID = "settings_modal";
@@ -32,10 +33,22 @@ const WORKING_DIR_ACTION = "working_dir_input";
 
 type AgentProvider = "opencode" | "claudecode";
 
+function normalizeModel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function findMatchingModel(models: string[], value: string | null | undefined): string | null {
+  if (!value) return null;
+  const target = normalizeModel(value);
+  return models.find((model) => normalizeModel(model) === target) ?? null;
+}
+
 function getSelectableProviders(): AgentProvider[] {
-  return getEnabledAgentProviders().filter(
+  const enabled = getEnabledAgentProviders().filter(
     (provider): provider is AgentProvider => provider === "opencode" || provider === "claudecode"
   );
+  if (enabled.length > 0) return enabled;
+  return ["opencode", "claudecode"];
 }
 
 function toSelectableProvider(provider: "opencode" | "claudecode" | "codex"): AgentProvider {
@@ -73,8 +86,9 @@ function buildSettingsModal(params: {
       }))
     : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: "__none__" }];
 
-  const initialModel = selectedModel && opencodeModels.includes(selectedModel)
-    ? selectedModel
+  const matchedSelectedModel = findMatchingModel(opencodeModels, selectedModel);
+  const initialModel = matchedSelectedModel
+    ? matchedSelectedModel
     : (opencodeModels[0] ?? "__none__");
 
   const blocks: any[] = [
@@ -212,6 +226,12 @@ export function setupInteractiveHandlers(): void {
     const userId = (body as any).user?.id;
     if (!channelId) return;
 
+    try {
+      await startOpenCodeServer();
+    } catch {
+      // Fall back to models currently stored in local config.
+    }
+
     const enabledProviders = getSelectableProviders();
 
     const view = buildSettingsModal({
@@ -262,6 +282,13 @@ export function setupInteractiveHandlers(): void {
     const selectedProvider = (body as any).actions?.[0]?.selected_option?.value === "claudecode"
       ? "claudecode"
       : "opencode";
+    if (selectedProvider === "opencode") {
+      try {
+        await startOpenCodeServer();
+      } catch {
+        // Fall back to models currently stored in local config.
+      }
+    }
     const selectedModel = view.state?.values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value
       || getChannelModel(channelId)
       || undefined;
@@ -304,7 +331,7 @@ export function setupInteractiveHandlers(): void {
       }
 
       const models = getOpenCodeModels();
-      if (selectedModel && !models.includes(selectedModel)) {
+      if (selectedModel && !findMatchingModel(models, selectedModel)) {
         errors[MODEL_BLOCK] = "Model not available in ~/.config/ode/ode.json agents.opencode.models.";
       }
     }
@@ -319,7 +346,8 @@ export function setupInteractiveHandlers(): void {
     try {
       setChannelAgentProvider(channelId, selectedProvider);
       if (selectedProvider === "opencode" && selectedModel && selectedModel !== "__none__") {
-        setChannelModel(channelId, selectedModel);
+        const normalizedSelectedModel = findMatchingModel(getOpenCodeModels(), selectedModel) ?? selectedModel;
+        setChannelModel(channelId, normalizedSelectedModel);
       }
       if (selectedProvider === "claudecode") {
         setChannelModel(channelId, "");

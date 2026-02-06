@@ -25,7 +25,26 @@ export const readLocalSettings = async (): Promise<DashboardConfig> => {
 
 export const writeLocalSettings = async (config: DashboardConfig): Promise<void> => {
   await mkdir(configDir, { recursive: true });
-  await writeFile(configPath, JSON.stringify(config, null, 2));
+  let existingRaw: Record<string, unknown> | null = null;
+  try {
+    const raw = await readFile(configPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      existingRaw = parsed as Record<string, unknown>;
+    }
+  } catch {
+    existingRaw = null;
+  }
+
+  const persisted: Record<string, unknown> = { ...config };
+  if (existingRaw && Object.prototype.hasOwnProperty.call(existingRaw, "devServer")) {
+    persisted.devServer = existingRaw.devServer;
+  }
+  if (existingRaw && Object.prototype.hasOwnProperty.call(existingRaw, "devServers")) {
+    persisted.devServers = existingRaw.devServers;
+  }
+
+  await writeFile(configPath, JSON.stringify(persisted, null, 2));
 };
 
 type SlackChannel = {

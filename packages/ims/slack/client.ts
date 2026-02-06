@@ -195,6 +195,7 @@ function describeSettingsIssues(channelId: string): string[] {
   const provider = getChannelAgentProvider(channelId);
   const model = getChannelModel(channelId);
   const { workingDirectory } = resolveChannelCwd(channelId);
+  const normalizeModel = (value: string) => value.trim().toLowerCase();
 
   if (!isAgentEnabled(provider)) {
     issues.push(`Agent not enabled: ${provider}`);
@@ -202,9 +203,10 @@ function describeSettingsIssues(channelId: string): string[] {
 
   if (provider === "opencode" || provider === "codex") {
     const models = getOpenCodeModels();
+    const modelSet = new Set(models.map(normalizeModel));
     if (!model) {
       issues.push("Model not configured.");
-    } else if (!models.includes(model)) {
+    } else if (!modelSet.has(normalizeModel(model))) {
       issues.push("Model not available in configured OpenCode models.");
     }
   }
