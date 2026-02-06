@@ -9,10 +9,10 @@ import {
 import { resolveMessageFrequency } from "@/config/message-frequency";
 import { storeSessionEvent } from "@/config/local/redis";
 import { CoreStateMachine } from "@/core/state-machine";
+import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { formatQuestionPrompt } from "@/core/runtime/helpers";
 import {
-  buildLiveStatusMessage,
   buildSessionMessageState,
   getStatusMessageKey,
   type SessionEvent,
@@ -164,12 +164,13 @@ export async function startEventStreamWatcher(
         await deps.im.updateMessage(
           request.channelId,
           request.statusMessageTs,
-          buildLiveStatusMessage(
+          buildStatusMessageForAgent({
+            agent: deps.agent,
             request,
             workingPath,
-            liveParsedState.get(messageKey),
-            resolveMessageFrequency()
-          ),
+            state: liveParsedState.get(messageKey),
+            frequency: resolveMessageFrequency(),
+          }),
           false
         );
         setPendingQuestion(request.channelId, request.threadId, {

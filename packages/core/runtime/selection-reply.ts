@@ -9,9 +9,10 @@ import {
 } from "@/config/local/sessions";
 import { resolveMessageFrequency } from "@/config/message-frequency";
 import { runTrackedRequest } from "@/core/runtime/request-runner";
+import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
-import { buildLiveStatusMessage, getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
+import { getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
 
 type SelectionDeps = {
   im: IMAdapter;
@@ -113,12 +114,13 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
         agentContext
       ),
     onProgressTick: async () => {
-      const statusText = buildLiveStatusMessage(
+      const statusText = buildStatusMessageForAgent({
+        agent: deps.agent,
         request,
-        cwd,
-        state.liveParsedState.get(getStatusMessageKey(request)),
-        resolveMessageFrequency()
-      );
+        workingPath: cwd,
+        state: state.liveParsedState.get(getStatusMessageKey(request)),
+        frequency: resolveMessageFrequency(),
+      });
       await deps.im.updateMessage(channelId, statusTs, statusText, false);
     },
     onComplete: () => {

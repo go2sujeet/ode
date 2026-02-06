@@ -3,6 +3,15 @@ import { getChannelAgentProvider } from "@/config";
 import type { QuestionInfo } from "@opencode-ai/sdk/v2";
 import { getAgentProvider, type AgentProviderId } from "./registry";
 import { getSessionClient } from "./opencode";
+import {
+  buildLiveStatusMessage,
+  formatElapsedTime,
+  getToolIcon,
+  trimToolPath,
+  type StatusRequest,
+} from "@/utils/status";
+import type { SessionMessageState } from "@/utils/session-inspector";
+import type { MessageFrequency } from "@/config/message-frequency";
 
 const sessionProviders = new Map<string, AgentProviderId>();
 
@@ -16,6 +25,75 @@ function getProviderForSession(sessionId: string): AgentProviderId {
 
 function rememberSessionProvider(sessionId: string, providerId: AgentProviderId): void {
   sessionProviders.set(sessionId, providerId);
+}
+
+function buildClaudeToolDetail(tool: SessionMessageState["tools"][number], workingPath: string): string {
+  const input = tool.input || {};
+  const filePath = input.filePath || input.file_path;
+  const path = input.path;
+  const pattern = input.pattern;
+  const command = input.command;
+
+  if (typeof filePath === "string" && filePath.trim()) {
+    return trimToolPath(filePath, workingPath);
+  }
+  if (typeof pattern === "string" && pattern.trim()) {
+    if (typeof path === "string" && path.trim()) {
+      return `${pattern} in ${trimToolPath(path, workingPath)}`;
+    }
+    return pattern;
+  }
+  if (typeof path === "string" && path.trim()) {
+    return trimToolPath(path, workingPath);
+  }
+  if (typeof command === "string" && command.trim()) {
+    return command;
+  }
+  if (typeof tool.title === "string" && tool.title.trim()) {
+    return trimToolPath(tool.title, workingPath);
+  }
+  return "";
+}
+
+function buildClaudeStatusMessage(
+  request: StatusRequest,
+  workingPath: string,
+  state?: SessionMessageState,
+  frequency: MessageFrequency = "medium"
+): string {
+  if (!state) {
+    if (request.statusFrozen && request.currentText) return request.currentText;
+    return `_Thinking_ (${formatElapsedTime(request.startedAt)})`;
+  }
+
+  if (request.statusFrozen && request.currentText) {
+    return request.currentText;
+  }
+
+  const lines: string[] = [];
+  const title = state.sessionTitle || "ClaudeCode";
+  lines.push(`*${title}* (${formatElapsedTime(state.startedAt)})`);
+
+  const phase = state.phaseStatus?.trim() || "Thinking";
+  lines.push(`_${phase}_`);
+
+  const toolLimitByFrequency: Record<MessageFrequency, number> = {
+    minimum: 2,
+    medium: 3,
+    aggressive: 5,
+  };
+  const tools = state.tools || [];
+  if (tools.length > 0) {
+    const limit = toolLimitByFrequency[frequency] ?? 3;
+    const items = tools.slice(-limit);
+    lines.push("", "*Latest actions*");
+    for (const tool of items) {
+      const detail = buildClaudeToolDetail(tool, workingPath);
+      lines.push(`${getToolIcon(tool.status)} \`${tool.name}\`${detail ? ` ${detail}` : ""}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 export function createAgentAdapter(): AgentAdapter {
@@ -87,6 +165,13 @@ export function createAgentAdapter(): AgentAdapter {
           };
         })
         .filter((question) => question.question.length > 0);
+    },
+    buildStatusMessage({ request, workingPath, state, frequency }) {
+      const providerId = getProviderForSession(request.sessionId);
+      if (providerId === "claude") {
+        return buildClaudeStatusMessage(request, workingPath, state, frequency);
+      }
+      return buildLiveStatusMessage(request, workingPath, state, frequency);
     },
   };
 }

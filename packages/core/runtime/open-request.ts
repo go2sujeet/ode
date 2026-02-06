@@ -9,9 +9,10 @@ import {
   type PersistedSession,
 } from "@/config/local/sessions";
 import { runTrackedRequest } from "@/core/runtime/request-runner";
+import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
-import { buildLiveStatusMessage, getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
+import { getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
 
 type OpenRequestDeps = {
   im: IMAdapter;
@@ -112,12 +113,13 @@ export async function runOpenRequest(params: {
         request.lastUpdatedAt = now;
       }
 
-      const statusText = buildLiveStatusMessage(
+      const statusText = buildStatusMessageForAgent({
+        agent: deps.agent,
         request,
-        cwd,
-        liveParsedState.get(getStatusMessageKey(request)),
-        resolveMessageFrequency()
-      );
+        workingPath: cwd,
+        state: liveParsedState.get(getStatusMessageKey(request)),
+        frequency: resolveMessageFrequency(),
+      });
       if (!request.statusFrozen) {
         await deps.im.updateMessage(context.channelId, statusTs, statusText, false);
       }

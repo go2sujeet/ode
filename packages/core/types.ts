@@ -4,6 +4,8 @@ import type {
   OpenCodeOptions,
   OpenCodeSessionInfo,
 } from "@/agents";
+import type { MessageFrequency } from "@/config/message-frequency";
+import type { SessionMessageState } from "@/utils/session-inspector";
 
 export type CoreMessageContext = {
   channelId: string;
@@ -27,6 +29,23 @@ export type NormalizedQuestion = {
   options?: string[];
   multiple?: boolean;
   custom?: boolean;
+};
+
+export type StatusMessageRequest = {
+  sessionId: string;
+  channelId: string;
+  threadId: string;
+  statusMessageTs: string;
+  startedAt: number;
+  currentText: string;
+  statusFrozen?: boolean;
+};
+
+export type AgentStatusMessageParams = {
+  request: StatusMessageRequest;
+  workingPath: string;
+  state?: SessionMessageState;
+  frequency: MessageFrequency;
 };
 
 export interface IMAdapter {
@@ -63,4 +82,5 @@ export interface AgentAdapter {
     answers: Array<Array<string>>;
   }): Promise<void>;
   normalizeQuestions(questions: unknown): NormalizedQuestion[];
+  buildStatusMessage?(params: AgentStatusMessageParams): string;
 }

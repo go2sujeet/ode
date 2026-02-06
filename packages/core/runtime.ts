@@ -1,7 +1,6 @@
 import {
   isLocalMode,
   resolveMessageFrequency,
-  resolveChannelCwd,
 } from "@/config";
 import {
   loadSession,
@@ -21,7 +20,6 @@ import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
 import { ThreadMessageQueue } from "@/core/runtime/thread-queue";
 import { handlePendingQuestionReply } from "@/core/runtime/pending-question";
 import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core/runtime/recovery";
-import { handleSelectionReply } from "@/core/runtime/selection-reply";
 import { prepareRuntimeSession } from "@/core/runtime/session-bootstrap";
 import { runOpenRequest } from "@/core/runtime/open-request";
 
@@ -196,32 +194,15 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     messageTs: string;
   }): Promise<void> {
     const { channelId, threadId, userId, selection, messageTs } = params;
-    let cwd: string;
-    try {
-      cwd = resolveChannelCwd(channelId).cwd;
-    } catch (err) {
-      await deps.im.sendMessage(channelId, threadId, `Error: ${String(err)}`, false);
-      return;
-    }
-
-    // Optional IM-specific pathway (e.g. Slack interactive buttons).
-    // IMs without button actions can skip this and rely on handleIncomingMessage only.
-    await handleSelectionReply({
-      deps,
-      state: {
-        liveEventHistory: state.liveEventHistory,
-        liveParsedState: state.liveParsedState,
+    await handleIncomingMessage(
+      {
+        channelId,
+        threadId,
+        userId,
+        messageId: messageTs,
       },
-      channelId,
-      threadId,
-      userId,
-      selection,
-      messageTs,
-      cwd,
-      shouldStoreEvents: isRedisTrackingEnabled(),
-      getStateMachine,
-      publishFinalText,
-    });
+      selection
+    );
   }
 
   async function recoverPendingRequests(): Promise<void> {
