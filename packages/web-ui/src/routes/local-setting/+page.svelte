@@ -19,6 +19,8 @@
   };
 
   export let data: { config: DashboardConfig } | undefined;
+  export let initialSection: "profile" | "agent" | "slack" = "profile";
+  export let initialSlug: string | null = null;
 
   let config: DashboardConfig = data?.config ?? defaultDashboardConfig;
   let opencodeModelsText = "";
@@ -28,7 +30,12 @@
   let isCheckingCli = false;
   let message = "";
   let cliCheckResult: CliCheckResult | null = null;
-  let pathname = "/local-setting";
+  let pathname =
+    initialSection === "agent"
+      ? "/local-setting/agent"
+      : initialSection === "slack"
+        ? `/local-setting/slack-bot/${initialSlug ?? ""}`
+        : "/local-setting/profile";
   let activeSection: "profile" | "agent" | "slack" = "profile";
   let enabledProviders: AgentProvider[] = ["opencode", "claudecode"];
   let selectedWorkspace: DashboardConfig["workspaces"][number] | null = null;
@@ -481,7 +488,7 @@
 
   .container {
     width: 100%;
-    max-width: 1000px;
+    max-width: 1080px;
     margin: 0 auto;
     padding: 24px;
     box-sizing: border-box;
@@ -497,6 +504,7 @@
     background: var(--card);
     border-radius: 8px;
     margin-bottom: 16px;
+    box-shadow: var(--shadow-soft);
   }
 
   .navbar-title {
@@ -514,7 +522,7 @@
   .layout {
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
-    gap: 16px;
+    gap: 18px;
   }
 
   .card {
@@ -523,12 +531,16 @@
     padding: 16px;
     background: var(--card);
     box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 10px;
   }
 
   .sidebar {
     display: grid;
     gap: 8px;
     align-self: start;
+    position: sticky;
+    top: 24px;
   }
 
   .workspace-group {
@@ -554,6 +566,12 @@
     background: var(--bg);
     color: var(--ink);
     cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+  }
+
+  .nav-item:hover {
+    border-color: var(--accent-muted);
+    transform: translateY(-1px);
   }
 
   .nav-item.active {
@@ -563,7 +581,7 @@
 
   .content {
     display: grid;
-    gap: 12px;
+    gap: 14px;
   }
 
   .content :global(h2) {
@@ -584,7 +602,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
 
   .options-row {
@@ -715,6 +733,12 @@
 
   button {
     cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+  }
+
+  button:hover:not(:disabled) {
+    border-color: var(--accent-muted);
+    transform: translateY(-1px);
   }
 
   .actions {
@@ -732,6 +756,10 @@
   @media (max-width: 900px) {
     .layout {
       grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      position: static;
     }
   }
 
