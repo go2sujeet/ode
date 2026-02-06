@@ -64,6 +64,10 @@ function jsonResponse(status: number, payload: JsonResponse): Response {
 }
 
 function resolveAssetPath(pathname: string): string {
+  const appAssetIndex = pathname.indexOf("/_app/");
+  if (appAssetIndex >= 0) {
+    return pathname.slice(appAssetIndex);
+  }
   if (pathname === "/") return "/index.html";
   if (pathname === "/local-setting") return "/local-setting.html";
   if (pathname.startsWith("/local-setting/")) return "/local-setting.html";
