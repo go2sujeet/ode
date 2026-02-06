@@ -7,8 +7,8 @@ import {
   type SessionEnvironment,
 } from "./server";
 import {
-  getOpenCodeSession,
-  setOpenCodeSession,
+  getThreadSessionId,
+  setThreadSessionId,
 } from "@/config/local/settings";
 import { getChannelModel, isLocalMode } from "@/config";
 import { log } from "@/utils";
@@ -117,14 +117,14 @@ export async function getOrCreateSession(
   workingPath: string,
   env: SessionEnvironment = {}
 ): Promise<OpenCodeSessionInfo> {
-  const existingSession = getOpenCodeSession(channelId, threadId);
+  const existingSession = getThreadSessionId(channelId, threadId);
   if (existingSession) {
     const existingEnv = normalizeSessionEnvironment(getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
     if (existingEnv !== desiredEnv) {
       log.info("Session environment changed; creating new session", { channelId, threadId, workingPath });
       const sessionId = await createSession(workingPath, env);
-      setOpenCodeSession(channelId, threadId, sessionId);
+      setThreadSessionId(channelId, threadId, sessionId);
       return { sessionId, created: true };
     }
     return { sessionId: existingSession, created: false };
@@ -132,7 +132,7 @@ export async function getOrCreateSession(
 
   log.info("Creating new session for thread", { channelId, threadId, workingPath });
   const sessionId = await createSession(workingPath, env);
-  setOpenCodeSession(channelId, threadId, sessionId);
+  setThreadSessionId(channelId, threadId, sessionId);
   return { sessionId, created: true };
 }
 
@@ -156,7 +156,7 @@ export async function sendMessage(
       oldSessionId: sessionId,
       newSessionId: validSessionId,
     });
-    setOpenCodeSession(channelId, context.slack.threadId, validSessionId);
+    setThreadSessionId(channelId, context.slack.threadId, validSessionId);
   }
 
   const activeSessionId = validSessionId;

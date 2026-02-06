@@ -1,9 +1,9 @@
 export {
   TOOL_DISPLAY_CONFIG,
   type MessageFrequency,
-} from "./message-frequency.base";
+} from "./baseConfig";
 
-export { type GitStrategy } from "./git-strategy.base";
+export { type GitStrategy } from "./baseConfig";
 
 export {
   defaultDashboardConfig,

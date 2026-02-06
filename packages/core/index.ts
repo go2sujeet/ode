@@ -15,6 +15,8 @@ import {
   getDefaultCwd,
   isLocalMode,
   getSlackAppToken,
+  getWebHost,
+  getWebPort,
   loadOdeConfig,
   invalidateOdeConfigCache,
   ODE_CONFIG_FILE,
@@ -25,21 +27,12 @@ import { hasWebUiBuild, startLocalWebServer, stopLocalWebServer } from "./web/se
 import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
 import packageJson from "../../package.json" with { type: "json" };
 
-const DEFAULT_WEB_HOST = "127.0.0.1";
-const DEFAULT_WEB_PORT = 9293;
 const CONFIG_WATCH_INTERVAL_MS = 1000;
 const CONFIG_WATCH_DEBOUNCE_MS = 500;
 
-function parsePort(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return parsed;
-}
-
 function getLocalSettingsUrl(): string {
-  const host = process.env.ODE_WEB_HOST?.trim() || DEFAULT_WEB_HOST;
-  const port = parsePort(process.env.ODE_WEB_PORT?.trim(), DEFAULT_WEB_PORT);
+  const host = getWebHost();
+  const port = getWebPort();
   return `http://${host}:${port}/local-setting`;
 }
 

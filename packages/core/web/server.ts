@@ -10,6 +10,8 @@ import {
   defaultDashboardConfig,
   sanitizeDashboardConfig,
   isLocalMode,
+  getWebHost,
+  getWebPort,
 } from "@/config";
 import {
   getAllSessions,
@@ -20,8 +22,6 @@ import {
 import { handleSlackActionPayload } from "@/ims";
 import { log } from "@/utils";
 
-const DEFAULT_WEB_HOST = "127.0.0.1";
-const DEFAULT_WEB_PORT = 9293;
 const DEFAULT_WEB_BUILD_DIR = join(process.cwd(), "packages", "web-ui", "build");
 const DEFAULT_SESSION_EVENTS_LIMIT = 2000;
 const MAX_SESSION_EVENTS_LIMIT = 10000;
@@ -37,13 +37,6 @@ type JsonResponse = {
   result?: unknown;
 };
 
-function parsePort(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return parsed;
-}
-
 function parsePositiveInt(value: string | null, fallback: number, max?: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
@@ -57,14 +50,6 @@ function isRedisSessionApiEnabled(): boolean {
   if (!isLocalMode()) return false;
   const flag = process.env.ODE_REDIS_ENABLED?.trim().toLowerCase();
   return flag === "true" || flag === "1" || flag === "yes";
-}
-
-function getWebHost(): string {
-  return process.env.ODE_WEB_HOST?.trim() || DEFAULT_WEB_HOST;
-}
-
-function getWebPort(): number {
-  return parsePort(process.env.ODE_WEB_PORT?.trim(), DEFAULT_WEB_PORT);
 }
 
 function jsonResponse(status: number, payload: JsonResponse): Response {

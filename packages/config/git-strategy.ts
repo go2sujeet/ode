@@ -1,5 +1,5 @@
 import { loadOdeConfig } from "./local/ode";
-import { DEFAULT_GIT_STRATEGY, type GitStrategy } from "./git-strategy.base";
+import { DEFAULT_GIT_STRATEGY, type GitStrategy } from "./baseConfig";
 
 export { DEFAULT_GIT_STRATEGY, type GitStrategy };
 

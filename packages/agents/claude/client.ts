@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import {
-  getOpenCodeSession,
-  setOpenCodeSession,
+  getThreadSessionId,
+  setThreadSessionId,
 } from "@/config/local/settings";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared";
@@ -87,7 +87,7 @@ export async function getOrCreateSession(
   workingPath: string,
   env: SessionEnvironment = {}
 ): Promise<OpenCodeSessionInfo> {
-  const existingSession = getOpenCodeSession(channelId, threadId);
+  const existingSession = getThreadSessionId(channelId, threadId);
   if (existingSession) {
     if (!isValidUuid(existingSession)) {
       log.info("Invalid Claude session id found; generating new session", {
@@ -97,7 +97,7 @@ export async function getOrCreateSession(
         existingSession,
       });
       const sessionId = await createSession(workingPath, env);
-      setOpenCodeSession(channelId, threadId, sessionId);
+      setThreadSessionId(channelId, threadId, sessionId);
       return { sessionId, created: true };
     }
 
@@ -110,7 +110,7 @@ export async function getOrCreateSession(
         workingPath,
       });
       const sessionId = await createSession(workingPath, env);
-      setOpenCodeSession(channelId, threadId, sessionId);
+      setThreadSessionId(channelId, threadId, sessionId);
       return { sessionId, created: true };
     }
 
@@ -123,7 +123,7 @@ export async function getOrCreateSession(
 
   log.info("Creating new Claude session for thread", { channelId, threadId, workingPath });
   const sessionId = await createSession(workingPath, env);
-  setOpenCodeSession(channelId, threadId, sessionId);
+  setThreadSessionId(channelId, threadId, sessionId);
   return { sessionId, created: true };
 }
 
@@ -507,7 +507,7 @@ export async function sendMessage(
       const responseSessionId = parsed?.session_id;
       if (responseSessionId && responseSessionId !== sessionId && context?.slack?.threadId) {
         sessionEnvironments.set(responseSessionId, envOverrides);
-        setOpenCodeSession(channelId, context.slack.threadId, responseSessionId);
+        setThreadSessionId(channelId, context.slack.threadId, responseSessionId);
       }
 
       newSessions.delete(sessionId);

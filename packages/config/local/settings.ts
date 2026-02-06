@@ -228,7 +228,7 @@ export function deleteChannelAgentInstructions(
 }
 
 // Session management (one session per thread)
-export function getOpenCodeSession(channelId: string, threadId: string): string | null {
+export function getThreadSessionId(channelId: string, threadId: string): string | null {
   const channelSettings = getChannelSettings(channelId);
   const stored = channelSettings.threadSessions[threadId];
   if (stored) return stored;
@@ -241,7 +241,7 @@ export function getOpenCodeSession(channelId: string, threadId: string): string 
   return session.sessionId;
 }
 
-export function setOpenCodeSession(channelId: string, threadId: string, sessionId: string): void {
+export function setThreadSessionId(channelId: string, threadId: string, sessionId: string): void {
   const channelSettings = getChannelSettings(channelId);
   channelSettings.threadSessions[threadId] = sessionId;
   updateChannelSettings(channelId, {
@@ -249,7 +249,7 @@ export function setOpenCodeSession(channelId: string, threadId: string, sessionI
   });
 }
 
-export function clearOpenCodeSessions(channelId: string): void {
+export function clearThreadSessions(channelId: string): void {
   updateChannelSettings(channelId, { threadSessions: {} });
 }
 

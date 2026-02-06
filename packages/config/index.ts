@@ -49,7 +49,7 @@ export {
 
 export { resolveGitStrategy, type GitStrategy } from "./git-strategy";
 
-export { getSlackActionApiUrl } from "./slack";
+export { getSlackActionApiUrl, getWebHost, getWebPort } from "./network";
 
 export * as local from "./local";
 export * as db from "./db";

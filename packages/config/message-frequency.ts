@@ -1,5 +1,5 @@
 import { loadOdeConfig } from "./local/ode";
-import { TOOL_DISPLAY_CONFIG, type MessageFrequency } from "./message-frequency.base";
+import { TOOL_DISPLAY_CONFIG, type MessageFrequency } from "./baseConfig";
 
 export { TOOL_DISPLAY_CONFIG, type MessageFrequency };
 
