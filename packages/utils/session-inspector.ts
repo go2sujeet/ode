@@ -33,6 +33,7 @@ export type SessionTodo = {
 export type SessionMessageState = {
   sessionTitle?: string;
   phaseStatus?: string;
+  thinkingText?: string;
   tokenUsage?: SessionTokenUsage;
   currentText: string;
   tools: SessionTool[];
@@ -55,6 +56,7 @@ export function buildSessionMessageState(
   const state: SessionMessageState = {
     sessionTitle: baseState?.sessionTitle,
     phaseStatus: baseState?.phaseStatus,
+    thinkingText: baseState?.thinkingText,
     tokenUsage: baseState?.tokenUsage,
     currentText: baseState?.currentText ?? "",
     tools: baseState?.tools ? [...baseState.tools] : [],
@@ -137,6 +139,8 @@ export function buildSessionMessageState(
         }
       } else if (part.type === "text" && part.text) {
         state.currentText = part.text;
+      } else if (part.type === "thinking" && part.text) {
+        state.thinkingText = part.text;
       }
     } else if (type === "todo.updated") {
       const todos = (eventData?.properties?.todos as any[]) || [];

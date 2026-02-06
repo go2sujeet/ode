@@ -49,10 +49,19 @@ function buildClaudeToolDetail(tool: SessionMessageState["tools"][number], worki
   if (typeof command === "string" && command.trim()) {
     return command;
   }
+  if (Array.isArray(input.args) && input.args.length > 0) {
+    return input.args.map((value) => String(value)).join(" ");
+  }
   if (typeof tool.title === "string" && tool.title.trim()) {
     return trimToolPath(tool.title, workingPath);
   }
   return "";
+}
+
+function truncateStatusDetail(value: string, limit = 200): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit)}...`;
 }
 
 function buildClaudeStatusMessage(
@@ -76,6 +85,9 @@ function buildClaudeStatusMessage(
 
   const phase = state.phaseStatus?.trim() || "Thinking";
   lines.push(`_${phase}_`);
+  if (state.thinkingText && /thinking/i.test(phase)) {
+    lines.push(`_${truncateStatusDetail(state.thinkingText)}_`);
+  }
 
   const toolLimitByFrequency: Record<MessageFrequency, number> = {
     minimum: 2,

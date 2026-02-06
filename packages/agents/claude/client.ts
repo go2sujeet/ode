@@ -43,6 +43,73 @@ type SessionLikeEvent = {
   properties: Record<string, unknown>;
 };
 
+type ClaudeToolState = {
+  id: string;
+  name: string;
+  inputBuffer?: string;
+  input?: Record<string, unknown>;
+};
+
+function tryParseObject(input: string): Record<string, unknown> | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractSessionTitle(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const queue: unknown[] = [value];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+
+    if (Array.isArray(current)) {
+      for (const item of current) queue.push(item);
+      continue;
+    }
+
+    const record = current as Record<string, unknown>;
+    const directTitle = record.title;
+    if (typeof directTitle === "string") {
+      const trimmed = directTitle.trim();
+      if (trimmed && !trimmed.startsWith("New session")) {
+        return trimmed;
+      }
+    }
+
+    const info = record.info;
+    if (info && typeof info === "object" && !Array.isArray(info)) {
+      const infoTitle = (info as Record<string, unknown>).title;
+      if (typeof infoTitle === "string") {
+        const trimmed = infoTitle.trim();
+        if (trimmed && !trimmed.startsWith("New session")) {
+          return trimmed;
+        }
+      }
+    }
+
+    for (const nested of Object.values(record)) {
+      if (nested && typeof nested === "object") queue.push(nested);
+    }
+  }
+
+  return undefined;
+}
+
+function deriveSessionTitleFromPrompt(message: string): string | undefined {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  if (normalized.length <= 80) return normalized;
+  return `${normalized.slice(0, 80).trim()}...`;
+}
+
 async function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
   const existing = sessionLocks.get(sessionKey);
   if (existing) {
@@ -224,7 +291,7 @@ function publishSessionEvent(sessionId: string, event: unknown): void {
 
 function statusFromClaudeRecord(
   record: ClaudeJsonRecord,
-  toolByIndex: Map<number, { id: string; name: string }>
+  toolByIndex: Map<number, ClaudeToolState>
 ): string | null {
   if (record.type === "assistant") {
     return "Drafting response";
@@ -245,6 +312,9 @@ function statusFromClaudeRecord(
         const toolName = typeof block.name === "string" ? block.name : "tool";
         return `Running tool: ${toolName}`;
       }
+      if (block?.type === "thinking") {
+        return "Thinking";
+      }
       return "Drafting response";
     }
     case "content_block_delta": {
@@ -256,6 +326,9 @@ function statusFromClaudeRecord(
         const index = typeof record.event?.index === "number" ? record.event.index : -1;
         const tool = toolByIndex.get(index);
         return tool ? `Running tool: ${tool.name}` : "Running tool";
+      }
+      if (delta?.type === "thinking_delta") {
+        return "Thinking";
       }
       return null;
     }
@@ -275,11 +348,24 @@ export function mapClaudeRecordToSessionEvents(
   record: unknown,
   fallbackSessionId: string,
   textByIndex: Map<number, string>,
-  toolByIndex: Map<number, { id: string; name: string }>
+  toolByIndex: Map<number, ClaudeToolState>,
+  thinkingByIndex: Map<number, string>
 ): SessionLikeEvent[] {
   const parsedRecord = record as ClaudeJsonRecord;
   const events: SessionLikeEvent[] = [];
   const sessionId = getRecordSessionId(parsedRecord, fallbackSessionId);
+  const sessionTitle = extractSessionTitle(parsedRecord);
+  if (sessionTitle) {
+    events.push({
+      type: "session.updated",
+      properties: {
+        sessionID: sessionId,
+        info: {
+          title: sessionTitle,
+        },
+      },
+    });
+  }
   const status = statusFromClaudeRecord(parsedRecord, toolByIndex);
   if (status) {
     events.push({
@@ -324,7 +410,11 @@ export function mapClaudeRecordToSessionEvents(
     if (contentBlock?.type === "tool_use") {
       const id = typeof contentBlock.id === "string" ? contentBlock.id : `tool-${Date.now()}-${index}`;
       const name = typeof contentBlock.name === "string" ? contentBlock.name : "tool";
-      toolByIndex.set(index, { id, name });
+      const input =
+        contentBlock && typeof contentBlock.input === "object"
+          ? (contentBlock.input as Record<string, unknown>)
+          : {};
+      toolByIndex.set(index, { id, name, input });
       events.push({
         type: "message.part.updated",
         properties: {
@@ -335,14 +425,27 @@ export function mapClaudeRecordToSessionEvents(
             sessionID: sessionId,
             state: {
               status: "running",
-              input:
-                contentBlock && typeof contentBlock.input === "object"
-                  ? (contentBlock.input as Record<string, unknown>)
-                  : {},
+              input,
             },
           },
         },
       });
+    }
+    if (contentBlock?.type === "thinking") {
+      const thinking = typeof contentBlock.thinking === "string" ? contentBlock.thinking : "";
+      if (thinking) {
+        thinkingByIndex.set(index, thinking);
+        events.push({
+          type: "message.part.updated",
+          properties: {
+            part: {
+              type: "thinking",
+              text: thinking,
+              sessionID: sessionId,
+            },
+          },
+        });
+      }
     }
     return events;
   }
@@ -370,6 +473,14 @@ export function mapClaudeRecordToSessionEvents(
     if (delta?.type === "input_json_delta") {
       const tool = toolByIndex.get(index);
       if (!tool) return events;
+      const chunk = typeof delta.partial_json === "string" ? delta.partial_json : "";
+      if (chunk) {
+        tool.inputBuffer = `${tool.inputBuffer ?? ""}${chunk}`;
+        const parsedInput = tryParseObject(tool.inputBuffer);
+        if (parsedInput) {
+          tool.input = parsedInput;
+        }
+      }
       events.push({
         type: "message.part.updated",
         properties: {
@@ -380,7 +491,25 @@ export function mapClaudeRecordToSessionEvents(
             sessionID: sessionId,
             state: {
               status: "running",
+              input: tool.input,
             },
+          },
+        },
+      });
+    }
+
+    if (delta?.type === "thinking_delta") {
+      const chunk = typeof delta.thinking === "string" ? delta.thinking : "";
+      if (!chunk) return events;
+      const next = `${thinkingByIndex.get(index) ?? ""}${chunk}`;
+      thinkingByIndex.set(index, next);
+      events.push({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            type: "thinking",
+            text: next,
+            sessionID: sessionId,
           },
         },
       });
@@ -401,6 +530,7 @@ export function mapClaudeRecordToSessionEvents(
           sessionID: sessionId,
           state: {
             status: "completed",
+            input: tool.input,
           },
         },
       },
@@ -414,9 +544,16 @@ function publishClaudeRecordAsSessionEvents(
   record: ClaudeJsonRecord,
   fallbackSessionId: string,
   textByIndex: Map<number, string>,
-  toolByIndex: Map<number, { id: string; name: string }>
+  toolByIndex: Map<number, ClaudeToolState>,
+  thinkingByIndex: Map<number, string>
 ): void {
-  for (const event of mapClaudeRecordToSessionEvents(record, fallbackSessionId, textByIndex, toolByIndex)) {
+  for (const event of mapClaudeRecordToSessionEvents(
+    record,
+    fallbackSessionId,
+    textByIndex,
+    toolByIndex,
+    thinkingByIndex
+  )) {
     publishSessionEvent(getRecordSessionId(record, fallbackSessionId), event);
   }
 }
@@ -635,6 +772,20 @@ export async function sendMessage(
       const systemPrompt = buildSystemPrompt(context?.slack);
 
       const isNewSession = newSessions.has(sessionId);
+      if (isNewSession) {
+        const fallbackTitle = deriveSessionTitleFromPrompt(message);
+        if (fallbackTitle) {
+          publishSessionEvent(sessionId, {
+            type: "session.updated",
+            properties: {
+              sessionID: sessionId,
+              info: {
+                title: fallbackTitle,
+              },
+            },
+          });
+        }
+      }
       const args = buildClaudeCommandArgs({
         sessionId,
         isNewSession,
@@ -645,14 +796,21 @@ export async function sendMessage(
 
       const envOverrides = sessionEnvironments.get(sessionId) ?? {};
       const textByIndex = new Map<number, string>();
-      const toolByIndex = new Map<number, { id: string; name: string }>();
+      const toolByIndex = new Map<number, ClaudeToolState>();
+      const thinkingByIndex = new Map<number, string>();
       const { output, permissionMode, command } = await runClaudeWithFallback(
         args,
         workingPath,
         envOverrides,
         entry,
         (record) => {
-          publishClaudeRecordAsSessionEvents(record, sessionId, textByIndex, toolByIndex);
+          publishClaudeRecordAsSessionEvents(
+            record,
+            sessionId,
+            textByIndex,
+            toolByIndex,
+            thinkingByIndex
+          );
         }
       );
 
