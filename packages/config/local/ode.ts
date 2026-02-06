@@ -40,7 +40,8 @@ const devServerSchema = z.object({
 const channelDetailSchema = z.object({
   id: z.string(),
   name: z.string(),
-  model: z.string(),
+  agentProvider: z.enum(["opencode", "claude"]).optional().default("opencode"),
+  model: z.string().optional().default(""),
   workingDirectory: z.string().optional().default(""),
   devServerId: z.string().nullable().optional(),
 });
@@ -333,6 +334,10 @@ export function getChannelModel(channelId: string): string | null {
   return getChannelDetails(channelId)?.model ?? null;
 }
 
+export function getChannelAgentProvider(channelId: string): "opencode" | "claude" {
+  return getChannelDetails(channelId)?.agentProvider === "claude" ? "claude" : "opencode";
+}
+
 export function getChannelDevServerId(channelId: string): string | null {
   return getChannelDetails(channelId)?.devServerId ?? null;
 }
@@ -340,6 +345,7 @@ export function getChannelDevServerId(channelId: string): string | null {
 export function getChannelOpenCodeServerUrl(channelId: string): string | undefined {
   const channel = getChannelDetails(channelId);
   if (!channel) return undefined;
+  if ((channel.agentProvider ?? "opencode") !== "opencode") return undefined;
   const server = getDevServers().find((entry) => entry.id === channel.devServerId);
   return server?.url;
 }
@@ -350,6 +356,13 @@ export function setChannelModel(channelId: string, model: string): void {
 
 export function setChannelDevServerId(channelId: string, devServerId: string): void {
   updateChannel(channelId, (channel) => ({ ...channel, devServerId }));
+}
+
+export function setChannelAgentProvider(
+  channelId: string,
+  agentProvider: "opencode" | "claude"
+): void {
+  updateChannel(channelId, (channel) => ({ ...channel, agentProvider }));
 }
 
 function updateChannel(

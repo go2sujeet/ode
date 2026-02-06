@@ -32,6 +32,7 @@ export type SessionTodo = {
 
 export type SessionMessageState = {
   sessionTitle?: string;
+  phaseStatus?: string;
   tokenUsage?: SessionTokenUsage;
   currentText: string;
   tools: SessionTool[];
@@ -53,6 +54,7 @@ export function buildSessionMessageState(
   const startTime = events[0]?.timestamp ?? Date.now();
   const state: SessionMessageState = {
     sessionTitle: baseState?.sessionTitle,
+    phaseStatus: baseState?.phaseStatus,
     tokenUsage: baseState?.tokenUsage,
     currentText: baseState?.currentText ?? "",
     tools: baseState?.tools ? [...baseState.tools] : [],
@@ -97,6 +99,16 @@ export function buildSessionMessageState(
           total,
           cost,
         };
+      }
+    }
+
+    if (type === "session.status") {
+      const statusValue = eventData?.properties?.status;
+      if (typeof statusValue === "string") {
+        const trimmedStatus = statusValue.trim();
+        if (trimmedStatus) {
+          state.phaseStatus = trimmedStatus;
+        }
       }
     }
 

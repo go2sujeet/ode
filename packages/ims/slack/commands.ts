@@ -1,11 +1,13 @@
 import { getApp } from "./client";
 import {
+  getChannelAgentProvider,
   getChannelDevServerId,
   getChannelModel,
   resolveChannelCwd,
   getDevServers,
   getGitHubInfoForUser,
   isLocalMode,
+  setChannelAgentProvider,
   setChannelDevServerId,
   setChannelModel,
   setChannelWorkingDirectory,
@@ -22,6 +24,8 @@ const GITHUB_NAME_BLOCK = "github_name";
 const GITHUB_NAME_ACTION = "github_name_input";
 const GITHUB_EMAIL_BLOCK = "github_email";
 const GITHUB_EMAIL_ACTION = "github_email_input";
+const PROVIDER_BLOCK = "provider";
+const PROVIDER_ACTION = "provider_select";
 const DEV_SERVER_BLOCK = "dev_server";
 const DEV_SERVER_ACTION = "dev_server_select";
 const MODEL_BLOCK = "model";
@@ -29,21 +33,37 @@ const MODEL_ACTION = "model_select";
 const WORKING_DIR_BLOCK = "working_dir";
 const WORKING_DIR_ACTION = "working_dir_input";
 
+type AgentProvider = "opencode" | "claude";
+
 function buildSettingsModal(params: {
   channelId: string;
   devServers: Array<{ id: string; name: string; models: string[] }>;
+  selectedProvider?: AgentProvider;
   selectedDevServerId?: string | null;
   selectedModel?: string | null;
   workingDirectory?: string | null;
 }) {
-  const { channelId, devServers, selectedDevServerId, selectedModel, workingDirectory } = params;
+  const {
+    channelId,
+    devServers,
+    selectedProvider = "opencode",
+    selectedDevServerId,
+    selectedModel,
+    workingDirectory,
+  } = params;
+  const providerOptions = [
+    { text: { type: "plain_text" as const, text: "OpenCode" }, value: "opencode" },
+    { text: { type: "plain_text" as const, text: "Claude Code" }, value: "claude" },
+  ];
   const selectedServer = devServers.find((server) => server.id === selectedDevServerId)
     ?? devServers[0];
 
-  const serverOptions = devServers.map((server) => ({
-    text: { type: "plain_text" as const, text: server.name },
-    value: server.id,
-  }));
+  const serverOptions = devServers.length > 0
+    ? devServers.map((server) => ({
+        text: { type: "plain_text" as const, text: server.name },
+        value: server.id,
+      }))
+    : [{ text: { type: "plain_text" as const, text: "No dev servers configured" }, value: "__none_server__" }];
 
   const models = selectedServer?.models ?? [];
   const modelOptions = models.length > 0
@@ -57,21 +77,29 @@ function buildSettingsModal(params: {
     ? selectedModel
     : (models[0] ?? "__none__");
 
-  return {
-    type: "modal" as const,
-    callback_id: SETTINGS_MODAL_ID,
-    private_metadata: channelId,
-    title: { type: "plain_text" as const, text: "Channel Settings" },
-    submit: { type: "plain_text" as const, text: "Save" },
-    close: { type: "plain_text" as const, text: "Cancel" },
-    blocks: [
-      {
-        type: "section" as const,
-        text: {
-          type: "mrkdwn" as const,
-          text: "Configure the dev server, model, and working directory for this channel.",
-        },
+  const blocks: any[] = [
+    {
+      type: "section" as const,
+      text: {
+        type: "mrkdwn" as const,
+        text: "Configure provider, model (OpenCode), and working directory for this channel.",
       },
+    },
+    {
+      type: "input" as const,
+      block_id: PROVIDER_BLOCK,
+      label: { type: "plain_text" as const, text: "Provider" },
+      element: {
+        type: "static_select" as const,
+        action_id: PROVIDER_ACTION,
+        options: providerOptions,
+        initial_option: providerOptions.find((option) => option.value === selectedProvider) ?? providerOptions[0],
+      },
+    },
+  ];
+
+  if (selectedProvider === "opencode") {
+    blocks.push(
       {
         type: "input" as const,
         block_id: DEV_SERVER_BLOCK,
@@ -82,7 +110,7 @@ function buildSettingsModal(params: {
           options: serverOptions,
           initial_option: selectedServer
             ? { text: { type: "plain_text" as const, text: selectedServer.name }, value: selectedServer.id }
-            : undefined,
+            : serverOptions[0],
         },
       },
       {
@@ -98,19 +126,30 @@ function buildSettingsModal(params: {
             : undefined,
         },
       },
-      {
-        type: "input" as const,
-        block_id: WORKING_DIR_BLOCK,
-        optional: true,
-        label: { type: "plain_text" as const, text: "Working Directory" },
-        element: {
-          type: "plain_text_input" as const,
-          action_id: WORKING_DIR_ACTION,
-          initial_value: workingDirectory ?? "",
-          placeholder: { type: "plain_text" as const, text: "e.g., ~/Code/ode" },
-        },
-      },
-    ],
+    );
+  }
+
+  blocks.push({
+    type: "input" as const,
+    block_id: WORKING_DIR_BLOCK,
+    optional: true,
+    label: { type: "plain_text" as const, text: "Working Directory" },
+    element: {
+      type: "plain_text_input" as const,
+      action_id: WORKING_DIR_ACTION,
+      initial_value: workingDirectory ?? "",
+      placeholder: { type: "plain_text" as const, text: "e.g., ~/Code/ode" },
+    },
+  });
+
+  return {
+    type: "modal" as const,
+    callback_id: SETTINGS_MODAL_ID,
+    private_metadata: channelId,
+    title: { type: "plain_text" as const, text: "Channel Settings" },
+    submit: { type: "plain_text" as const, text: "Save" },
+    close: { type: "plain_text" as const, text: "Cancel" },
+    blocks,
   };
 }
 
@@ -198,20 +237,11 @@ export function setupInteractiveHandlers(): void {
     }
 
     const devServers = getDevServers();
-    if (devServers.length === 0) {
-      if (channelId && userId) {
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: "No dev servers configured in ~/.config/ode/ode.json.",
-        });
-      }
-      return;
-    }
 
     const view = buildSettingsModal({
       channelId,
       devServers,
+      selectedProvider: getChannelAgentProvider(channelId),
       selectedDevServerId: getChannelDevServerId(channelId),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
@@ -255,6 +285,40 @@ export function setupInteractiveHandlers(): void {
     });
   });
 
+  slackApp.action(PROVIDER_ACTION, async ({ ack, body, client }) => {
+    await ack();
+
+    const view = (body as any).view;
+    if (!view) return;
+
+    const channelId = view.private_metadata;
+    const selectedProvider = (body as any).actions?.[0]?.selected_option?.value === "claude"
+      ? "claude"
+      : "opencode";
+    const selectedDevServerId = view.state?.values?.[DEV_SERVER_BLOCK]?.[DEV_SERVER_ACTION]?.selected_option?.value
+      || getChannelDevServerId(channelId)
+      || undefined;
+    const selectedModel = view.state?.values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value
+      || getChannelModel(channelId)
+      || undefined;
+    const workingDirectory = view.state?.values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
+
+    const updatedView = buildSettingsModal({
+      channelId,
+      devServers: getDevServers(),
+      selectedProvider,
+      selectedDevServerId,
+      selectedModel,
+      workingDirectory,
+    });
+
+    await client.views.update({
+      view_id: view.id,
+      hash: view.hash,
+      view: updatedView,
+    });
+  });
+
   slackApp.action(DEV_SERVER_ACTION, async ({ ack, body, client }) => {
     await ack();
 
@@ -262,6 +326,9 @@ export function setupInteractiveHandlers(): void {
     if (!view) return;
 
     const channelId = view.private_metadata;
+    const selectedProvider = view.state?.values?.[PROVIDER_BLOCK]?.[PROVIDER_ACTION]?.selected_option?.value === "claude"
+      ? "claude"
+      : "opencode";
     const selectedDevServerId = (body as any).actions?.[0]?.selected_option?.value;
     const workingDirectory = view.state?.values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
     const selectedModel = view.state?.values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value || "";
@@ -272,6 +339,7 @@ export function setupInteractiveHandlers(): void {
     const updatedView = buildSettingsModal({
       channelId,
       devServers,
+      selectedProvider,
       selectedDevServerId,
       selectedModel,
       workingDirectory,
@@ -287,25 +355,31 @@ export function setupInteractiveHandlers(): void {
   slackApp.view(SETTINGS_MODAL_ID, async ({ ack, view, body, client }) => {
     const channelId = view.private_metadata;
     const values = view.state.values;
+    const selectedProvider: AgentProvider =
+      values?.[PROVIDER_BLOCK]?.[PROVIDER_ACTION]?.selected_option?.value === "claude"
+        ? "claude"
+        : "opencode";
     const selectedDevServerId = values?.[DEV_SERVER_BLOCK]?.[DEV_SERVER_ACTION]?.selected_option?.value;
     const selectedModel = values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value;
     const workingDirectory = values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
 
     const errors: Record<string, string> = {};
 
-    if (!selectedDevServerId) {
-      errors[DEV_SERVER_BLOCK] = "Select a dev server.";
-    }
-    if (!selectedModel || selectedModel === "__none__") {
-      errors[MODEL_BLOCK] = "Select a model.";
-    }
+    if (selectedProvider === "opencode") {
+      if (!selectedDevServerId || selectedDevServerId === "__none_server__") {
+        errors[DEV_SERVER_BLOCK] = "Select a dev server.";
+      }
+      if (!selectedModel || selectedModel === "__none__") {
+        errors[MODEL_BLOCK] = "Select a model.";
+      }
 
-    const devServers = getDevServers();
-    const devServer = devServers.find((server) => server.id === selectedDevServerId);
-    if (!devServer) {
-      errors[DEV_SERVER_BLOCK] = "Dev server not found in ~/.config/ode/ode.json.";
-    } else if (selectedModel && !devServer.models.includes(selectedModel)) {
-      errors[MODEL_BLOCK] = "Model not available on the selected dev server.";
+      const devServers = getDevServers();
+      const devServer = devServers.find((server) => server.id === selectedDevServerId);
+      if (!devServer) {
+        errors[DEV_SERVER_BLOCK] = "Dev server not found in ~/.config/ode/ode.json.";
+      } else if (selectedModel && !devServer.models.includes(selectedModel)) {
+        errors[MODEL_BLOCK] = "Model not available on the selected dev server.";
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -316,11 +390,15 @@ export function setupInteractiveHandlers(): void {
     await ack();
 
     try {
-      if (selectedDevServerId) {
+      setChannelAgentProvider(channelId, selectedProvider);
+      if (selectedProvider === "opencode" && selectedDevServerId && selectedDevServerId !== "__none_server__") {
         setChannelDevServerId(channelId, selectedDevServerId);
       }
-      if (selectedModel) {
+      if (selectedProvider === "opencode" && selectedModel && selectedModel !== "__none__") {
         setChannelModel(channelId, selectedModel);
+      }
+      if (selectedProvider === "claude") {
+        setChannelModel(channelId, "");
       }
 
       const workingDirValue = workingDirectory.trim();

@@ -26,6 +26,7 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
+      agentProvider?: "opencode" | "claude";
       model: string;
       workingDirectory: string;
       devServerId?: string | null;
@@ -109,9 +110,11 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
                       : detail.devServerId === null
                         ? null
                         : undefined;
+                  const agentProvider = detail.agentProvider === "claude" ? "claude" : "opencode";
                   return {
                     id: asString(detail.id),
                     name: asString(detail.name),
+                    agentProvider,
                     model: asString(detail.model),
                     workingDirectory: asString(detail.workingDirectory),
                     devServerId,

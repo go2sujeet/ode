@@ -201,6 +201,10 @@ export function buildLiveStatusMessage(
     lines.push(`_${formatElapsedTime(state.startedAt)}_`);
   }
 
+  if (state.phaseStatus) {
+    lines.push(`_${state.phaseStatus}_`);
+  }
+
   if (state.todos.length > 0) {
     const todos = state.todos.map((todo) => ({
       content: todo.content,

@@ -7,6 +7,7 @@ import {
   getSlackAppToken,
   getSlackBotTokens,
   getChannelDevServerId,
+  getChannelAgentProvider,
   getChannelModel,
   getChannelOpenCodeServerUrl,
   getDevServers,
@@ -199,27 +200,30 @@ function truncateToken(token: string): string {
 
 function describeSettingsIssues(channelId: string): string[] {
   const issues: string[] = [];
+  const provider = getChannelAgentProvider(channelId);
   const devServers = getDevServers();
   const devServerId = getChannelDevServerId(channelId);
   const model = getChannelModel(channelId);
   const { workingDirectory } = resolveChannelCwd(channelId);
 
-  if (!devServerId) {
-    issues.push("Dev server not configured.");
-  }
+  if (provider === "opencode") {
+    if (!devServerId) {
+      issues.push("Dev server not configured.");
+    }
 
-  const server = devServerId
-    ? devServers.find((entry) => entry.id === devServerId)
-    : undefined;
+    const server = devServerId
+      ? devServers.find((entry) => entry.id === devServerId)
+      : undefined;
 
-  if (devServerId && !server) {
-    issues.push("Dev server not found in config.");
-  }
+    if (devServerId && !server) {
+      issues.push("Dev server not found in config.");
+    }
 
-  if (!model) {
-    issues.push("Model not configured.");
-  } else if (server && !server.models.includes(model)) {
-    issues.push("Model not available on the selected dev server.");
+    if (!model) {
+      issues.push("Model not configured.");
+    } else if (server && !server.models.includes(model)) {
+      issues.push("Model not available on the selected dev server.");
+    }
   }
 
   if (!workingDirectory) {
@@ -251,7 +255,10 @@ async function postSettingsLauncher(
     blocks: [
       {
         type: "section",
-        text: { type: "mrkdwn", text: "Open channel settings for dev server, model, and working directory." },
+        text: {
+          type: "mrkdwn",
+          text: "Open channel settings for provider, dev server/model (OpenCode), and working directory.",
+        },
       },
       {
         type: "actions",
@@ -515,6 +522,7 @@ export function setupMessageHandlers(): void {
     postGitHubLauncher,
     postSettingsLauncher,
     describeSettingsIssues,
+    getChannelAgentProvider,
     getChannelServerUrl: getChannelOpenCodeServerUrl,
     getProfileBySlackUserId,
     handleStopCommand: (channelId, threadId) => coreRuntime.handleStopCommand(channelId, threadId),

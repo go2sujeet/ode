@@ -23,11 +23,14 @@
         channelDetails: {
             id: string;
             name: string;
+            agentProvider?: "opencode" | "claude";
             model: string;
             workingDirectory: string;
             devServerId?: string | null;
         }[];
     };
+
+    type AgentProvider = "opencode" | "claude";
 
     type DevServer = {
         id: string;
@@ -71,6 +74,8 @@
             slackBotToken: workspace.slackBotToken ?? "",
             channelDetails: workspace.channelDetails.map((channel) => ({
                 ...channel,
+                agentProvider:
+                    channel.agentProvider === "claude" ? "claude" : "opencode",
                 devServerId: channel.devServerId ?? nextDefaultDevServerId,
             })),
         }));
@@ -359,10 +364,13 @@
                 ...workspace,
                 channelDetails: workspace.channelDetails.map((channel) => ({
                     ...channel,
-                    model: ensureModelWithProvider(
-                        channel.model,
-                        channel.devServerId ?? null,
-                    ),
+                    model:
+                        (channel.agentProvider ?? "opencode") === "opencode"
+                            ? ensureModelWithProvider(
+                                  channel.model,
+                                  channel.devServerId ?? null,
+                              )
+                            : "",
                 })),
             })),
         };
@@ -640,6 +648,9 @@
     };
 
     const getChannelModels = (channel: Workspace["channelDetails"][number]) => {
+        if ((channel.agentProvider ?? "opencode") !== "opencode") {
+            return [] as string[];
+        }
         const devServer = devServers.find(
             (server) => server.id === channel.devServerId,
         );
@@ -648,6 +659,11 @@
         }
         return modelOptions;
     };
+
+    const agentProviderOptions: Array<{ value: AgentProvider; label: string }> = [
+        { value: "opencode", label: "OpenCode" },
+        { value: "claude", label: "Claude Code" },
+    ];
 
     const requestDeleteServer = () => {
         if (!currentDevServer) return;
@@ -1185,6 +1201,80 @@
                                         <div class="channel-controls">
                                             <div class="input-field">
                                                 <label
+                                                    for="channel-provider-{channel.id}"
+                                                    >Provider</label
+                                                >
+                                                <select
+                                                    id="channel-provider-{channel.id}"
+                                                    value={channel.agentProvider ??
+                                                        "opencode"}
+                                                    on:change={(event) => {
+                                                        const target =
+                                                            event.currentTarget as HTMLSelectElement;
+                                                        const provider =
+                                                            target.value === "claude"
+                                                                ? "claude"
+                                                                : "opencode";
+                                                        workspaces =
+                                                            workspaces.map(
+                                                                (ws) =>
+                                                                    ws.id ===
+                                                                    currentWorkspace.id
+                                                                        ? {
+                                                                              ...ws,
+                                                                              channelDetails:
+                                                                                  ws.channelDetails.map(
+                                                                                      (
+                                                                                          item,
+                                                                                      ) => {
+                                                                                          if (
+                                                                                              item.id !==
+                                                                                              channel.id
+                                                                                          ) {
+                                                                                              return item;
+                                                                                          }
+                                                                                          const nextModel =
+                                                                                              provider ===
+                                                                                              "opencode"
+                                                                                                  ? ensureModelWithProvider(
+                                                                                                        getChannelModels(
+                                                                                                            {
+                                                                                                                ...item,
+                                                                                                                agentProvider:
+                                                                                                                    "opencode",
+                                                                                                            },
+                                                                                                        )[0] ??
+                                                                                                            item.model,
+                                                                                                        item.devServerId ??
+                                                                                                            null,
+                                                                                                    )
+                                                                                                  : "";
+                                                                                          return {
+                                                                                              ...item,
+                                                                                              agentProvider:
+                                                                                                  provider,
+                                                                                              model: nextModel,
+                                                                                          };
+                                                                                      },
+                                                                                  ),
+                                                                          }
+                                                                        : ws,
+                                                            );
+                                                        scheduleAutoSave();
+                                                    }}
+                                                >
+                                                    {#each agentProviderOptions as option}
+                                                        <option
+                                                            value={option.value}
+                                                            >{option.label}</option
+                                                        >
+                                                    {/each}
+                                                </select>
+                                            </div>
+
+                                            {#if (channel.agentProvider ?? "opencode") === "opencode"}
+                                            <div class="input-field">
+                                                <label
                                                     for="channel-server-{channel.id}"
                                                     >Dev Server</label
                                                 >
@@ -1298,6 +1388,7 @@
                                                     {/each}
                                                 </select>
                                             </div>
+                                            {/if}
                                         </div>
 
                                         <div class="input-field">

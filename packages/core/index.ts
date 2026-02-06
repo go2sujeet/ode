@@ -10,7 +10,7 @@ import {
 } from "@/ims";
 import { type ChildProcess } from "child_process";
 import { watchFile, unwatchFile } from "fs";
-import { stopServer } from "@/agents";
+import { stopAllServers } from "@/agents";
 import {
   getDefaultCwd,
   isLocalMode,
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
         stopConfigWatcher();
       }
       stopAutoUpgradeScheduler();
-      await stopServer();
+      await stopAllServers();
       log.info("Cleanup complete");
       process.exit(0);
     } catch (err) {

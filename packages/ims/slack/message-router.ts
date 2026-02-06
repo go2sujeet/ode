@@ -17,6 +17,7 @@ type RouterDeps = {
   postGitHubLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   postSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
+  getChannelAgentProvider: (channelId: string) => "opencode" | "claude";
   getChannelServerUrl: (channelId: string) => string | undefined;
   getProfileBySlackUserId: (userId: string) => Promise<SlackProfile>;
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
@@ -118,6 +119,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
 
     const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
     const localMode = isLocalMode();
+    const channelProvider = deps.getChannelAgentProvider(channelId);
     const channelServerUrl = deps.getChannelServerUrl(channelId);
     let profile: SlackProfile = null;
     if (!localMode) {
@@ -133,7 +135,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
     }
 
-    if (localMode && !channelServerUrl) {
+    if (localMode && channelProvider === "opencode" && !channelServerUrl) {
       await say({
         text: "OpenCode server URL missing for this channel. Set it in ~/.config/ode/ode.json.",
         thread_ts: threadId,
@@ -141,7 +143,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       return;
     }
 
-    if (!localMode && !profile?.opencode_server_url) {
+    if (!localMode && channelProvider === "opencode" && !profile?.opencode_server_url) {
       await say({
         text: "OpenCode server URL missing for your account. Please contact your administrator.",
         thread_ts: threadId,
@@ -163,7 +165,10 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         threadId,
         userId,
         messageId: message.ts,
-        opencodeServerUrl: localMode ? channelServerUrl || undefined : profile?.opencode_server_url || undefined,
+        opencodeServerUrl:
+          channelProvider === "opencode"
+            ? (localMode ? channelServerUrl || undefined : profile?.opencode_server_url || undefined)
+            : undefined,
         workspaceName,
       },
       cleanText
