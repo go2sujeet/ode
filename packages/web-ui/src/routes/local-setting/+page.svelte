@@ -55,7 +55,7 @@
   $: activeSection =
     pathname.startsWith("/local-setting/agent")
       ? "agent"
-      : pathname.startsWith("/local-setting/slack-bot/")
+      : pathname.startsWith("/local-setting/slack-bot")
         ? "slack"
         : "profile";
   $: enabledProviders = (Object.keys(providerLabels) as AgentProvider[]).filter((provider) => {
@@ -79,8 +79,10 @@
 
   function getSelectedWorkspace(currentPathname: string): DashboardConfig["workspaces"][number] | null {
     if (!config.workspaces.length) return null;
-    if (!currentPathname.startsWith("/local-setting/slack-bot/")) return config.workspaces[0] ?? null;
-    const slug = currentPathname.split("/").filter(Boolean)[2];
+    if (!currentPathname.startsWith("/local-setting/slack-bot")) return config.workspaces[0] ?? null;
+    const [withoutQuery] = currentPathname.split("?");
+    const segments = withoutQuery.split("/").filter(Boolean);
+    const slug = decodeURIComponent(segments[2] ?? "");
     if (!slug) return config.workspaces[0] ?? null;
     return (
       config.workspaces.find((workspace) => slugify(workspace.name) === slug || workspace.id === slug) ??

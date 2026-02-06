@@ -9,6 +9,7 @@
     "setup": "bun install --concurrent-scripts=1 --network-concurrency=8 && bun install --concurrent-scripts=1 --network-concurrency=8 --cwd packages/web-ui",
     "start": "bun run packages/core/index.ts",
     "dev": "bun --watch run packages/core/index.ts --local",
+    "web:dev": "sh -c 'bun --watch run packages/core/index.ts --local & bun --cwd packages/web-ui run dev; kill 0'",
     "postinstall": "bun install --cwd packages/web-ui",
     "test:ci": "bun run setup && bun test",
     "build:web": "bun --cwd packages/web-ui build && bun run embed:web",
