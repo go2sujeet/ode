@@ -1,5 +1,4 @@
-import * as claude from "./claude";
-import * as opencode from "./opencode";
+import { getSelectedAgentProvider } from "./registry";
 
 export type {
   OpenCodeMessage,
@@ -9,10 +8,10 @@ export type {
   OpenCodeSessionInfo,
 } from "./types";
 
-const agent = opencode;
+const agent = getSelectedAgentProvider();
 
-export const selectedAgent = "opencode";
-export const supportsEventStream = true;
+export const selectedAgent = agent.id;
+export const supportsEventStream = agent.supportsEventStream;
 
 export const startServer = agent.startServer;
 export const stopServer = agent.stopServer;

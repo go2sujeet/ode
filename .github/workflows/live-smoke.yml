@@ -1,0 +1,30 @@
+name: Live Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: Run live smoke tests
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  live-smoke:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_live) || (github.event_name == 'schedule' && vars.LIVE_SMOKE_ENABLED == 'true') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run live smoke tests
+        run: bun test packages/agents/test/*.live.test.ts
