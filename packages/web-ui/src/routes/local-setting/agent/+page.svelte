@@ -5,4 +5,4 @@
   export let data: { config: DashboardConfig } | undefined = undefined;
 </script>
 
-<LocalSettingPage {data} />
+<LocalSettingPage {data} initialSection="agent" />
