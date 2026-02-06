@@ -6,13 +6,11 @@ import {
   getSlackTargetChannels,
   getSlackAppToken,
   getSlackBotTokens,
-  getChannelDevServerId,
   getChannelAgentProvider,
   getChannelModel,
-  getChannelOpenCodeServerUrl,
-  getDevServers,
+  getOpenCodeModels,
+  isAgentEnabled,
   getGitHubInfoForUser,
-  isLocalMode,
   resolveChannelCwd,
 } from "@/config";
 import { markdownToSlack, splitForSlack } from "./formatter";
@@ -28,7 +26,6 @@ import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
 import { log } from "@/utils";
 import { getSlackActionApiUrl } from "./config";
-import { getAllBotTokens, getProfileBySlackUserId, getSlackAppTokenFromServer } from "@/config/db";
 import { createThrottledMessageUpdater } from "./message-updates";
 import { fetchThreadHistoryByClient } from "./message-history";
 import { registerSlackMessageRouter } from "./message-router";
@@ -38,7 +35,6 @@ export interface MessageContext {
   threadId: string;
   userId: string;
   messageId: string;
-  opencodeServerUrl?: string;
   workspaceName?: string;
 }
 
@@ -104,9 +100,7 @@ const updateMessageThrottled = createThrottledMessageUpdater({
 });
 
 export async function createSlackApp(): Promise<App> {
-  const appToken = isLocalMode()
-    ? getSlackAppToken().trim()
-    : (await getSlackAppTokenFromServer()).trim();
+  const appToken = getSlackAppToken().trim();
 
   if (!appToken) {
     throw new Error("Slack app token missing");
@@ -139,7 +133,6 @@ export function getApp(): App {
 }
 
 function isAuthorizedChannel(channelId: string): boolean {
-  if (!isLocalMode()) return true;
   const targetChannels = getSlackTargetChannels();
   if (!targetChannels) return true;
   return targetChannels.includes(channelId);
@@ -162,7 +155,6 @@ function resolveWorkspaceAuth(
 
 export function getChannelBotToken(channelId: string): string | undefined {
   const mapped = channelBotTokenMap.get(channelId);
-  if (!isLocalMode()) return mapped;
   if (mapped) return mapped;
   const tokens = getSlackBotTokens()
     .map((entry) => entry.token)
@@ -201,28 +193,19 @@ function truncateToken(token: string): string {
 function describeSettingsIssues(channelId: string): string[] {
   const issues: string[] = [];
   const provider = getChannelAgentProvider(channelId);
-  const devServers = getDevServers();
-  const devServerId = getChannelDevServerId(channelId);
   const model = getChannelModel(channelId);
   const { workingDirectory } = resolveChannelCwd(channelId);
 
-  if (provider === "opencode") {
-    if (!devServerId) {
-      issues.push("Dev server not configured.");
-    }
+  if (!isAgentEnabled(provider)) {
+    issues.push(`Agent not enabled: ${provider}`);
+  }
 
-    const server = devServerId
-      ? devServers.find((entry) => entry.id === devServerId)
-      : undefined;
-
-    if (devServerId && !server) {
-      issues.push("Dev server not found in config.");
-    }
-
+  if (provider === "opencode" || provider === "codex") {
+    const models = getOpenCodeModels();
     if (!model) {
       issues.push("Model not configured.");
-    } else if (server && !server.models.includes(model)) {
-      issues.push("Model not available on the selected dev server.");
+    } else if (!models.includes(model)) {
+      issues.push("Model not available in configured OpenCode models.");
     }
   }
 
@@ -255,10 +238,10 @@ async function postSettingsLauncher(
     blocks: [
       {
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Open channel settings for provider, dev server/model (OpenCode), and working directory.",
-        },
+          text: {
+            type: "mrkdwn",
+            text: "Open channel settings for agent, model (OpenCode), and working directory.",
+          },
       },
       {
         type: "actions",
@@ -345,25 +328,14 @@ function registerWorkspaceAuth(auth: WorkspaceAuth): void {
 }
 
 export async function initializeWorkspaceAuth(): Promise<void> {
-  const localMode = isLocalMode();
-
   const combined = new Map<string, string | null>();
 
-  if (localMode) {
-    for (const record of getSlackBotTokens()) {
-      combined.set(record.token, record.workspaceName ?? "config");
-    }
-  } else {
-    const tokens = await getAllBotTokens();
-    for (const record of tokens) {
-      if (record.botToken) {
-        combined.set(record.botToken, record.workspaceName ?? "db");
-      }
-    }
+  for (const record of getSlackBotTokens()) {
+    combined.set(record.token, record.workspaceName ?? "config");
   }
 
   if (combined.size === 0) {
-    log.warn("No Slack bot tokens configured", { mode: localMode ? "local" : "cloud" });
+    log.warn("No Slack bot tokens configured", { mode: "local" });
   }
 
   for (const [botToken, workspaceName] of combined.entries()) {
@@ -523,8 +495,6 @@ export function setupMessageHandlers(): void {
     postSettingsLauncher,
     describeSettingsIssues,
     getChannelAgentProvider,
-    getChannelServerUrl: getChannelOpenCodeServerUrl,
-    getProfileBySlackUserId,
     handleStopCommand: (channelId, threadId) => coreRuntime.handleStopCommand(channelId, threadId),
     handleIncomingMessage: (context, text) => coreRuntime.handleIncomingMessage(context, text),
   });

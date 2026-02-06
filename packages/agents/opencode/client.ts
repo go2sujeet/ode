@@ -175,7 +175,7 @@ export async function sendMessage(
       const client = await getSessionClient(activeSessionId);
 
       const agent = options?.agent;
-      const model = isLocalMode()
+      const model = options?.model ?? (isLocalMode()
         ? (() => {
             const configured = getChannelModel(channelId);
             if (!configured) {
@@ -191,7 +191,7 @@ export async function sendMessage(
             }
             return { providerID, modelID };
           })()
-        : undefined;
+        : undefined);
 
       // Build message parts
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);

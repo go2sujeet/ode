@@ -44,7 +44,7 @@ describe("runtime helpers", () => {
   });
 
   it("categorizes network errors with server override", () => {
-    const result = categorizeRuntimeError(new Error("ECONNREFUSED connect failed"), "http://127.0.0.1:4096");
+    const result = categorizeRuntimeError(new Error("ECONNREFUSED connect failed"));
     expect(result.message).toContain("http://127.0.0.1:4096");
     expect(result.suggestion).toContain("OpenCode server");
   });

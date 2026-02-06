@@ -12,7 +12,6 @@ export type CoreMessageContext = {
   threadId: string;
   userId: string;
   messageId: string;
-  opencodeServerUrl?: string;
   workspaceName?: string;
 };
 
@@ -58,7 +57,7 @@ export interface IMAdapter {
 
 export interface AgentAdapter {
   supportsEventStream: boolean;
-  getProviderForSession(sessionId: string): "opencode" | "claude";
+  getProviderForSession(sessionId: string): "opencode" | "claudecode" | "codex";
   getOrCreateSession(
     channelId: string,
     threadId: string,

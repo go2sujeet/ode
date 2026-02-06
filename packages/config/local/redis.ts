@@ -5,9 +5,9 @@ let redis: Redis | null = null;
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const AGENT_SESSION_LIMIT = 10;
 
-export type SessionAgentProvider = "opencode" | "claude";
+export type SessionAgentProvider = "opencode" | "claudecode" | "codex";
 
-const SESSION_PREFIXES: SessionAgentProvider[] = ["opencode", "claude"];
+const SESSION_PREFIXES: SessionAgentProvider[] = ["opencode", "claudecode", "codex"];
 
 export function toRedisSessionId(sessionId: string, agentProvider: SessionAgentProvider): string {
   const trimmed = sessionId.trim();
@@ -209,10 +209,13 @@ export async function getSessionMeta(sessionId: string): Promise<SessionMeta | n
     ) {
       return null;
     }
+    const providerRaw = data.agentProvider;
     const inferredAgentProvider: SessionAgentProvider =
-      data.agentProvider === "claude" || data.sessionId.startsWith("claude_")
-        ? "claude"
-        : "opencode";
+      providerRaw === "codex" || data.sessionId.startsWith("codex_")
+        ? "codex"
+        : providerRaw === "claudecode" || providerRaw === "claude" || data.sessionId.startsWith("claude_") || data.sessionId.startsWith("claudecode_")
+          ? "claudecode"
+          : "opencode";
     return {
       sessionId: data.sessionId,
       agentProvider: inferredAgentProvider,

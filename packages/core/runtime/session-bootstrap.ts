@@ -39,7 +39,6 @@ export async function prepareRuntimeSession(params: {
   const threadOwnerUserId = session?.threadOwnerUserId ?? context.userId;
   const { env: sessionEnv, gitIdentity } = buildSessionEnvironment({
     threadOwnerUserId,
-    opencodeServerUrl: context.opencodeServerUrl,
   });
 
   let sessionId: string;
@@ -49,12 +48,11 @@ export async function prepareRuntimeSession(params: {
     stateMachine.transition("prepare_session");
     ({ sessionId, created } = await deps.agent.getOrCreateSession(channelId, threadId, cwd, sessionEnv));
   } catch (err) {
-    const { message, suggestion } = categorizeRuntimeError(err, context.opencodeServerUrl);
+    const { message, suggestion } = categorizeRuntimeError(err);
     log.error("Failed to create OpenCode session", {
       channelId,
       threadId,
       error: String(err),
-      opencodeServerUrl: context.opencodeServerUrl,
     });
     await deps.im.sendMessage(channelId, threadId, `Error: ${message}\n_${suggestion}_`, false);
     return null;

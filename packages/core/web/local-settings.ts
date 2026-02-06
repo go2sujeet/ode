@@ -90,20 +90,22 @@ export const syncSlackWorkspace = async (workspaceId: string): Promise<Dashboard
     "team.info"
   );
   const slackChannels = await fetchSlackChannels(botToken);
-  const fallbackDevServerId = config.devServers[0]?.id ?? null;
-  const fallbackModel = config.devServers[0]?.models?.[0] ?? "";
+  const fallbackModel = config.agents.opencode.models[0] ?? "";
 
   const channelDetails = slackChannels.map((channel) => {
     const existing = workspace.channelDetails.find((item) => item.id === channel.id);
-    const agentProvider: "opencode" | "claude" =
-      existing?.agentProvider === "claude" ? "claude" : "opencode";
+    const agentProvider: "opencode" | "claudecode" | "codex" =
+      existing?.agentProvider === "claudecode"
+        ? "claudecode"
+        : existing?.agentProvider === "codex"
+          ? "codex"
+          : "opencode";
     return {
       id: channel.id,
       name: channel.name ? `#${channel.name}` : "",
       agentProvider,
-      model: existing?.model ?? (agentProvider === "opencode" ? fallbackModel : ""),
+      model: existing?.model ?? (agentProvider === "opencode" || agentProvider === "codex" ? fallbackModel : ""),
       workingDirectory: existing?.workingDirectory ?? "",
-      devServerId: existing?.devServerId ?? fallbackDevServerId,
     };
   });
 

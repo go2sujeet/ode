@@ -225,7 +225,7 @@ async function main(): Promise<void> {
   } catch {
     defaultCwd = null;
   }
-  log.info("Config loaded", { defaultCwd, mode: isLocalMode() ? "local" : "cloud" });
+  log.info("Config loaded", { defaultCwd, mode: "local" });
 
   loadOdeConfig();
 

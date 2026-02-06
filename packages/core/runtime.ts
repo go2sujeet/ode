@@ -128,7 +128,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       stateMachine,
       agentContext,
       options: agent ? { agent } : undefined,
-      serverUrlOverride: context.opencodeServerUrl,
       liveEventHistory: state.liveEventHistory,
       liveParsedState: state.liveParsedState,
       shouldStoreEvents: isRedisTrackingEnabled(),

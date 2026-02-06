@@ -1,11 +1,8 @@
-export type RunMode = "local" | "cloud";
+export type RunMode = "local";
 
 let cachedMode: RunMode | null = null;
 
 function parseModeFromArgs(): RunMode {
-  const args = process.argv.slice(2);
-  if (args.includes("--cloud")) return "cloud";
-  if (args.includes("--local")) return "local";
   return "local";
 }
 
@@ -16,9 +13,5 @@ export function getRunMode(): RunMode {
 }
 
 export function isLocalMode(): boolean {
-  return getRunMode() === "local";
-}
-
-export function isCloudMode(): boolean {
-  return getRunMode() === "cloud";
+  return true;
 }

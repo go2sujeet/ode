@@ -30,7 +30,6 @@ export async function runOpenRequest(params: {
   stateMachine: CoreStateMachine;
   agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
   options?: { agent?: string };
-  serverUrlOverride?: string;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
   shouldStoreEvents: boolean;
@@ -52,7 +51,6 @@ export async function runOpenRequest(params: {
     stateMachine,
     agentContext,
     options,
-    serverUrlOverride,
     liveEventHistory,
     liveParsedState,
     shouldStoreEvents,
@@ -146,7 +144,6 @@ export async function runOpenRequest(params: {
         text,
       });
     },
-    serverUrlOverride,
     failureLogLabel: "Request failed",
   });
 

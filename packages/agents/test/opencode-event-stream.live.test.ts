@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import { statusFromEvent, type ProgressEvent } from "../opencode/client";
-import { getDefaultCwd, getDefaultOpenCodeServerUrl } from "@/config";
+import { getDefaultCwd } from "@/config";
 
-const baseUrl = getDefaultOpenCodeServerUrl();
+const baseUrl = process.env.ODE_OPENCODE_SERVER_URL?.trim() || "http://127.0.0.1:4096";
 const testDir = getDefaultCwd();
 
 const promptText =

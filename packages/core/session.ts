@@ -21,9 +21,8 @@ export type PreparedWorkspace = {
 
 export function buildSessionEnvironment(params: {
   threadOwnerUserId: string;
-  opencodeServerUrl?: string;
 }): SessionPreparation {
-  const { threadOwnerUserId, opencodeServerUrl } = params;
+  const { threadOwnerUserId } = params;
   const githubInfo = getGitHubInfoForUser(threadOwnerUserId);
   const env: SessionEnvironment = {};
 
@@ -39,10 +38,6 @@ export function buildSessionEnvironment(params: {
     env.GIT_AUTHOR_EMAIL = githubInfo.gitEmail;
     env.GIT_COMMITTER_EMAIL = githubInfo.gitEmail;
   }
-  if (opencodeServerUrl) {
-    env.OPENCODE_SERVER_URL = opencodeServerUrl;
-  }
-
   return {
     env,
     gitIdentity: {

@@ -74,9 +74,9 @@ http://127.0.0.1:9293
 ## Local Settings UI
 
 The local settings UI exposes `http://<ODE_WEB_HOST>:<ODE_WEB_PORT>/local-setting` and lets you edit:
-- OpenCode server list and models
+- Agent enablement and OpenCode models
 - Slack workspace tokens and channels
-- Per-channel model + dev server selection
+- Per-channel model + agent selection
 - Working directory per channel
 
 ## License

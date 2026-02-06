@@ -7,19 +7,18 @@ const args = process.argv.slice(2);
 const CURRENT_VERSION = packageJson.version ?? "0.0.0";
 
 function printHelp(): void {
-  // Keep this minimal; runtime.ts already handles --local/--cloud parsing.
+  // Keep this minimal; runtime.ts runs local mode by default.
   console.log(
     [
       "ode - OpenCode Slack bot",
       "",
       "Usage:",
-      "  ode [--local|--cloud]",
+      "  ode [--local]",
       "  ode upgrade",
       "  ode --version",
       "",
       "Examples:",
       "  ode --local",
-      "  ode --cloud",
       "  ode upgrade",
     ].join("\n")
   );

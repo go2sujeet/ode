@@ -17,15 +17,15 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("opencode");
   });
 
-  it("selects claude from env", () => {
+  it("selects claudecode from env", () => {
     process.env.ODE_AGENT_PROVIDER = "claude";
-    expect(getSelectedAgentProviderId()).toBe("claude");
+    expect(getSelectedAgentProviderId()).toBe("claudecode");
   });
 
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
-    const claude = getAgentProvider("claude");
+    const claudecode = getAgentProvider("claudecode");
     expect(opencode.supportsEventStream).toBe(true);
-    expect(claude.supportsEventStream).toBe(false);
+    expect(claudecode.supportsEventStream).toBe(false);
   });
 });

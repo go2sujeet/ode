@@ -1,7 +1,4 @@
-import { isLocalMode } from "@/config";
 import { log } from "@/utils";
-
-type SlackProfile = { opencode_server_url?: string | null } | null;
 
 type RouterDeps = {
   getApp: () => any;
@@ -17,16 +14,13 @@ type RouterDeps = {
   postGitHubLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   postSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
-  getChannelAgentProvider: (channelId: string) => "opencode" | "claude";
-  getChannelServerUrl: (channelId: string) => string | undefined;
-  getProfileBySlackUserId: (userId: string) => Promise<SlackProfile>;
+  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex";
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;
     threadId: string;
     userId: string;
     messageId: string;
-    opencodeServerUrl?: string;
     workspaceName?: string;
   }, text: string) => Promise<void>;
 };
@@ -118,39 +112,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
     }
 
     const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
-    const localMode = isLocalMode();
-    const channelProvider = deps.getChannelAgentProvider(channelId);
-    const channelServerUrl = deps.getChannelServerUrl(channelId);
-    let profile: SlackProfile = null;
-    if (!localMode) {
-      try {
-        profile = await deps.getProfileBySlackUserId(userId);
-      } catch (err) {
-        log.error("Supabase profile lookup failed", { error: String(err) });
-        await say({
-          text: "Failed to load your OpenCode server settings. Please contact your administrator.",
-          thread_ts: threadId,
-        });
-        return;
-      }
-    }
-
-    if (localMode && channelProvider === "opencode" && !channelServerUrl) {
-      await say({
-        text: "OpenCode server URL missing for this channel. Set it in ~/.config/ode/ode.json.",
-        thread_ts: threadId,
-      });
-      return;
-    }
-
-    if (!localMode && channelProvider === "opencode" && !profile?.opencode_server_url) {
-      await say({
-        text: "OpenCode server URL missing for your account. Please contact your administrator.",
-        thread_ts: threadId,
-      });
-      return;
-    }
-
     if (!cleanText) {
       await say({
         text: "Hi! How can I help you? Just ask me anything.",
@@ -165,10 +126,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         threadId,
         userId,
         messageId: message.ts,
-        opencodeServerUrl:
-          channelProvider === "opencode"
-            ? (localMode ? channelServerUrl || undefined : profile?.opencode_server_url || undefined)
-            : undefined,
         workspaceName,
       },
       cleanText

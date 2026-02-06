@@ -25,7 +25,6 @@ export type RunTrackedRequestParams = {
   onComplete: () => void;
   onFail: (message: string) => void;
   publishFinalText: (text: string) => Promise<void>;
-  serverUrlOverride?: string;
   failureLogLabel: string;
 };
 
@@ -51,7 +50,6 @@ export async function runTrackedRequest(
     onComplete,
     onFail,
     publishFinalText,
-    serverUrlOverride,
     failureLogLabel,
   } = params;
 
@@ -118,7 +116,7 @@ export async function runTrackedRequest(
     stopWatcher();
 
     stateMachine.transition("fail");
-    const { message, suggestion } = categorizeRuntimeError(err, serverUrlOverride);
+    const { message, suggestion } = categorizeRuntimeError(err);
     log.error(failureLogLabel, { channelId: request.channelId, threadId: request.threadId, error: String(err) });
 
     request.state = "failed";

@@ -7,12 +7,18 @@ export type DashboardConfig = {
     gitStrategy: "default" | "worktree";
     defaultMessageFrequency: "aggressive" | "medium" | "minimum";
   };
-  devServers: {
-    id: string;
-    name: string;
-    url: string;
-    models: string[];
-  }[];
+  agents: {
+    opencode: {
+      enabled: boolean;
+      models: string[];
+    };
+    claudecode: {
+      enabled: boolean;
+    };
+    codex: {
+      enabled: boolean;
+    };
+  };
   workspaces: {
     id: string;
     name: string;
@@ -26,10 +32,9 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
-      agentProvider?: "opencode" | "claude";
+      agentProvider?: "opencode" | "claudecode" | "codex";
       model: string;
       workingDirectory: string;
-      devServerId?: string | null;
     }[];
   }[];
 };
@@ -41,7 +46,11 @@ export const defaultDashboardConfig: DashboardConfig = {
     gitStrategy: "worktree",
     defaultMessageFrequency: "medium",
   },
-  devServers: [],
+  agents: {
+    opencode: { enabled: true, models: [] },
+    claudecode: { enabled: true },
+    codex: { enabled: true },
+  },
   workspaces: [],
 };
 
@@ -79,20 +88,24 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const record = config as Record<string, unknown>;
   const user = record.user && typeof record.user === "object" ? (record.user as Record<string, unknown>) : {};
 
-  const devServers = Array.isArray(record.devServers)
-    ? (record.devServers
-        .map((item) => {
-          if (!item || typeof item !== "object") return null;
-          const server = item as Record<string, unknown>;
-          return {
-            id: asString(server.id),
-            name: asString(server.name),
-            url: asString(server.url),
-            models: asStringArray(server.models),
-          };
-        })
-        .filter(Boolean) as DashboardConfig["devServers"])
+  const agentsRecord = record.agents && typeof record.agents === "object"
+    ? (record.agents as Record<string, unknown>)
+    : {};
+  const opencodeRecord = agentsRecord.opencode && typeof agentsRecord.opencode === "object"
+    ? (agentsRecord.opencode as Record<string, unknown>)
+    : {};
+  const claudecodeRecord = agentsRecord.claudecode && typeof agentsRecord.claudecode === "object"
+    ? (agentsRecord.claudecode as Record<string, unknown>)
+    : {};
+  const codexRecord = agentsRecord.codex && typeof agentsRecord.codex === "object"
+    ? (agentsRecord.codex as Record<string, unknown>)
+    : {};
+
+  const legacyModels = Array.isArray(record.devServers)
+    ? (record.devServers as Array<Record<string, unknown>>)
+      .flatMap((server) => asStringArray(server.models))
     : [];
+  const opencodeModels = asStringArray(opencodeRecord.models);
 
   const workspaces = Array.isArray(record.workspaces)
     ? (record.workspaces
@@ -104,20 +117,17 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
                 .map((channel) => {
                   if (!channel || typeof channel !== "object") return null;
                   const detail = channel as Record<string, unknown>;
-                  const devServerId =
-                    typeof detail.devServerId === "string"
-                      ? detail.devServerId
-                      : detail.devServerId === null
-                        ? null
-                        : undefined;
-                  const agentProvider = detail.agentProvider === "claude" ? "claude" : "opencode";
+                  const agentProvider = detail.agentProvider === "claude" || detail.agentProvider === "claudecode"
+                    ? "claudecode"
+                    : detail.agentProvider === "codex"
+                      ? "codex"
+                      : "opencode";
                   return {
                     id: asString(detail.id),
                     name: asString(detail.name),
                     agentProvider,
                     model: asString(detail.model),
                     workingDirectory: asString(detail.workingDirectory),
-                    devServerId,
                   };
                 })
                 .filter(Boolean) as DashboardConfig["workspaces"][number]["channelDetails"])
@@ -151,7 +161,18 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       gitStrategy: asGitStrategy(user.gitStrategy),
       defaultMessageFrequency: asFrequency(user.defaultMessageFrequency),
     },
-    devServers,
+    agents: {
+      opencode: {
+        enabled: opencodeRecord.enabled !== false,
+        models: Array.from(new Set((opencodeModels.length > 0 ? opencodeModels : legacyModels).filter(Boolean))),
+      },
+      claudecode: {
+        enabled: claudecodeRecord.enabled !== false,
+      },
+      codex: {
+        enabled: codexRecord.enabled !== false,
+      },
+    },
     workspaces,
   };
 };

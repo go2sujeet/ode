@@ -1,4 +1,5 @@
 import * as claude from "./claude";
+import * as codex from "./codex";
 import * as opencode from "./opencode";
 import type {
   OpenCodeMessage,
@@ -7,7 +8,7 @@ import type {
   OpenCodeSessionInfo,
 } from "./types";
 
-export type AgentProviderId = "opencode" | "claude";
+export type AgentProviderId = "opencode" | "claudecode" | "codex";
 
 export type AgentProvider = {
   id: AgentProviderId;
@@ -49,8 +50,8 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     ensureSession: opencode.ensureSession,
     subscribeToSession: opencode.subscribeToSession,
   },
-  claude: {
-    id: "claude",
+  claudecode: {
+    id: "claudecode",
     supportsEventStream: false,
     startServer: claude.startServer,
     stopServer: claude.stopServer,
@@ -62,11 +63,25 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     ensureSession: claude.ensureSession,
     subscribeToSession: claude.subscribeToSession,
   },
+  codex: {
+    id: "codex",
+    supportsEventStream: false,
+    startServer: codex.startServer,
+    stopServer: codex.stopServer,
+    createSession: codex.createSession,
+    getOrCreateSession: codex.getOrCreateSession,
+    sendMessage: codex.sendMessage,
+    abortSession: codex.abortSession,
+    cancelActiveRequest: codex.cancelActiveRequest,
+    ensureSession: codex.ensureSession,
+    subscribeToSession: codex.subscribeToSession,
+  },
 };
 
 export function getSelectedAgentProviderId(): AgentProviderId {
   const raw = process.env.ODE_AGENT_PROVIDER?.trim().toLowerCase();
-  if (raw === "claude") return "claude";
+  if (raw === "claudecode" || raw === "claude") return "claudecode";
+  if (raw === "codex") return "codex";
   return "opencode";
 }
 

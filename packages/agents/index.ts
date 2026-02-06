@@ -10,7 +10,8 @@ export type {
 
 const agent = getSelectedAgentProvider();
 const opencodeProvider = getAgentProvider("opencode");
-const claudeProvider = getAgentProvider("claude");
+const claudeProvider = getAgentProvider("claudecode");
+const codexProvider = getAgentProvider("codex");
 
 export const selectedAgent = agent.id;
 export const supportsEventStream = agent.supportsEventStream;
@@ -27,7 +28,8 @@ export const subscribeToSession = agent.subscribeToSession;
 
 export async function stopAllServers(): Promise<void> {
   await Promise.allSettled([
-    Promise.resolve(opencodeProvider.stopServer()),
-    Promise.resolve(claudeProvider.stopServer()),
+    Promise.resolve().then(() => opencodeProvider.stopServer()),
+    Promise.resolve().then(() => claudeProvider.stopServer()),
+    Promise.resolve().then(() => codexProvider.stopServer()),
   ]);
 }

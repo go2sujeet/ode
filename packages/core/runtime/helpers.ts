@@ -1,4 +1,3 @@
-import { getDefaultOpenCodeServerUrl } from "@/config";
 import type { NormalizedQuestion } from "@/core/types";
 
 export type Deferred<T> = {
@@ -23,8 +22,7 @@ export function buildFinalResponseText(responses: Array<{ text?: string }>): str
 }
 
 export function categorizeRuntimeError(
-  err: unknown,
-  serverUrlOverride?: string
+  err: unknown
 ): { message: string; suggestion: string } {
   const errorStr = err instanceof Error ? err.message : String(err);
 
@@ -55,13 +53,7 @@ export function categorizeRuntimeError(
     errorStr.includes("ENOTFOUND") ||
     errorStr.includes("network")
   ) {
-    let defaultUrl: string | undefined;
-    try {
-      defaultUrl = getDefaultOpenCodeServerUrl();
-    } catch {
-      defaultUrl = undefined;
-    }
-    const serverUrl = serverUrlOverride || defaultUrl;
+    const serverUrl = process.env.ODE_OPENCODE_SERVER_URL?.trim() || "http://127.0.0.1:4096";
     const message = serverUrl
       ? `OpenCode server not accessible on ${serverUrl}`
       : "OpenCode server not accessible";

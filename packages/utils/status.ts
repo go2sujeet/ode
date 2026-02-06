@@ -13,7 +13,7 @@ export type StatusRequest = {
   statusFrozen?: boolean;
 };
 
-export type AgentStatusProvider = "opencode" | "claude";
+export type AgentStatusProvider = "opencode" | "claudecode" | "codex";
 
 type StatusTodo = {
   content: string;
@@ -322,7 +322,7 @@ export function buildStatusMessageByProvider(
   state?: SessionMessageState,
   frequency: MessageFrequency = "medium"
 ): string {
-  if (provider === "claude") {
+  if (provider === "claudecode") {
     return buildClaudeStatusMessage(request, workingPath, state, frequency);
   }
   return buildLiveStatusMessage(request, workingPath, state, frequency);

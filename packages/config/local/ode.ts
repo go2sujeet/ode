@@ -30,20 +30,34 @@ const userSchema = z.object({
   ]).optional().default("medium"),
 });
 
-const devServerSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  url: z.string(),
-  models: z.array(z.string()),
+const agentProviderSchema = z.enum(["opencode", "claudecode", "codex"]);
+
+const agentsSchema = z.object({
+  opencode: z.object({
+    enabled: z.boolean().optional().default(true),
+    models: z.array(z.string()).optional().default([]),
+  }).optional().default({ enabled: true, models: [] }),
+  claudecode: z.object({
+    enabled: z.boolean().optional().default(true),
+  }).optional().default({ enabled: true }),
+  codex: z.object({
+    enabled: z.boolean().optional().default(true),
+  }).optional().default({ enabled: true }),
+}).optional().default({
+  opencode: { enabled: true, models: [] },
+  claudecode: { enabled: true },
+  codex: { enabled: true },
 });
 
 const channelDetailSchema = z.object({
   id: z.string(),
   name: z.string(),
-  agentProvider: z.enum(["opencode", "claude"]).optional().default("opencode"),
+  agentProvider: z.preprocess(
+    (value) => (value === "claude" ? "claudecode" : value),
+    agentProviderSchema.optional().default("opencode")
+  ),
   model: z.string().optional().default(""),
   workingDirectory: z.string().optional().default(""),
-  devServerId: z.string().nullable().optional(),
 });
 
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
@@ -80,7 +94,7 @@ const odeConfigSchema = z.object({
     )
     .optional()
     .default({}),
-  devServers: z.array(devServerSchema),
+  agents: agentsSchema,
   workspaces: z.array(workspaceSchema),
   updates: updateSchema.optional().default({
     autoUpgrade: true,
@@ -90,7 +104,8 @@ const odeConfigSchema = z.object({
 
 export type ChannelDetail = z.infer<typeof channelDetailSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceSchema>;
-export type DevServerConfig = z.infer<typeof devServerSchema>;
+export type AgentProvider = z.infer<typeof agentProviderSchema>;
+export type AgentsConfig = z.infer<typeof agentsSchema>;
 export type UpdateConfig = z.infer<typeof updateSchema>;
 export type OdeConfig = z.infer<typeof odeConfigSchema>;
 export type UserConfig = z.infer<typeof userSchema>;
@@ -107,7 +122,11 @@ const EMPTY_TEMPLATE: OdeConfig = {
     defaultMessageFrequency: "medium",
   },
   githubInfos: {},
-  devServers: [],
+  agents: {
+    opencode: { enabled: true, models: [] },
+    claudecode: { enabled: true },
+    codex: { enabled: true },
+  },
   workspaces: [],
   updates: {
     autoUpgrade: true,
@@ -143,6 +162,9 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       ? Math.max(intervalCandidate, MIN_UPDATE_INTERVAL_MS)
       : DEFAULT_UPDATE_INTERVAL_MS;
   const autoUpgrade = config.updates?.autoUpgrade ?? true;
+  const opencodeModels = Array.from(new Set((config.agents?.opencode?.models ?? [])
+    .map((model) => model.trim())
+    .filter(Boolean)));
   return {
     ...config,
     user: {
@@ -153,6 +175,18 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
     updates: {
       autoUpgrade,
       checkIntervalMs: normalizedInterval,
+    },
+    agents: {
+      opencode: {
+        enabled: config.agents?.opencode?.enabled ?? true,
+        models: opencodeModels,
+      },
+      claudecode: {
+        enabled: config.agents?.claudecode?.enabled ?? true,
+      },
+      codex: {
+        enabled: config.agents?.codex?.enabled ?? true,
+      },
     },
   };
 }
@@ -169,10 +203,32 @@ export function loadOdeConfig(): OdeConfig {
 
   try {
     const raw = readFileSync(ODE_CONFIG_FILE, "utf-8");
-    const parsed = odeConfigSchema.safeParse(JSON.parse(raw));
-    cachedConfig = parsed.success
-      ? normalizeConfig(parsed.data ?? EMPTY_TEMPLATE)
-      : normalizeConfig(EMPTY_TEMPLATE);
+    const parsedJson = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = odeConfigSchema.safeParse(parsedJson);
+    const base = parsed.success ? parsed.data : EMPTY_TEMPLATE;
+    const hasExplicitModels = (base.agents?.opencode?.models?.length ?? 0) > 0;
+    const legacyModels = Array.isArray(parsedJson.devServers)
+      ? Array.from(
+          new Set(
+            parsedJson.devServers
+              .filter((entry): entry is { models?: unknown } => Boolean(entry && typeof entry === "object"))
+              .flatMap((entry) => (Array.isArray(entry.models) ? entry.models : []))
+              .filter((model): model is string => typeof model === "string")
+              .map((model) => model.trim())
+              .filter(Boolean)
+          )
+        )
+      : [];
+    cachedConfig = normalizeConfig({
+      ...base,
+      agents: {
+        ...base.agents,
+        opencode: {
+          ...base.agents.opencode,
+          models: hasExplicitModels ? base.agents.opencode.models : legacyModels,
+        },
+      },
+    });
     return cachedConfig;
   } catch {
     cachedConfig = normalizeConfig(EMPTY_TEMPLATE);
@@ -194,8 +250,42 @@ export function getWorkspaces(): WorkspaceConfig[] {
   return loadOdeConfig().workspaces;
 }
 
-export function getDevServers(): DevServerConfig[] {
-  return loadOdeConfig().devServers;
+export function getAgentsConfig(): AgentsConfig {
+  return loadOdeConfig().agents;
+}
+
+export function getEnabledAgentProviders(): AgentProvider[] {
+  const agents = getAgentsConfig();
+  const enabled: AgentProvider[] = [];
+  if (agents.opencode.enabled) enabled.push("opencode");
+  if (agents.claudecode.enabled) enabled.push("claudecode");
+  if (agents.codex.enabled) enabled.push("codex");
+  return enabled.length > 0 ? enabled : ["opencode"];
+}
+
+export function isAgentEnabled(agentProvider: AgentProvider): boolean {
+  const agents = getAgentsConfig();
+  if (agentProvider === "opencode") return agents.opencode.enabled;
+  if (agentProvider === "claudecode") return agents.claudecode.enabled;
+  return agents.codex.enabled;
+}
+
+export function getOpenCodeModels(): string[] {
+  return getAgentsConfig().opencode.models;
+}
+
+export function setOpenCodeModels(models: string[]): void {
+  const config = loadOdeConfig();
+  saveOdeConfig({
+    ...config,
+    agents: {
+      ...config.agents,
+      opencode: {
+        ...config.agents.opencode,
+        models,
+      },
+    },
+  });
 }
 
 export function getUpdateConfig(): UpdateConfig {
@@ -232,18 +322,6 @@ export function getSlackTargetChannels(): string[] | null {
 
 export function getDefaultCwd(): string {
   return normalizeCwd(process.cwd());
-}
-
-export function getDefaultOpenCodeServerUrl(): string {
-  const servers = getDevServers();
-  if (servers.length === 0) {
-    throw new Error("No dev servers configured in ~/.config/ode/ode.json");
-  }
-  const url = servers[0]?.url;
-  if (!url) {
-    throw new Error("Dev server URL missing in ~/.config/ode/ode.json");
-  }
-  return url;
 }
 
 export function getChannelDetails(channelId: string): ChannelDetail | null {
@@ -334,33 +412,19 @@ export function getChannelModel(channelId: string): string | null {
   return getChannelDetails(channelId)?.model ?? null;
 }
 
-export function getChannelAgentProvider(channelId: string): "opencode" | "claude" {
-  return getChannelDetails(channelId)?.agentProvider === "claude" ? "claude" : "opencode";
-}
-
-export function getChannelDevServerId(channelId: string): string | null {
-  return getChannelDetails(channelId)?.devServerId ?? null;
-}
-
-export function getChannelOpenCodeServerUrl(channelId: string): string | undefined {
-  const channel = getChannelDetails(channelId);
-  if (!channel) return undefined;
-  if ((channel.agentProvider ?? "opencode") !== "opencode") return undefined;
-  const server = getDevServers().find((entry) => entry.id === channel.devServerId);
-  return server?.url;
+export function getChannelAgentProvider(channelId: string): AgentProvider {
+  const provider = getChannelDetails(channelId)?.agentProvider;
+  if (provider === "claudecode" || provider === "codex") return provider;
+  return "opencode";
 }
 
 export function setChannelModel(channelId: string, model: string): void {
   updateChannel(channelId, (channel) => ({ ...channel, model }));
 }
 
-export function setChannelDevServerId(channelId: string, devServerId: string): void {
-  updateChannel(channelId, (channel) => ({ ...channel, devServerId }));
-}
-
 export function setChannelAgentProvider(
   channelId: string,
-  agentProvider: "opencode" | "claude"
+  agentProvider: AgentProvider
 ): void {
   updateChannel(channelId, (channel) => ({ ...channel, agentProvider }));
 }

@@ -176,7 +176,7 @@ async function handleRequest(request: Request): Promise<Response> {
     });
   }
 
-  if (pathname.startsWith("/local-setting/opencode/") || pathname.startsWith("/local-setting/slack-bot/")) {
+  if (pathname.startsWith("/local-setting/slack-bot/")) {
     return new Response(null, {
       status: 307,
       headers: { location: "/local-setting" },
@@ -287,29 +287,6 @@ async function handleRequest(request: Request): Promise<Response> {
       return jsonResponse(200, { ok: true, workspace });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Slack sync failed";
-      return jsonResponse(500, { ok: false, error: message });
-    }
-  }
-
-  if (pathname === "/api/opencode-sync") {
-    if (request.method !== "POST") {
-      return jsonResponse(405, { ok: false, error: "Method not allowed" });
-    }
-    try {
-      const payload = (await request.json()) as Record<string, unknown>;
-      const serverUrl = typeof payload.serverUrl === "string" ? payload.serverUrl.trim() : "";
-      if (!serverUrl) {
-        return jsonResponse(400, { ok: false, error: "Missing serverUrl" });
-      }
-      const endpoint = new URL("/config/providers", serverUrl).toString();
-      const response = await fetch(endpoint);
-      if (!response.ok) {
-        return jsonResponse(400, { ok: false, error: `${response.status} ${response.statusText}`.trim() });
-      }
-      const providers = await response.json();
-      return jsonResponse(200, { ok: true, providers });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Provider sync failed";
       return jsonResponse(500, { ok: false, error: message });
     }
   }
