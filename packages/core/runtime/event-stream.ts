@@ -84,6 +84,7 @@ export async function startEventStreamWatcher(
   }
 
   let stopNotified = false;
+  const agentProvider = deps.agent.getProviderForSession(request.sessionId);
 
   const unsubscribe = deps.agent.subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
@@ -114,9 +115,10 @@ export async function startEventStreamWatcher(
         timestamp: Date.now(),
         type: event.type || "unknown",
         sessionId: request.sessionId,
+        agentProvider,
         channelId: request.channelId,
         threadId: request.threadId,
-        data: event as Record<string, unknown>,
+        data: (globalEvent as Record<string, unknown>) ?? (event as Record<string, unknown>),
       });
     }
     const pendingQuestion = getPendingQuestion(request.channelId, request.threadId);

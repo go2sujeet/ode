@@ -76,8 +76,10 @@ export async function runOpenRequest(params: {
   saveSession(session);
 
   if (shouldStoreEvents) {
+    const agentProvider = deps.agent.getProviderForSession(session.sessionId);
     void storeSessionMeta({
       sessionId: session.sessionId,
+      agentProvider,
       channelId: session.channelId,
       threadId: session.threadId,
       workingDirectory: session.workingDirectory,

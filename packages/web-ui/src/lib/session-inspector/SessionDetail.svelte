@@ -16,6 +16,7 @@
 
   interface SessionMeta {
     sessionId: string;
+    agentProvider?: "opencode" | "claude";
     channelId: string;
     threadId: string;
     workingDirectory: string;
@@ -145,6 +146,16 @@
   function handleEventSelect(index: number) {
     selectedEventIndex = index;
   }
+
+  function inferProvider(meta: SessionMeta | null): "opencode" | "claude" {
+    if (meta?.agentProvider === "claude") return "claude";
+    if (meta?.sessionId?.startsWith("claude_")) return "claude";
+    return "opencode";
+  }
+
+  function providerLabel(provider: "opencode" | "claude"): string {
+    return provider === "claude" ? "Claude Code" : "OpenCode";
+  }
 </script>
 
 <div class="session-detail">
@@ -157,7 +168,10 @@
   {:else}
     <div class="toolbar">
       <div class="session-meta">
-        <div class="session-id">{meta.sessionId}</div>
+        <div class="session-id-row">
+          <div class="session-id">{meta.sessionId}</div>
+          <span class="provider-badge">{providerLabel(inferProvider(meta))}</span>
+        </div>
         <div class="session-sub">{meta.workingDirectory}</div>
       </div>
       <label class="toggle">
@@ -170,7 +184,12 @@
         <EventLog {events} {selectedEventIndex} onSelect={handleEventSelect} />
       </div>
       <div class="right-panel">
-        <IMPreview {events} {selectedEventIndex} workingDirectory={meta.workingDirectory} />
+        <IMPreview
+          {events}
+          {selectedEventIndex}
+          workingDirectory={meta.workingDirectory}
+          provider={inferProvider(meta)}
+        />
       </div>
     </div>
   {/if}
@@ -211,8 +230,27 @@
     gap: 0.2rem;
   }
 
+  .session-id-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
   .session-id {
     font-family: "Space Grotesk", sans-serif;
+    font-weight: 600;
+  }
+
+  .provider-badge {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.2rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+    color: var(--ink-soft);
     font-weight: 600;
   }
 

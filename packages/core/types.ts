@@ -58,6 +58,7 @@ export interface IMAdapter {
 
 export interface AgentAdapter {
   supportsEventStream: boolean;
+  getProviderForSession(sessionId: string): "opencode" | "claude";
   getOrCreateSession(
     channelId: string,
     threadId: string,

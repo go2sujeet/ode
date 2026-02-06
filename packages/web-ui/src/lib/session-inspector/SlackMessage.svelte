@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buildLiveStatusMessage } from "../../../../utils/status";
+  import { buildStatusMessageByProvider } from "../../../../utils/status";
   import type { SessionMessageState } from "../../../../utils/session-inspector";
 
   type PreviewStatusRequest = {
@@ -13,6 +13,7 @@
 
   export let state: SessionMessageState;
   export let workingDirectory: string;
+  export let provider: "opencode" | "claude" = "opencode";
 
   function renderSlackMarkdown(text: string): string {
     if (!text) return "";
@@ -43,7 +44,7 @@
     statusFrozen: false,
   }) satisfies PreviewStatusRequest;
 
-  $: liveStatusText = buildLiveStatusMessage(previewRequest, workingDirectory, state);
+  $: liveStatusText = buildStatusMessageByProvider(provider, previewRequest, workingDirectory, state);
   $: renderedText = renderSlackMarkdown(liveStatusText);
 </script>
 

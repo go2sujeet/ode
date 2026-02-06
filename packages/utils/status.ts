@@ -13,6 +13,8 @@ export type StatusRequest = {
   statusFrozen?: boolean;
 };
 
+export type AgentStatusProvider = "opencode" | "claude";
+
 type StatusTodo = {
   content: string;
   status: string;
@@ -220,4 +222,98 @@ export function buildLiveStatusMessage(
   }
 
   return lines.join("\n");
+}
+
+function buildClaudeToolDetail(tool: SessionMessageState["tools"][number], workingPath: string): string {
+  const input = tool.input || {};
+  const filePath = input.filePath || input.file_path;
+  const path = input.path;
+  const pattern = input.pattern;
+  const command = input.command;
+
+  if (typeof filePath === "string" && filePath.trim()) {
+    return trimToolPath(filePath, workingPath);
+  }
+  if (typeof pattern === "string" && pattern.trim()) {
+    if (typeof path === "string" && path.trim()) {
+      return `${pattern} in ${trimToolPath(path, workingPath)}`;
+    }
+    return pattern;
+  }
+  if (typeof path === "string" && path.trim()) {
+    return trimToolPath(path, workingPath);
+  }
+  if (typeof command === "string" && command.trim()) {
+    return command;
+  }
+  if (Array.isArray(input.args) && input.args.length > 0) {
+    return input.args.map((value) => String(value)).join(" ");
+  }
+  if (typeof tool.title === "string" && tool.title.trim()) {
+    return trimToolPath(tool.title, workingPath);
+  }
+  return "";
+}
+
+function truncateStatusDetail(value: string, limit = 200): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= limit) return normalized;
+  return `${normalized.slice(0, limit)}...`;
+}
+
+export function buildClaudeStatusMessage(
+  request: StatusRequest,
+  workingPath: string,
+  state?: SessionMessageState,
+  frequency: MessageFrequency = "medium"
+): string {
+  if (!state) {
+    if (request.statusFrozen && request.currentText) return request.currentText;
+    return `_Thinking_ (${formatElapsedTime(request.startedAt)})`;
+  }
+
+  if (request.statusFrozen && request.currentText) {
+    return request.currentText;
+  }
+
+  const lines: string[] = [];
+  const title = state.sessionTitle || "ClaudeCode";
+  lines.push(`*${title}* (${formatElapsedTime(state.startedAt)})`);
+
+  const phase = state.phaseStatus?.trim() || "Thinking";
+  lines.push(`_${phase}_`);
+  if (state.thinkingText && /thinking/i.test(phase)) {
+    lines.push(`_${truncateStatusDetail(state.thinkingText)}_`);
+  }
+
+  const toolLimitByFrequency: Record<MessageFrequency, number> = {
+    minimum: 2,
+    medium: 3,
+    aggressive: 5,
+  };
+  const tools = state.tools || [];
+  if (tools.length > 0) {
+    const limit = toolLimitByFrequency[frequency] ?? 3;
+    const items = tools.slice(-limit);
+    lines.push("", "*Latest actions*");
+    for (const tool of items) {
+      const detail = buildClaudeToolDetail(tool, workingPath);
+      lines.push(`${getToolIcon(tool.status)} \`${tool.name}\`${detail ? ` ${detail}` : ""}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function buildStatusMessageByProvider(
+  provider: AgentStatusProvider,
+  request: StatusRequest,
+  workingPath: string,
+  state?: SessionMessageState,
+  frequency: MessageFrequency = "medium"
+): string {
+  if (provider === "claude") {
+    return buildClaudeStatusMessage(request, workingPath, state, frequency);
+  }
+  return buildLiveStatusMessage(request, workingPath, state, frequency);
 }

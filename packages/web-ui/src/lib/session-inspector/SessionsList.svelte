@@ -3,6 +3,7 @@
 
   interface SessionMeta {
     sessionId: string;
+    agentProvider?: "opencode" | "claude";
     channelId: string;
     threadId: string;
     workingDirectory: string;
@@ -62,7 +63,7 @@
   <div class="hero">
     <div>
       <p class="eyebrow">Session Inspector</p>
-      <h1>OpenCode session timelines</h1>
+      <h1>Agent session timelines</h1>
       <p class="subtitle">Replay message state, tool activity, and status changes over time.</p>
     </div>
   </div>

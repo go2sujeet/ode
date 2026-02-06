@@ -9,6 +9,7 @@
   }>;
   export let selectedEventIndex: number;
   export let workingDirectory: string;
+  export let provider: "opencode" | "claude" = "opencode";
 
   type PreviewState = SessionMessageState & {
     currentStatus: string;
@@ -41,7 +42,7 @@
 
   <div class="preview-content">
     {#if selectedEventIndex >= 0}
-      <SlackMessage {state} {workingDirectory} />
+      <SlackMessage {state} {workingDirectory} {provider} />
     {:else}
       <div class="empty">Select an event to see the message state</div>
     {/if}
