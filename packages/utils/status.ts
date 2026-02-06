@@ -226,6 +226,13 @@ export function buildLiveStatusMessage(
 
 function buildClaudeToolDetail(tool: SessionMessageState["tools"][number], workingPath: string): string {
   const input = tool.input || {};
+  const toolName = tool.name?.toLowerCase?.() ?? "";
+  if (toolName === "task") {
+    const description = input.description;
+    if (typeof description === "string" && description.trim()) {
+      return description.trim();
+    }
+  }
   const filePath = input.filePath || input.file_path;
   const path = input.path;
   const pattern = input.pattern;
@@ -286,20 +293,23 @@ export function buildClaudeStatusMessage(
     lines.push(`_${truncateStatusDetail(state.thinkingText)}_`);
   }
 
-  const toolLimitByFrequency: Record<MessageFrequency, number> = {
-    minimum: 2,
-    medium: 3,
-    aggressive: 5,
-  };
   const tools = state.tools || [];
   if (tools.length > 0) {
-    const limit = toolLimitByFrequency[frequency] ?? 3;
-    const items = tools.slice(-limit);
-    lines.push("", "*Latest actions*");
+    const { itemLimit, detailLimit } = TOOL_DISPLAY_CONFIG[frequency];
+    const items = tools.length > itemLimit ? tools.slice(-itemLimit) : tools;
+    const header = tools.length > itemLimit
+      ? `*Latest actions (Last ${itemLimit} in ${tools.length})*`
+      : "*Latest actions*";
+    lines.push("", header);
     for (const tool of items) {
       const detail = buildClaudeToolDetail(tool, workingPath);
-      lines.push(`${getToolIcon(tool.status)} \`${tool.name}\`${detail ? ` ${detail}` : ""}`);
+      const truncated = detail ? truncateToolDetail(detail, detailLimit) : "";
+      lines.push(`${getToolIcon(tool.status)} \`${tool.name}\`${truncated ? ` ${truncated}` : ""}`);
     }
+  }
+
+  if (state.currentText?.trim()) {
+    lines.push("", "*Current response*", state.currentText);
   }
 
   return lines.join("\n");

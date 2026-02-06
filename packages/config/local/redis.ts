@@ -75,6 +75,11 @@ export interface SessionMeta {
   slackAppId?: string;
 }
 
+interface GetSessionEventsOptions {
+  since?: number;
+  limit?: number;
+}
+
 export function getRedisClient(): Redis {
   if (!redis) {
     redis = new Redis({
@@ -157,11 +162,30 @@ export async function storeSessionMeta(meta: SessionMeta): Promise<void> {
   }
 }
 
-export async function getSessionEvents(sessionId: string): Promise<SessionEvent[]> {
+export async function getSessionEvents(
+  sessionId: string,
+  options: GetSessionEventsOptions = {}
+): Promise<SessionEvent[]> {
   try {
     const client = getRedisClient();
     const key = getSessionEventsKey(sessionId);
-    const events = await client.zrange(key, 0, -1);
+    const since =
+      typeof options.since === "number" && Number.isFinite(options.since)
+        ? Math.floor(options.since)
+        : null;
+    const limit =
+      typeof options.limit === "number" && Number.isFinite(options.limit) && options.limit > 0
+        ? Math.floor(options.limit)
+        : null;
+
+    const events = since !== null
+      ? limit !== null
+        ? await client.zrangebyscore(key, `(${since}`, "+inf", "LIMIT", 0, limit)
+        : await client.zrangebyscore(key, `(${since}`, "+inf")
+      : limit !== null
+        ? await client.zrange(key, -limit, -1)
+        : await client.zrange(key, 0, -1);
+
     return events.map((eventStr: string) => JSON.parse(eventStr) as SessionEvent);
   } catch (err) {
     log.error("Failed to get session events", { sessionId, error: String(err) });

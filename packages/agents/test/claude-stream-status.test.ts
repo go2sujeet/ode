@@ -1,57 +1,73 @@
 import { describe, expect, it } from "bun:test";
-import { mapClaudeRecordToSessionEvents } from "../claude/client";
 import { buildSessionMessageState } from "../../utils/session-inspector";
-import { buildLiveStatusMessage } from "../../utils/status";
+import { buildClaudeStatusMessage } from "../../utils/status";
 
-describe("claude stream status mapping", () => {
-  it("emits drafting status and cumulative text updates", () => {
-    const textByIndex = new Map<number, string>();
-    const toolByIndex = new Map<number, any>();
-    const thinkingByIndex = new Map<number, string>();
+function rawEvent(timestamp: number, record: Record<string, unknown>) {
+  return {
+    timestamp,
+    type: `claude.raw.${String(record.type ?? "unknown")}`,
+    data: {
+      properties: {
+        record,
+      },
+    },
+  };
+}
 
-    mapClaudeRecordToSessionEvents(
-      {
+describe("claude stream status parsing", () => {
+  it("builds cumulative text from raw text deltas", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
         type: "stream_event",
         event: {
           type: "content_block_delta",
           index: 0,
           delta: { type: "text_delta", text: "Hello" },
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
-
-    const events = mapClaudeRecordToSessionEvents(
-      {
+      }),
+      rawEvent(now + 1, {
         type: "stream_event",
         event: {
           type: "content_block_delta",
           index: 0,
           delta: { type: "text_delta", text: " world" },
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
+      }),
+    ]);
 
-    expect(events[0]?.type).toBe("session.status");
-    expect(events[0]?.properties?.status).toBe("Drafting response");
-    expect(events[1]?.type).toBe("message.part.updated");
-    expect((events[1]?.properties?.part as { text?: string })?.text).toBe("Hello world");
+    expect(state.phaseStatus).toBe("Drafting response");
+    expect(state.currentText).toBe("Hello world");
   });
 
-  it("emits running and finished tool statuses", () => {
-    const textByIndex = new Map<number, string>();
-    const toolByIndex = new Map<number, any>();
-    const thinkingByIndex = new Map<number, string>();
+  it("combines text deltas from multiple content block indexes", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Hello" },
+        },
+      }),
+      rawEvent(now + 1, {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 1,
+          delta: { type: "text_delta", text: " world" },
+        },
+      }),
+    ]);
 
-    const startEvents = mapClaudeRecordToSessionEvents(
-      {
+    expect(state.currentText).toBe("Hello world");
+  });
+
+  it("tracks tool lifecycle and parsed input from raw events", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
         type: "stream_event",
         event: {
           type: "content_block_start",
@@ -63,134 +79,299 @@ describe("claude stream status mapping", () => {
             input: { filePath: "README.md" },
           },
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
-
-    const stopEvents = mapClaudeRecordToSessionEvents(
-      {
+      }),
+      rawEvent(now + 1, {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 1,
+          delta: { type: "input_json_delta", partial_json: '{"filePath":"README.md"}' },
+        },
+      }),
+      rawEvent(now + 2, {
         type: "stream_event",
         event: {
           type: "content_block_stop",
           index: 1,
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
+      }),
+    ]);
 
-    expect(startEvents[0]?.properties?.status).toBe("Running tool: Read");
-    expect((startEvents[1]?.properties?.part as { state?: { status?: string } })?.state?.status).toBe("running");
-    expect(stopEvents[0]?.properties?.status).toBe("Finished tool: Read");
-    expect((stopEvents[1]?.properties?.part as { state?: { status?: string } })?.state?.status).toBe("completed");
+    expect(state.phaseStatus).toBe("Finished tool: Read");
+    expect(state.tools.length).toBe(1);
+    expect(state.tools[0]?.name).toBe("Read");
+    expect(state.tools[0]?.status).toBe("completed");
+    expect(state.tools[0]?.input).toEqual({ filePath: "README.md" });
   });
 
-  it("captures tool input deltas and thinking content", () => {
-    const textByIndex = new Map<number, string>();
-    const toolByIndex = new Map<number, any>();
-    const thinkingByIndex = new Map<number, string>();
+  it("tracks tool lifecycle from assistant tool_use and user tool_result records", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "call_1",
+              name: "Read",
+              input: {
+                file_path: "/tmp/repo/README.md",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "call_2",
+              name: "Bash",
+              input: {
+                command: "ls -la",
+              },
+            },
+          ],
+        },
+      }),
+      rawEvent(now + 1, {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_1",
+              content: "README contents",
+              is_error: false,
+            },
+          ],
+        },
+      }),
+    ]);
 
-    mapClaudeRecordToSessionEvents(
-      {
+    expect(state.phaseStatus).toBe("Finished tool: Read");
+    expect(state.tools.length).toBe(2);
+    expect(state.tools[0]?.name).toBe("Read");
+    expect(state.tools[0]?.status).toBe("completed");
+    expect(state.tools[0]?.input).toEqual({ file_path: "/tmp/repo/README.md" });
+    expect(state.tools[1]?.name).toBe("Bash");
+    expect(state.tools[1]?.status).toBe("running");
+  });
+
+  it("tracks thinking text from raw thinking deltas", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
         type: "stream_event",
         event: {
           type: "content_block_start",
           index: 2,
           content_block: {
-            type: "tool_use",
-            id: "tool-2",
-            name: "Bash",
-            input: {},
+            type: "thinking",
+            thinking: "Plan",
           },
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
-
-    const toolDeltaEvents = mapClaudeRecordToSessionEvents(
-      {
+      }),
+      rawEvent(now + 1, {
         type: "stream_event",
         event: {
           type: "content_block_delta",
           index: 2,
-          delta: { type: "input_json_delta", partial_json: '{"command":"ls"}' },
+          delta: { type: "thinking_delta", thinking: " next step" },
         },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
+      }),
+    ]);
 
-    const thinkingEvents = mapClaudeRecordToSessionEvents(
-      {
-        type: "stream_event",
-        event: {
-          type: "content_block_delta",
-          index: 3,
-          delta: { type: "thinking_delta", thinking: "Plan next step" },
-        },
-      },
-      "session-1",
-      textByIndex,
-      toolByIndex,
-      thinkingByIndex
-    );
-
-    expect((toolDeltaEvents[1]?.properties?.part as { state?: { input?: Record<string, string> } })?.state?.input)
-      .toEqual({ command: "ls" });
-    expect((thinkingEvents[1]?.properties?.part as { type?: string; text?: string })?.type).toBe("thinking");
-    expect((thinkingEvents[1]?.properties?.part as { text?: string })?.text).toBe("Plan next step");
+    expect(state.phaseStatus).toBe("Thinking");
+    expect(state.thinkingText).toBe("Plan next step");
   });
 
-  it("extracts session title from claude records", () => {
-    const events = mapClaudeRecordToSessionEvents(
-      {
+  it("extracts session title from raw claude records", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
         type: "meta",
         info: {
           title: "Fix Slack status updates",
         },
-      },
-      "session-1",
-      new Map<number, string>(),
-      new Map<number, any>(),
-      new Map<number, string>()
-    );
-
-    expect(events[0]?.type).toBe("session.updated");
-    expect((events[0]?.properties?.info as { title?: string })?.title).toBe("Fix Slack status updates");
-  });
-
-  it("renders phase status in live status message", () => {
-    const state = buildSessionMessageState([
-      {
-        timestamp: Date.now(),
-        type: "session.status",
-        data: { properties: { status: "Drafting response" } },
-      },
+      }),
     ]);
 
-    const text = buildLiveStatusMessage(
+    expect(state.sessionTitle).toBe("Fix Slack status updates");
+  });
+
+  it("renders claude status message from raw records", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "meta",
+        info: {
+          title: "Investigate preview",
+        },
+      }),
+      rawEvent(now + 1, {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 1,
+          content_block: {
+            type: "tool_use",
+            id: "tool-2",
+            name: "Grep",
+            input: { pattern: "session.status", path: "/tmp/repo" },
+          },
+        },
+      }),
+      rawEvent(now + 2, {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Collecting preview details" },
+        },
+      }),
+    ]);
+
+    const text = buildClaudeStatusMessage(
       {
         channelId: "C1",
         threadId: "T1",
         statusMessageTs: "S1",
-        startedAt: Date.now(),
+        startedAt: now,
         currentText: "",
       },
-      "/tmp/project",
+      "/tmp/repo",
       state,
       "medium"
     );
 
+    expect(text).toContain("Investigate preview");
     expect(text).toContain("Drafting response");
+    expect(text).toContain("`Grep`");
+    expect(text).toContain("Current response");
+    expect(text).toContain("Collecting preview details");
+  });
+
+  it("renders assistant-derived tool details in claude status message", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "call_read",
+              name: "Read",
+              input: {
+                file_path: "/tmp/repo/packages/core/index.ts",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "call_bash",
+              name: "Bash",
+              input: {
+                command: "ls -la",
+              },
+            },
+            {
+              type: "tool_use",
+              id: "call_task",
+              name: "Task",
+              input: {
+                description: "Explore codebase structure",
+                prompt: "Detailed prompt text",
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    const text = buildClaudeStatusMessage(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "aggressive"
+    );
+
+    expect(text).toContain("`Read` packages/core/index.ts");
+    expect(text).toContain("`Bash` ls -la");
+    expect(text).toContain("`Task` Explore codebase structure");
+  });
+
+  it("uses frequency config for latest actions and shows last-N header", () => {
+    const now = Date.now();
+    const toolUses = Array.from({ length: 9 }, (_, idx) => ({
+      type: "tool_use",
+      id: `call_${idx + 1}`,
+      name: "Read",
+      input: {
+        file_path: `/tmp/repo/file-${idx + 1}.ts`,
+      },
+    }));
+
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "assistant",
+        message: {
+          content: toolUses,
+        },
+      }),
+    ]);
+
+    const text = buildClaudeStatusMessage(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "medium"
+    );
+
+    expect(text).toContain("Latest actions (Last 6 in 9)");
+    expect(text).not.toContain("`Read` file-1.ts");
+    expect(text).toContain("`Read` file-9.ts");
+  });
+
+  it("does not truncate current response text", () => {
+    const now = Date.now();
+    const longResponse = `${"A".repeat(180)}\n\n${"B".repeat(180)}`;
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "text",
+              text: longResponse,
+            },
+          ],
+        },
+      }),
+    ]);
+
+    const text = buildClaudeStatusMessage(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "minimum"
+    );
+
+    expect(text).toContain("Current response");
+    expect(text).toContain(longResponse);
   });
 });

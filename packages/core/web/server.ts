@@ -23,6 +23,8 @@ import { log } from "@/utils";
 const DEFAULT_WEB_HOST = "127.0.0.1";
 const DEFAULT_WEB_PORT = 9293;
 const DEFAULT_WEB_BUILD_DIR = join(process.cwd(), "packages", "web-ui", "build");
+const DEFAULT_SESSION_EVENTS_LIMIT = 2000;
+const MAX_SESSION_EVENTS_LIMIT = 10000;
 
 let webServer: ReturnType<typeof Bun.serve> | null = null;
 
@@ -40,6 +42,15 @@ function parsePort(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+function parsePositiveInt(value: string | null, fallback: number, max?: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  const intValue = Math.floor(parsed);
+  if (typeof max === "number") return Math.min(intValue, max);
+  return intValue;
 }
 
 function isRedisSessionApiEnabled(): boolean {
@@ -227,21 +238,29 @@ async function handleRequest(request: Request): Promise<Response> {
         if (!sessionId) {
           return jsonResponse(400, { ok: false, error: "Missing session id" });
         }
-        const events = await getSessionEvents(sessionId);
-
         const url = new URL(request.url);
         const expand = url.searchParams.get("expand") === "true";
         const since = url.searchParams.get("since");
         const sinceTs = since ? parseInt(since, 10) : null;
+        const hasValidSince = sinceTs !== null && !Number.isNaN(sinceTs);
+        const limit = parsePositiveInt(
+          url.searchParams.get("limit"),
+          DEFAULT_SESSION_EVENTS_LIMIT,
+          MAX_SESSION_EVENTS_LIMIT
+        );
+        const events = await getSessionEvents(sessionId, {
+          since: hasValidSince ? sinceTs : undefined,
+          limit: hasValidSince ? undefined : limit,
+        });
 
         let result: SessionEvent[];
         if (expand) {
-          result = sinceTs && !Number.isNaN(sinceTs)
+          result = hasValidSince
             ? events.filter((event) => event.timestamp > sinceTs)
             : events;
         } else {
           const collapsed = collapseTextDeltas(events);
-          result = sinceTs && !Number.isNaN(sinceTs)
+          result = hasValidSince
             ? collapsed.filter((event) => event.timestamp > sinceTs)
             : collapsed;
         }
@@ -372,6 +391,7 @@ export function startLocalWebServer(): void {
   webServer = Bun.serve({
     hostname: host,
     port,
+    idleTimeout: 30,
     fetch: handleRequest,
   });
 

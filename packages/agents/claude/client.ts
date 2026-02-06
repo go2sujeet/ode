@@ -38,71 +38,6 @@ type ClaudeJsonRecord = {
   session_id?: string;
 };
 
-type SessionLikeEvent = {
-  type: string;
-  properties: Record<string, unknown>;
-};
-
-type ClaudeToolState = {
-  id: string;
-  name: string;
-  inputBuffer?: string;
-  input?: Record<string, unknown>;
-};
-
-function tryParseObject(input: string): Record<string, unknown> | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function extractSessionTitle(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const queue: unknown[] = [value];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || typeof current !== "object") continue;
-
-    if (Array.isArray(current)) {
-      for (const item of current) queue.push(item);
-      continue;
-    }
-
-    const record = current as Record<string, unknown>;
-    const directTitle = record.title;
-    if (typeof directTitle === "string") {
-      const trimmed = directTitle.trim();
-      if (trimmed && !trimmed.startsWith("New session")) {
-        return trimmed;
-      }
-    }
-
-    const info = record.info;
-    if (info && typeof info === "object" && !Array.isArray(info)) {
-      const infoTitle = (info as Record<string, unknown>).title;
-      if (typeof infoTitle === "string") {
-        const trimmed = infoTitle.trim();
-        if (trimmed && !trimmed.startsWith("New session")) {
-          return trimmed;
-        }
-      }
-    }
-
-    for (const nested of Object.values(record)) {
-      if (nested && typeof nested === "object") queue.push(nested);
-    }
-  }
-
-  return undefined;
-}
-
 function deriveSessionTitleFromPrompt(message: string): string | undefined {
   const normalized = message.replace(/\s+/g, " ").trim();
   if (!normalized) return undefined;
@@ -289,273 +224,22 @@ function publishSessionEvent(sessionId: string, event: unknown): void {
   }
 }
 
-function statusFromClaudeRecord(
-  record: ClaudeJsonRecord,
-  toolByIndex: Map<number, ClaudeToolState>
-): string | null {
-  if (record.type === "assistant") {
-    return "Drafting response";
-  }
-  if (record.type === "result") {
-    return record.is_error ? "Claude reported an error" : "Finalizing response";
-  }
-  if (record.type !== "stream_event" || !record.event?.type) {
-    return null;
-  }
-
-  switch (record.event.type) {
-    case "message_start":
-      return "Thinking";
-    case "content_block_start": {
-      const block = record.event.content_block;
-      if (block?.type === "tool_use") {
-        const toolName = typeof block.name === "string" ? block.name : "tool";
-        return `Running tool: ${toolName}`;
-      }
-      if (block?.type === "thinking") {
-        return "Thinking";
-      }
-      return "Drafting response";
-    }
-    case "content_block_delta": {
-      const delta = record.event.delta;
-      if (delta?.type === "text_delta") {
-        return "Drafting response";
-      }
-      if (delta?.type === "input_json_delta") {
-        const index = typeof record.event?.index === "number" ? record.event.index : -1;
-        const tool = toolByIndex.get(index);
-        return tool ? `Running tool: ${tool.name}` : "Running tool";
-      }
-      if (delta?.type === "thinking_delta") {
-        return "Thinking";
-      }
-      return null;
-    }
-    case "content_block_stop": {
-      const index = typeof record.event.index === "number" ? record.event.index : -1;
-      const tool = toolByIndex.get(index);
-      return tool ? `Finished tool: ${tool.name}` : "Finished step";
-    }
-    case "message_stop":
-      return "Finalizing response";
-    default:
-      return null;
-  }
-}
-
-export function mapClaudeRecordToSessionEvents(
-  record: unknown,
-  fallbackSessionId: string,
-  textByIndex: Map<number, string>,
-  toolByIndex: Map<number, ClaudeToolState>,
-  thinkingByIndex: Map<number, string>
-): SessionLikeEvent[] {
-  const parsedRecord = record as ClaudeJsonRecord;
-  const events: SessionLikeEvent[] = [];
-  const sessionId = getRecordSessionId(parsedRecord, fallbackSessionId);
-  const sessionTitle = extractSessionTitle(parsedRecord);
-  if (sessionTitle) {
-    events.push({
-      type: "session.updated",
-      properties: {
-        sessionID: sessionId,
-        info: {
-          title: sessionTitle,
-        },
-      },
-    });
-  }
-  const status = statusFromClaudeRecord(parsedRecord, toolByIndex);
-  if (status) {
-    events.push({
-      type: "session.status",
-      properties: {
-        sessionID: sessionId,
-        status,
-      },
-    });
-  }
-
-  if (parsedRecord.type === "assistant") {
-    const text = parsedRecord.message?.content
-      ?.filter((block) => block?.type === "text")
-      .map((block) => block.text ?? "")
-      .join("")
-      .trim();
-    if (text) {
-      events.push({
-        type: "message.part.updated",
-        properties: {
-          part: {
-            type: "text",
-            text,
-            sessionID: sessionId,
-          },
-        },
-      });
-    }
-    return events;
-  }
-
-  if (parsedRecord.type !== "stream_event" || !parsedRecord.event?.type) {
-    return events;
-  }
-
-  const eventType = parsedRecord.event.type;
-  const index = typeof parsedRecord.event.index === "number" ? parsedRecord.event.index : -1;
-
-  if (eventType === "content_block_start") {
-    const contentBlock = parsedRecord.event.content_block;
-    if (contentBlock?.type === "tool_use") {
-      const id = typeof contentBlock.id === "string" ? contentBlock.id : `tool-${Date.now()}-${index}`;
-      const name = typeof contentBlock.name === "string" ? contentBlock.name : "tool";
-      const input =
-        contentBlock && typeof contentBlock.input === "object"
-          ? (contentBlock.input as Record<string, unknown>)
-          : {};
-      toolByIndex.set(index, { id, name, input });
-      events.push({
-        type: "message.part.updated",
-        properties: {
-          part: {
-            type: "tool",
-            id,
-            tool: name,
-            sessionID: sessionId,
-            state: {
-              status: "running",
-              input,
-            },
-          },
-        },
-      });
-    }
-    if (contentBlock?.type === "thinking") {
-      const thinking = typeof contentBlock.thinking === "string" ? contentBlock.thinking : "";
-      if (thinking) {
-        thinkingByIndex.set(index, thinking);
-        events.push({
-          type: "message.part.updated",
-          properties: {
-            part: {
-              type: "thinking",
-              text: thinking,
-              sessionID: sessionId,
-            },
-          },
-        });
-      }
-    }
-    return events;
-  }
-
-  if (eventType === "content_block_delta") {
-    const delta = parsedRecord.event.delta;
-    if (delta?.type === "text_delta") {
-      const chunk = typeof delta.text === "string" ? delta.text : "";
-      if (!chunk) return events;
-      const next = `${textByIndex.get(index) ?? ""}${chunk}`;
-      textByIndex.set(index, next);
-      events.push({
-        type: "message.part.updated",
-        properties: {
-          part: {
-            type: "text",
-            text: next,
-            sessionID: sessionId,
-          },
-        },
-      });
-      return events;
-    }
-
-    if (delta?.type === "input_json_delta") {
-      const tool = toolByIndex.get(index);
-      if (!tool) return events;
-      const chunk = typeof delta.partial_json === "string" ? delta.partial_json : "";
-      if (chunk) {
-        tool.inputBuffer = `${tool.inputBuffer ?? ""}${chunk}`;
-        const parsedInput = tryParseObject(tool.inputBuffer);
-        if (parsedInput) {
-          tool.input = parsedInput;
-        }
-      }
-      events.push({
-        type: "message.part.updated",
-        properties: {
-          part: {
-            type: "tool",
-            id: tool.id,
-            tool: tool.name,
-            sessionID: sessionId,
-            state: {
-              status: "running",
-              input: tool.input,
-            },
-          },
-        },
-      });
-    }
-
-    if (delta?.type === "thinking_delta") {
-      const chunk = typeof delta.thinking === "string" ? delta.thinking : "";
-      if (!chunk) return events;
-      const next = `${thinkingByIndex.get(index) ?? ""}${chunk}`;
-      thinkingByIndex.set(index, next);
-      events.push({
-        type: "message.part.updated",
-        properties: {
-          part: {
-            type: "thinking",
-            text: next,
-            sessionID: sessionId,
-          },
-        },
-      });
-    }
-    return events;
-  }
-
-  if (eventType === "content_block_stop") {
-    const tool = toolByIndex.get(index);
-    if (!tool) return events;
-    events.push({
-      type: "message.part.updated",
-      properties: {
-        part: {
-          type: "tool",
-          id: tool.id,
-          tool: tool.name,
-          sessionID: sessionId,
-          state: {
-            status: "completed",
-            input: tool.input,
-          },
-        },
-      },
-    });
-  }
-
-  return events;
-}
-
 function publishClaudeRecordAsSessionEvents(
   record: ClaudeJsonRecord,
-  fallbackSessionId: string,
-  textByIndex: Map<number, string>,
-  toolByIndex: Map<number, ClaudeToolState>,
-  thinkingByIndex: Map<number, string>
+  fallbackSessionId: string
 ): void {
-  for (const event of mapClaudeRecordToSessionEvents(
-    record,
-    fallbackSessionId,
-    textByIndex,
-    toolByIndex,
-    thinkingByIndex
-  )) {
-    publishSessionEvent(getRecordSessionId(record, fallbackSessionId), event);
-  }
+  const sessionId = getRecordSessionId(record, fallbackSessionId);
+  const rawType = typeof record.type === "string" && record.type.trim()
+    ? record.type.trim()
+    : "unknown";
+  publishSessionEvent(sessionId, {
+    type: `claude.raw.${rawType}`,
+    properties: {
+      record,
+      recordType: rawType,
+      streamEventType: typeof record.event?.type === "string" ? record.event.type : undefined,
+    },
+  });
 }
 
 function parseClaudeResult(output: string): {
@@ -795,22 +479,13 @@ export async function sendMessage(
       });
 
       const envOverrides = sessionEnvironments.get(sessionId) ?? {};
-      const textByIndex = new Map<number, string>();
-      const toolByIndex = new Map<number, ClaudeToolState>();
-      const thinkingByIndex = new Map<number, string>();
       const { output, permissionMode, command } = await runClaudeWithFallback(
         args,
         workingPath,
         envOverrides,
         entry,
         (record) => {
-          publishClaudeRecordAsSessionEvents(
-            record,
-            sessionId,
-            textByIndex,
-            toolByIndex,
-            thinkingByIndex
-          );
+          publishClaudeRecordAsSessionEvents(record, sessionId);
         }
       );
 
