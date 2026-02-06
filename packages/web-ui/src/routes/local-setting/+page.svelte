@@ -218,12 +218,82 @@
 </main>
 
 <style>
-  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
-  .header { display: flex; align-items: center; justify-content: space-between; }
-  .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 16px; display: grid; gap: 8px; }
-  .workspace { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
-  .channel { display: grid; gap: 6px; border: 1px solid #eee; border-radius: 6px; padding: 10px; margin-top: 8px; }
-  input, select, textarea, button { font: inherit; padding: 8px; }
-  .actions { display: flex; gap: 8px; margin-top: 16px; }
-  .message { margin-top: 12px; }
+  .page {
+    display: block;
+    min-height: auto;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+    display: grid;
+    gap: 8px;
+    background: var(--card);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .workspace {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+
+  .channel {
+    display: grid;
+    gap: 6px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 8px;
+    background: var(--bg-soft);
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .message {
+    margin-top: 12px;
+    color: var(--ink-soft);
+  }
+
+  @media (max-width: 768px) {
+    .page {
+      padding: 16px;
+    }
+
+    .header {
+      align-items: flex-start;
+    }
+  }
 </style>
