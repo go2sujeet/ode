@@ -1,10 +1,17 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import {
   setChannelCwd as setChannelCwdInConfig,
 } from "./ode";
 import { loadSession } from "./sessions";
+
+const readFileSync = fs.readFileSync;
+const writeFileSync = fs.writeFileSync;
+const existsSync = fs.existsSync;
+const mkdirSync = fs.mkdirSync;
+const join = typeof path.join === "function" ? path.join : (...parts: string[]) => parts.join("/");
+const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SETTINGS_FILE = join(ODE_CONFIG_DIR, "settings.json");

@@ -7,6 +7,7 @@ import {
   markMessageProcessed,
   saveSession,
 } from "@/config/local/sessions";
+import { resolveMessageFrequency } from "@/config/message-frequency";
 import { runTrackedRequest } from "@/core/runtime/request-runner";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
@@ -115,7 +116,8 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
       const statusText = buildLiveStatusMessage(
         request,
         cwd,
-        state.liveParsedState.get(getStatusMessageKey(request))
+        state.liveParsedState.get(getStatusMessageKey(request)),
+        resolveMessageFrequency()
       );
       await deps.im.updateMessage(channelId, statusTs, statusText, false);
     },

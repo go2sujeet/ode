@@ -1,4 +1,5 @@
 import { storeSessionMeta } from "@/config/local/redis";
+import { resolveMessageFrequency } from "@/config/message-frequency";
 import {
   completeActiveRequest,
   createActiveRequest,
@@ -114,7 +115,8 @@ export async function runOpenRequest(params: {
       const statusText = buildLiveStatusMessage(
         request,
         cwd,
-        liveParsedState.get(getStatusMessageKey(request))
+        liveParsedState.get(getStatusMessageKey(request)),
+        resolveMessageFrequency()
       );
       if (!request.statusFrozen) {
         await deps.im.updateMessage(context.channelId, statusTs, statusText, false);

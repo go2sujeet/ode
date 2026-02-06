@@ -6,6 +6,7 @@ import {
   type TrackedTodo,
   type TrackedTool,
 } from "@/config/local/sessions";
+import { resolveMessageFrequency } from "@/config/message-frequency";
 import { storeSessionEvent } from "@/config/local/redis";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
@@ -163,7 +164,12 @@ export async function startEventStreamWatcher(
         await deps.im.updateMessage(
           request.channelId,
           request.statusMessageTs,
-          buildLiveStatusMessage(request, workingPath, liveParsedState.get(messageKey)),
+          buildLiveStatusMessage(
+            request,
+            workingPath,
+            liveParsedState.get(messageKey),
+            resolveMessageFrequency()
+          ),
           false
         );
         setPendingQuestion(request.channelId, request.threadId, {

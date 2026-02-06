@@ -1,7 +1,15 @@
 <script lang="ts">
-  import type { ActiveRequest } from "../../../../config/local/sessions";
   import { buildLiveStatusMessage } from "../../../../utils/status";
   import type { SessionMessageState } from "../../../../utils/session-inspector";
+
+  type PreviewStatusRequest = {
+    channelId: string;
+    threadId: string;
+    statusMessageTs: string;
+    startedAt: number;
+    currentText: string;
+    statusFrozen?: boolean;
+  };
 
   export let state: SessionMessageState;
   export let workingDirectory: string;
@@ -27,19 +35,13 @@
   }
 
   $: previewRequest = ({
-    sessionId: "preview-session",
     channelId: "preview-channel",
     threadId: "preview-thread",
     statusMessageTs: "preview-status",
-    prompt: "",
     startedAt: state.startedAt,
-    lastUpdatedAt: Date.now(),
     currentText: state.currentText,
-    tools: [],
-    todos: [],
     statusFrozen: false,
-    state: "processing",
-  }) satisfies ActiveRequest;
+  }) satisfies PreviewStatusRequest;
 
   $: liveStatusText = buildLiveStatusMessage(previewRequest, workingDirectory, state);
   $: renderedText = renderSlackMarkdown(liveStatusText);

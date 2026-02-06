@@ -1,7 +1,16 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import { log } from "@/utils";
+
+const readFileSync = fs.readFileSync;
+const writeFileSync = fs.writeFileSync;
+const existsSync = fs.existsSync;
+const mkdirSync = fs.mkdirSync;
+const readdirSync = fs.readdirSync;
+const unlinkSync = fs.unlinkSync;
+const join = typeof path.join === "function" ? path.join : (...parts: string[]) => parts.join("/");
+const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SESSIONS_DIR = join(ODE_CONFIG_DIR, "sessions");

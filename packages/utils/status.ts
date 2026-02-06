@@ -1,10 +1,22 @@
 import {
-  resolveMessageFrequency,
   TOOL_DISPLAY_CONFIG,
   type MessageFrequency,
-} from "@/config";
-import type { ActiveRequest, TrackedTodo } from "@/config/local/sessions";
+} from "@/config/web";
 import type { SessionMessageState } from "./session-inspector";
+
+export type StatusRequest = {
+  channelId: string;
+  threadId: string;
+  statusMessageTs: string;
+  startedAt: number;
+  currentText: string;
+  statusFrozen?: boolean;
+};
+
+type StatusTodo = {
+  content: string;
+  status: string;
+};
 
 const PLAN_TODO_LIMIT = 15;
 
@@ -40,7 +52,7 @@ export function getTodoIcon(status: string): string {
   }
 }
 
-export function getStatusMessageKey(request: ActiveRequest): string {
+export function getStatusMessageKey(request: StatusRequest): string {
   return `${request.channelId}:${request.threadId}:${request.statusMessageTs}`;
 }
 
@@ -74,7 +86,7 @@ export function trimToolPath(label: string, workingPath: string): string {
   return trimmed;
 }
 
-function formatTodoLines(todos: TrackedTodo[], limit = PLAN_TODO_LIMIT): string[] {
+function formatTodoLines(todos: StatusTodo[], limit = PLAN_TODO_LIMIT): string[] {
   const lines: string[] = [];
   for (const todo of todos.slice(0, limit)) {
     const statusLabel = todo.status === "in_progress"
@@ -165,9 +177,10 @@ export function buildToolLines(
 }
 
 export function buildLiveStatusMessage(
-  request: ActiveRequest,
+  request: StatusRequest,
   workingPath: string,
-  state?: SessionMessageState
+  state?: SessionMessageState,
+  frequency: MessageFrequency = "medium"
 ): string {
   if (!state) {
     if (request.statusFrozen && request.currentText) {
@@ -194,12 +207,12 @@ export function buildLiveStatusMessage(
   if (state.todos.length > 0) {
     const todos = state.todos.map((todo) => ({
       content: todo.content,
-      status: todo.status as TrackedTodo["status"],
+      status: todo.status,
     }));
     lines.push("", "*Tasks*", ...formatTodoLines(todos));
   }
 
-  const toolLines = buildToolLines(state, workingPath, resolveMessageFrequency());
+  const toolLines = buildToolLines(state, workingPath, frequency);
   if (toolLines.length > 0) {
     lines.push("");
     lines.push(...toolLines);

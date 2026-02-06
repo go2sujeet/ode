@@ -1,8 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { z } from "zod";
 import { normalizeCwd } from "../paths";
+
+const existsSync = fs.existsSync;
+const mkdirSync = fs.mkdirSync;
+const readFileSync = fs.readFileSync;
+const writeFileSync = fs.writeFileSync;
+const join = typeof path.join === "function" ? path.join : (...parts: string[]) => parts.join("/");
+const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 
 const XDG_CONFIG_HOME = join(homedir(), ".config");
 const ODE_CONFIG_DIR = join(XDG_CONFIG_HOME, "ode");

@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install web-ui deps
+        run: bun install --cwd packages/web-ui
+
       - name: Run core tests
         run: bun test packages/core/test
 

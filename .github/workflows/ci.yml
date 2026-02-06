@@ -31,3 +31,6 @@ jobs:
 
       - name: Agent fast tests
         run: bun test packages/agents/test/cli-command.test.ts packages/agents/test/agent-registry.test.ts
+
+      - name: Build web UI
+        run: bun run build:web
