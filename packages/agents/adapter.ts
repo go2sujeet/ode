@@ -1,6 +1,7 @@
 import type { AgentAdapter, NormalizedQuestion } from "@/core/types";
 import type { QuestionInfo } from "@opencode-ai/sdk/v2";
 import {
+  selectedAgent,
   getOrCreateSession,
   sendMessage,
   abortSession,
@@ -19,6 +20,9 @@ export function createAgentAdapter(): AgentAdapter {
     ensureSession,
     subscribeToSession,
     async replyToQuestion({ requestId, sessionId, directory, answers }) {
+      if (selectedAgent !== "opencode") {
+        throw new Error(`Question replies are not supported for agent: ${selectedAgent}`);
+      }
       const client = await getSessionClient(sessionId);
       const response = await client.question.reply({
         requestID: requestId,
@@ -30,6 +34,7 @@ export function createAgentAdapter(): AgentAdapter {
       }
     },
     normalizeQuestions(questions: unknown): NormalizedQuestion[] {
+      if (selectedAgent !== "opencode") return [];
       if (!Array.isArray(questions) || questions.length === 0) return [];
       return (questions as QuestionInfo[])
         .map((question) => {

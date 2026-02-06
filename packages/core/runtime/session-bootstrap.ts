@@ -1,0 +1,120 @@
+import { loadSession, saveSession, type PersistedSession } from "@/config/local/sessions";
+import { resolveChannelCwd } from "@/config";
+import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
+import { CoreStateMachine } from "@/core/state-machine";
+import { categorizeRuntimeError } from "@/core/runtime/helpers";
+import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
+import { log } from "@/utils";
+
+type BootstrapDeps = {
+  im: IMAdapter;
+  agent: AgentAdapter;
+};
+
+export type PreparedRuntimeSession = {
+  session: PersistedSession;
+  sessionId: string;
+  created: boolean;
+  cwd: string;
+  threadOwnerUserId: string;
+};
+
+export async function prepareRuntimeSession(params: {
+  deps: BootstrapDeps;
+  context: CoreMessageContext;
+  stateMachine: CoreStateMachine;
+}): Promise<PreparedRuntimeSession | null> {
+  const { deps, context, stateMachine } = params;
+  const { channelId, threadId } = context;
+
+  let cwd: string;
+  try {
+    cwd = resolveChannelCwd(channelId).cwd;
+  } catch (err) {
+    await deps.im.sendMessage(channelId, threadId, `Error: ${String(err)}`, false);
+    return null;
+  }
+
+  let session = loadSession(channelId, threadId);
+  const threadOwnerUserId = session?.threadOwnerUserId ?? context.userId;
+  const { env: sessionEnv, gitIdentity } = buildSessionEnvironment({
+    threadOwnerUserId,
+    opencodeServerUrl: context.opencodeServerUrl,
+  });
+
+  let sessionId: string;
+  let created: boolean;
+
+  try {
+    stateMachine.transition("prepare_session");
+    ({ sessionId, created } = await deps.agent.getOrCreateSession(channelId, threadId, cwd, sessionEnv));
+  } catch (err) {
+    const { message, suggestion } = categorizeRuntimeError(err, context.opencodeServerUrl);
+    log.error("Failed to create OpenCode session", {
+      channelId,
+      threadId,
+      error: String(err),
+      opencodeServerUrl: context.opencodeServerUrl,
+    });
+    await deps.im.sendMessage(channelId, threadId, `Error: ${message}\n_${suggestion}_`, false);
+    return null;
+  }
+
+  try {
+    stateMachine.transition("prepare_worktree");
+    const worktreeId = `ode_${threadId}`;
+    const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
+      channelId,
+      threadId,
+      cwd,
+      worktreeId,
+      sessionEnv,
+      gitIdentity,
+    });
+    if (worktree.skipped && worktree.message) {
+      await deps.im.sendMessage(channelId, threadId, worktree.message, false);
+    }
+    cwd = resolvedCwd;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("Failed to prepare worktree", {
+      channelId,
+      threadId,
+      sessionId,
+      error: message,
+    });
+    await deps.im.sendMessage(channelId, threadId, `Error: Failed to prepare worktree. ${message}`, false);
+    return null;
+  }
+
+  if (!session) {
+    session = {
+      sessionId,
+      channelId,
+      threadId,
+      workingDirectory: cwd,
+      threadOwnerUserId,
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+    };
+  } else if (session.sessionId !== sessionId) {
+    session.sessionId = sessionId;
+  }
+
+  if (session.workingDirectory !== cwd) {
+    session.workingDirectory = cwd;
+  }
+
+  if (!session.threadOwnerUserId) {
+    session.threadOwnerUserId = threadOwnerUserId;
+  }
+  saveSession(session);
+
+  return {
+    session,
+    sessionId,
+    created,
+    cwd,
+    threadOwnerUserId,
+  };
+}

@@ -14,7 +14,7 @@ import {
   isLocalMode,
   resolveChannelCwd,
 } from "@/config";
-import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
+import { markdownToSlack, splitForSlack } from "./formatter";
 import {
   markThreadActive,
   isThreadActive,
@@ -28,6 +28,9 @@ import type { OpenCodeMessageContext } from "@/agents";
 import { log } from "@/utils";
 import { getSlackActionApiUrl } from "./config";
 import { getAllBotTokens, getProfileBySlackUserId, getSlackAppTokenFromServer } from "@/config/db";
+import { createThrottledMessageUpdater } from "./message-updates";
+import { fetchThreadHistoryByClient } from "./message-history";
+import { registerSlackMessageRouter } from "./message-router";
 
 export interface MessageContext {
   channelId: string;
@@ -69,22 +72,6 @@ export function resetSlackState(): void {
   app = null;
 }
 
-type SlackThreadMessage = {
-  ts?: string;
-  text?: string;
-  user?: string;
-  bot_id?: string;
-  username?: string;
-  subtype?: string;
-};
-
-// Global rate limiter for chat.update calls across all messages
-// Slack's rate limit is roughly 1 request per second for chat.update
-let globalLastUpdate = 0;
-const GLOBAL_UPDATE_INTERVAL_MS = 1000;
-let globalUpdateQueue: Array<{ channelId: string; messageTs: string; text: string; asMarkdown: boolean; resolve: () => void }> = [];
-let globalQueueProcessing = false;
-
 function getOdeSlackApiUrl(): string | undefined {
   return getSlackActionApiUrl();
 }
@@ -110,48 +97,10 @@ async function buildSlackContext(
   };
 }
 
-async function processGlobalUpdateQueue(): Promise<void> {
-  if (globalQueueProcessing || globalUpdateQueue.length === 0) return;
-  globalQueueProcessing = true;
-
-  while (globalUpdateQueue.length > 0) {
-    const now = Date.now();
-    const timeSinceLastUpdate = now - globalLastUpdate;
-
-    if (timeSinceLastUpdate < GLOBAL_UPDATE_INTERVAL_MS) {
-      await new Promise(r => setTimeout(r, GLOBAL_UPDATE_INTERVAL_MS - timeSinceLastUpdate));
-    }
-
-    const item = globalUpdateQueue.shift();
-    if (!item) break;
-
-    globalLastUpdate = Date.now();
-
-    try {
-      const slackApp = getApp();
-      const formattedText = item.asMarkdown ? markdownToSlack(item.text) : item.text;
-      const truncatedText = truncateForSlack(formattedText);
-
-      const botToken = getChannelBotToken(item.channelId);
-      if (!botToken) {
-        log.warn("No Slack bot token available for message update", { channelId: item.channelId });
-      }
-      await slackApp.client.chat.update({
-        channel: item.channelId,
-
-        ts: item.messageTs,
-        text: truncatedText,
-        token: botToken,
-      });
-    } catch (err) {
-      log.debug("Failed to update message", { error: String(err) });
-    }
-
-    item.resolve();
-  }
-
-  globalQueueProcessing = false;
-}
+const updateMessageThrottled = createThrottledMessageUpdater({
+  getApp,
+  getChannelBotToken,
+});
 
 export async function createSlackApp(): Promise<App> {
   const appToken = isLocalMode()
@@ -483,79 +432,18 @@ export async function deleteMessage(
   }
 }
 
-async function updateMessageThrottled(
-  channelId: string,
-  messageTs: string,
-  text: string,
-  asMarkdown = true
-): Promise<void> {
-  // Remove any existing queued updates for this message (only keep latest)
-  // Use in-place splice instead of filter to avoid reassigning the array,
-  // which would break the while loop in processGlobalUpdateQueue
-  // Also resolve removed items' promises so callers don't hang forever
-  for (let i = globalUpdateQueue.length - 1; i >= 0; i--) {
-    const item = globalUpdateQueue[i];
-    if (item && item.channelId === channelId && item.messageTs === messageTs) {
-      globalUpdateQueue.splice(i, 1);
-      item.resolve(); // Resolve so the awaiting code can continue
-    }
-  }
-
-  // Queue the update
-  return new Promise<void>((resolve) => {
-    globalUpdateQueue.push({ channelId, messageTs, text, asMarkdown, resolve });
-    void processGlobalUpdateQueue();
-  });
-}
-
-function formatThreadAuthor(message: SlackThreadMessage): string {
-  if (message.user) return `<@${message.user}>`;
-  if (message.bot_id) return `bot:${message.bot_id}`;
-  if (message.username) return message.username;
-  return "unknown";
-}
-
 async function fetchThreadHistory(
   channelId: string,
   threadId: string,
   messageId: string
 ): Promise<string | null> {
-  try {
-    const messages: SlackThreadMessage[] = [];
-    let cursor: string | undefined;
-    const client = getApp().client;
-    const token = getChannelBotToken(channelId);
-
-    do {
-      const response = await client.conversations.replies({
-        channel: channelId,
-        ts: threadId,
-        limit: 200,
-        cursor,
-        token,
-      });
-
-      const batch = response.messages as SlackThreadMessage[] | undefined;
-      if (batch?.length) {
-        messages.push(...batch);
-      }
-
-      cursor = response.response_metadata?.next_cursor || undefined;
-    } while (cursor);
-
-    const history = messages
-      .filter((message) => message.ts && message.ts !== messageId)
-      .filter((message) => typeof message.text === "string" && message.text.trim().length > 0)
-      .map((message) => `${formatThreadAuthor(message)}: ${message.text}`);
-
-    if (history.length === 0) {
-      return null;
-    }
-
-    return history.join("\n");
-  } catch {
-    return null;
-  }
+  return fetchThreadHistoryByClient({
+    client: getApp().client,
+    channelId,
+    threadId,
+    messageId,
+    token: getChannelBotToken(channelId),
+  });
 }
 
 const slackAdapter: IMAdapter = {
@@ -611,151 +499,26 @@ export async function handleButtonSelection(
 }
 
 export function setupMessageHandlers(): void {
-  const slackApp = getApp();
-
-  // Handle messages
-  slackApp.message(async ({ message, say, client }) => {
-    // Ignore all message subtypes (edits, deletes, etc) - only process new messages
-    if (message.subtype !== undefined) return;
-    if (!("text" in message) || !message.text) return;
-    if (!("user" in message)) return;
-
-    const channelId = message.channel;
-    const userId = message.user;
-    const text = message.text;
-    const threadId = message.thread_ts || message.ts;
-
-    if (!isAuthorizedChannel(channelId)) {
-      log.info("[DROP] Unauthorized channel", { channelId });
-      return;
-    }
-    registerChannelBotToken(channelId, client.token);
-
-    // Get bot user ID for this workspace
-    const authResult = await client.auth.test();
-    const currentBotUserId = authResult.user_id as string;
-    if (authResult.team_id) {
-      const auth = resolveWorkspaceAuth(authResult.team_id, authResult.enterprise_id ?? undefined);
-      if (auth?.workspaceName && !channelWorkspaceMap.has(channelId)) {
-        channelWorkspaceMap.set(channelId, auth.workspaceName);
-      }
-      registerChannelBotToken(channelId, auth?.botToken);
-    }
-
-    if (userId === currentBotUserId) {
-      log.debug("[DROP] Message from bot user", { channelId, userId });
-      return;
-    }
-
-    // Check for stop command
-    if (/\bstop\b/i.test(text)) {
-      const stopped = await coreRuntime.handleStopCommand(channelId, threadId);
-      if (stopped) {
-        await say({
-          text: "Request stopped.",
-          thread_ts: threadId,
-        });
-        return;
-      }
-    }
-
-    // Check if bot is mentioned or thread is active
-    const isMention = currentBotUserId ? text.includes(`<@${currentBotUserId}>`) : false;
-    const threadActive = isThreadActive(channelId, threadId);
-
-    if (!isMention && !threadActive) {
-      log.info("[DROP] Not mentioned and thread inactive", { channelId, threadId });
-      return;
-    }
-
-    // If message mentions someone else (but not us), ignore it - it's not for us
-    const mentionsOthers = /<@U[A-Z0-9]+>/g.test(text) && !isMention;
-    if (mentionsOthers) {
-      log.info("[DROP] Mentions other user", { channelId, threadId });
-      return;
-    }
-
-    markThreadActive(channelId, threadId);
-
-    const cleanText = currentBotUserId
-      ? text.replace(new RegExp(`<@${currentBotUserId}>`, "g"), "").trim()
-      : text.trim();
-
-    if (isGitHubCommand(cleanText)) {
-      if (isMention) {
-        await postGitHubLauncher(channelId, userId, client);
-      }
-      return;
-    }
-
-    if (isSettingsCommand(cleanText)) {
-      if (isMention) {
-        await postSettingsLauncher(channelId, userId, client);
-      }
-      return;
-    }
-
-    const settingsIssues = describeSettingsIssues(channelId);
-    if (settingsIssues.length > 0) {
-      await say({
-        text: `Channel settings need attention:\n- ${settingsIssues.join("\n- ")}`,
-        thread_ts: threadId,
-      });
-      await postSettingsLauncher(channelId, userId, client);
-      return;
-    }
-
-    const workspaceName = channelWorkspaceMap.get(channelId) || "unknown";
-
-    const localMode = isLocalMode();
-    const channelServerUrl = getChannelOpenCodeServerUrl(channelId);
-    let profile = null;
-    if (!localMode) {
-      try {
-        profile = await getProfileBySlackUserId(userId);
-      } catch (err) {
-        log.error("Supabase profile lookup failed", { error: String(err) });
-        await say({
-          text: "Failed to load your OpenCode server settings. Please contact your administrator.",
-          thread_ts: threadId,
-        });
-        return;
-      }
-    }
-    if (localMode && !channelServerUrl) {
-      await say({
-        text: "OpenCode server URL missing for this channel. Set it in ~/.config/ode/ode.json.",
-        thread_ts: threadId,
-      });
-      return;
-    }
-
-    if (!localMode && !profile?.opencode_server_url) {
-      await say({
-        text: "OpenCode server URL missing for your account. Please contact your administrator.",
-        thread_ts: threadId,
-      });
-      return;
-    }
-
-    if (!cleanText) {
-      await say({
-        text: "Hi! How can I help you? Just ask me anything.",
-        thread_ts: threadId,
-      });
-      return;
-    }
-
-    const context: MessageContext = {
-      channelId,
-      threadId,
-      userId,
-      messageId: message.ts,
-      opencodeServerUrl: localMode ? channelServerUrl : profile?.opencode_server_url || undefined,
-      workspaceName,
-    };
-
-    await coreRuntime.handleIncomingMessage(context, cleanText);
+  registerSlackMessageRouter({
+    getApp,
+    isAuthorizedChannel,
+    registerChannelBotToken,
+    resolveWorkspaceAuth,
+    getChannelWorkspaceName: (channelId) => channelWorkspaceMap.get(channelId),
+    setChannelWorkspaceName: (channelId, workspaceName) => {
+      channelWorkspaceMap.set(channelId, workspaceName);
+    },
+    isThreadActive,
+    markThreadActive,
+    isGitHubCommand,
+    isSettingsCommand,
+    postGitHubLauncher,
+    postSettingsLauncher,
+    describeSettingsIssues,
+    getChannelServerUrl: getChannelOpenCodeServerUrl,
+    getProfileBySlackUserId,
+    handleStopCommand: (channelId, threadId) => coreRuntime.handleStopCommand(channelId, threadId),
+    handleIncomingMessage: (context, text) => coreRuntime.handleIncomingMessage(context, text),
   });
 
 }

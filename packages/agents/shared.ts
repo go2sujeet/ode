@@ -11,6 +11,7 @@ export function buildSlackSystemPrompt(slack?: SlackContext): string {
     "- Be concise and conversational - this is chat, not documentation",
     "- Use short paragraphs, avoid walls of text",
     "- Get straight to the point",
+    "- Do not truncate final answers for brevity; include complete results when details matter",
     "",
     "PROGRESS CHECKLIST:",
     "- Share a short checklist of what you're doing",
