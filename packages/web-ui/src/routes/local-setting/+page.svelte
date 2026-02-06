@@ -126,6 +126,10 @@
     return "opencode";
   }
 
+  function shouldShowChannelModel(channel: { agentProvider?: string }): boolean {
+    return getChannelProvider(channel) === "opencode";
+  }
+
   function setChannelProvider(workspaceId: string, channelId: string, provider: AgentProvider): void {
     config = {
       ...config,
@@ -437,7 +441,7 @@
                   {/each}
                 </select>
 
-                {#if channel.agentProvider === "opencode"}
+                {#if shouldShowChannelModel(channel)}
                   <label for={`channel-model-${channel.id}`}>Model</label>
                   <input id={`channel-model-${channel.id}`} bind:value={channel.model} placeholder="openai/gpt-5.3-codex" />
                 {/if}
