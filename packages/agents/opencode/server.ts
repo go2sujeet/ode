@@ -71,26 +71,51 @@ async function waitForServerReady(baseUrl: string, timeoutMs = 20_000): Promise<
 }
 
 function extractProviderModelIds(providerId: string, models: unknown): string[] {
-  if (!Array.isArray(models)) return [];
-  return models
-    .map((entry) => {
-      if (typeof entry === "string") return `${providerId}/${entry}`;
-      if (!entry || typeof entry !== "object") return "";
-      const model = entry as Record<string, unknown>;
-      const modelId =
-        (typeof model.id === "string" && model.id)
-        || (typeof model.modelID === "string" && model.modelID)
-        || (typeof model.modelId === "string" && model.modelId)
-        || "";
-      return modelId ? `${providerId}/${modelId}` : "";
-    })
-    .filter(Boolean);
+  if (Array.isArray(models)) {
+    return models
+      .map((entry) => {
+        if (typeof entry === "string") return `${providerId}/${entry}`;
+        if (!entry || typeof entry !== "object") return "";
+        const model = entry as Record<string, unknown>;
+        const modelId =
+          (typeof model.id === "string" && model.id)
+          || (typeof model.modelID === "string" && model.modelID)
+          || (typeof model.modelId === "string" && model.modelId)
+          || "";
+        return modelId ? `${providerId}/${modelId}` : "";
+      })
+      .filter(Boolean);
+  }
+
+  if (models && typeof models === "object") {
+    const record = models as Record<string, unknown>;
+    if (Array.isArray(record.items)) {
+      return extractProviderModelIds(providerId, record.items);
+    }
+    return Object.entries(record)
+      .map(([key, value]) => {
+        if (typeof value === "string") return `${providerId}/${value}`;
+        if (value && typeof value === "object") {
+          const model = value as Record<string, unknown>;
+          const modelId =
+            (typeof model.id === "string" && model.id)
+            || (typeof model.modelID === "string" && model.modelID)
+            || (typeof model.modelId === "string" && model.modelId)
+            || key;
+          return modelId ? `${providerId}/${modelId}` : "";
+        }
+        return key ? `${providerId}/${key}` : "";
+      })
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function extractOpenCodeModels(payload: unknown): string[] {
   if (!payload || typeof payload !== "object") return [];
   const data = payload as Record<string, unknown>;
-  const providersRaw = data.providers;
+  const providersRaw = Object.prototype.hasOwnProperty.call(data, "providers") ? data.providers : data;
   const models = new Set<string>();
 
   if (Array.isArray(providersRaw)) {

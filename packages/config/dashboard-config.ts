@@ -39,6 +39,17 @@ export type DashboardConfig = {
   }[];
 };
 
+const defaultWorkspace: DashboardConfig["workspaces"][number] = {
+  id: "workspace-1",
+  name: "Workspace 1",
+  domain: "",
+  status: "active",
+  channels: 0,
+  members: 0,
+  lastSync: "",
+  channelDetails: [],
+};
+
 export const defaultDashboardConfig: DashboardConfig = {
   user: {
     name: "",
@@ -51,8 +62,10 @@ export const defaultDashboardConfig: DashboardConfig = {
     claudecode: { enabled: true },
     codex: { enabled: true },
   },
-  workspaces: [],
+  workspaces: [defaultWorkspace],
 };
+
+const cloneDefaultDashboardConfig = (): DashboardConfig => structuredClone(defaultDashboardConfig);
 
 const asString = (value: unknown, fallback = "") =>
   typeof value === "string" ? value : fallback;
@@ -80,9 +93,60 @@ const asGitStrategy = (
 const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status"] =>
   value === "paused" ? "paused" : "active";
 
+const asAgentProvider = (
+  value: unknown
+): DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"] =>
+  value === "claudecode" ? "claudecode" : value === "codex" ? "codex" : "opencode";
+
+const sanitizeChannelDetail = (
+  channel: unknown
+): DashboardConfig["workspaces"][number]["channelDetails"][number] | null => {
+  if (!channel || typeof channel !== "object") return null;
+  const detail = channel as Record<string, unknown>;
+  return {
+    id: asString(detail.id),
+    name: asString(detail.name),
+    agentProvider: asAgentProvider(detail.agentProvider),
+    model: asString(detail.model),
+    workingDirectory: asString(detail.workingDirectory),
+  };
+};
+
+const sanitizePrimaryWorkspace = (workspaces: unknown): DashboardConfig["workspaces"][number] => {
+  if (!Array.isArray(workspaces) || workspaces.length === 0) {
+    return structuredClone(defaultWorkspace);
+  }
+  const first = workspaces[0];
+  if (!first || typeof first !== "object") {
+    return structuredClone(defaultWorkspace);
+  }
+
+  const workspace = first as Record<string, unknown>;
+  const channelDetails = Array.isArray(workspace.channelDetails)
+    ? (workspace.channelDetails
+        .map((channel) => sanitizeChannelDetail(channel))
+        .filter(Boolean) as DashboardConfig["workspaces"][number]["channelDetails"])
+    : [];
+  const slackAppToken = asString(workspace.slackAppToken, "");
+  const slackBotToken = asString(workspace.slackBotToken, "");
+
+  return {
+    id: asString(workspace.id) || defaultWorkspace.id,
+    name: asString(workspace.name) || defaultWorkspace.name,
+    domain: asString(workspace.domain),
+    status: asStatus(workspace.status),
+    channels: asNumber(workspace.channels),
+    members: asNumber(workspace.members),
+    lastSync: asString(workspace.lastSync),
+    slackAppToken: slackAppToken || undefined,
+    slackBotToken: slackBotToken || undefined,
+    channelDetails,
+  };
+};
+
 export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   if (!config || typeof config !== "object") {
-    return defaultDashboardConfig;
+    return cloneDefaultDashboardConfig();
   }
 
   const record = config as Record<string, unknown>;
@@ -101,56 +165,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
     ? (agentsRecord.codex as Record<string, unknown>)
     : {};
 
-  const legacyModels = Array.isArray(record.devServers)
-    ? (record.devServers as Array<Record<string, unknown>>)
-      .flatMap((server) => asStringArray(server.models))
-    : [];
   const opencodeModels = asStringArray(opencodeRecord.models);
 
-  const workspaces = Array.isArray(record.workspaces)
-    ? (record.workspaces
-        .map((item) => {
-          if (!item || typeof item !== "object") return null;
-          const workspace = item as Record<string, unknown>;
-          const channelDetails = Array.isArray(workspace.channelDetails)
-            ? (workspace.channelDetails
-                .map((channel) => {
-                  if (!channel || typeof channel !== "object") return null;
-                  const detail = channel as Record<string, unknown>;
-                  const agentProvider = detail.agentProvider === "claude" || detail.agentProvider === "claudecode"
-                    ? "claudecode"
-                    : detail.agentProvider === "codex"
-                      ? "codex"
-                      : "opencode";
-                  return {
-                    id: asString(detail.id),
-                    name: asString(detail.name),
-                    agentProvider,
-                    model: asString(detail.model),
-                    workingDirectory: asString(detail.workingDirectory),
-                  };
-                })
-                .filter(Boolean) as DashboardConfig["workspaces"][number]["channelDetails"])
-            : [];
-
-          const slackAppToken = asString(workspace.slackAppToken, "");
-          const slackBotToken = asString(workspace.slackBotToken, "");
-
-          return {
-            id: asString(workspace.id),
-            name: asString(workspace.name),
-            domain: asString(workspace.domain),
-            status: asStatus(workspace.status),
-            channels: asNumber(workspace.channels),
-            members: asNumber(workspace.members),
-            lastSync: asString(workspace.lastSync),
-            slackAppToken: slackAppToken || undefined,
-            slackBotToken: slackBotToken || undefined,
-            channelDetails,
-          };
-        })
-        .filter(Boolean) as DashboardConfig["workspaces"])
-    : [];
+  const primaryWorkspace = sanitizePrimaryWorkspace(record.workspaces);
 
   return {
     user: {
@@ -164,7 +181,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
     agents: {
       opencode: {
         enabled: opencodeRecord.enabled !== false,
-        models: Array.from(new Set((opencodeModels.length > 0 ? opencodeModels : legacyModels).filter(Boolean))),
+        models: Array.from(new Set(opencodeModels.filter(Boolean))),
       },
       claudecode: {
         enabled: claudecodeRecord.enabled !== false,
@@ -173,6 +190,6 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
         enabled: codexRecord.enabled !== false,
       },
     },
-    workspaces,
+    workspaces: [primaryWorkspace],
   };
 };
