@@ -350,40 +350,47 @@
           </div>
         </section>
       {:else if activeSection === "agent"}
-        <section class="card">
-          <div class="card-head">
+        <section class="card agent-card">
+          <div class="card-head agent-head">
             <h2>Agent</h2>
-            <button on:click={checkAgents} disabled={isCheckingCli || isLoading || isSaving}>
+            <button class="btn-sync" on:click={checkAgents} disabled={isCheckingCli || isLoading || isSaving}>
               {isCheckingCli ? "Checking..." : "Check"}
             </button>
           </div>
 
-          <div class="agent-row">
-            <strong>OpenCode CLI</strong>
-            <span class="badge {config.agents.opencode.enabled ? 'on' : 'off'}">
-              {config.agents.opencode.enabled ? "Enabled" : "Disabled"}
-            </span>
-            {#if cliCheckResult}
-              <span class="check-result {cliCheckResult.opencode ? 'ok' : 'bad'}">
-                {cliCheckResult.opencode ? "Installed" : "Not found"}
+          <div class="agent-status-grid">
+            <div class="agent-row">
+              <strong>OpenCode CLI</strong>
+              <span class="badge {config.agents.opencode.enabled ? 'on' : 'off'}">
+                {config.agents.opencode.enabled ? "Enabled" : "Disabled"}
               </span>
-            {/if}
+              {#if cliCheckResult}
+                <span class="check-result {cliCheckResult.opencode ? 'ok' : 'bad'}">
+                  {cliCheckResult.opencode ? "Installed" : "Not found"}
+                </span>
+              {/if}
+            </div>
+
+            <div class="agent-row">
+              <strong>Claude CLI</strong>
+              <span class="badge {config.agents.claudecode.enabled ? 'on' : 'off'}">
+                {config.agents.claudecode.enabled ? "Enabled" : "Disabled"}
+              </span>
+              {#if cliCheckResult}
+                <span class="check-result {cliCheckResult.claude ? 'ok' : 'bad'}">
+                  {cliCheckResult.claude ? "Installed" : "Not found"}
+                </span>
+              {/if}
+            </div>
           </div>
 
-          <div class="agent-row">
-            <strong>Claude CLI</strong>
-            <span class="badge {config.agents.claudecode.enabled ? 'on' : 'off'}">
-              {config.agents.claudecode.enabled ? "Enabled" : "Disabled"}
-            </span>
-            {#if cliCheckResult}
-              <span class="check-result {cliCheckResult.claude ? 'ok' : 'bad'}">
-                {cliCheckResult.claude ? "Installed" : "Not found"}
-              </span>
-            {/if}
+          <div class="models-section">
+            <div class="section-header">
+              <h3>OpenCode Models</h3>
+              <span class="hint-text">One model per line</span>
+            </div>
+            <textarea id="agent-opencode-models" rows="8" bind:value={opencodeModelsText}></textarea>
           </div>
-
-          <label for="agent-opencode-models">OpenCode models (one per line)</label>
-          <textarea id="agent-opencode-models" rows="8" bind:value={opencodeModelsText}></textarea>
         </section>
       {:else}
         <section class="card">
@@ -571,6 +578,55 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  .agent-card {
+    gap: 14px;
+  }
+
+  .agent-head {
+    margin-bottom: 2px;
+  }
+
+  .agent-status-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .models-section {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--bg-soft);
+    display: grid;
+    gap: 8px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .hint-text {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .btn-sync {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: auto;
+  }
+
+  .btn-sync:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .badge {
