@@ -196,10 +196,7 @@ export function buildLiveStatusMessage(
   const lines: string[] = [];
 
   if (state.sessionTitle) {
-    const trimmedTitle = state.sessionTitle.length > 40
-      ? `${state.sessionTitle.slice(0, 40)}...`
-      : state.sessionTitle;
-    lines.push(`*${trimmedTitle}* (${formatElapsedTime(state.startedAt)})`);
+    lines.push(`*${state.sessionTitle}* (${formatElapsedTime(state.startedAt)})`);
   } else {
     lines.push(`_${formatElapsedTime(state.startedAt)}_`);
   }
