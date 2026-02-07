@@ -38,6 +38,7 @@ type JsonResponse = {
     opencode: boolean;
     claude: boolean;
     codex: boolean;
+    kimi: boolean;
   };
   providers?: unknown;
   result?: unknown;
@@ -402,6 +403,7 @@ async function handleRequest(request: Request): Promise<Response> {
         opencode: opencodeAvailable,
         claude: Boolean(Bun.which("claude")),
         codex: Boolean(Bun.which("codex")),
+        kimi: Boolean(Bun.which("kimi")),
         opencodeModels,
         opencodeModelError,
       },

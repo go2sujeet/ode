@@ -102,11 +102,13 @@ export const syncSlackWorkspace = async (workspaceId: string): Promise<Dashboard
 
   const channelDetails = slackChannels.map((channel) => {
     const existing = workspace.channelDetails.find((item) => item.id === channel.id);
-    const agentProvider: "opencode" | "claudecode" | "codex" =
+    const agentProvider: "opencode" | "claudecode" | "codex" | "kimi" =
       existing?.agentProvider === "claudecode"
         ? "claudecode"
         : existing?.agentProvider === "codex"
           ? "codex"
+          : existing?.agentProvider === "kimi"
+            ? "kimi"
           : "opencode";
     return {
       id: channel.id,

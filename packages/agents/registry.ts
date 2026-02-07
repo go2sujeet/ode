@@ -1,5 +1,6 @@
 import * as claude from "./claude";
 import * as codex from "./codex";
+import * as kimi from "./kimi";
 import * as opencode from "./opencode";
 import type {
   OpenCodeMessage,
@@ -8,7 +9,7 @@ import type {
   OpenCodeSessionInfo,
 } from "./types";
 
-export type AgentProviderId = "opencode" | "claudecode" | "codex";
+export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi";
 
 export type AgentProvider = {
   id: AgentProviderId;
@@ -76,12 +77,26 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     ensureSession: codex.ensureSession,
     subscribeToSession: codex.subscribeToSession,
   },
+  kimi: {
+    id: "kimi",
+    supportsEventStream: false,
+    startServer: kimi.startServer,
+    stopServer: kimi.stopServer,
+    createSession: kimi.createSession,
+    getOrCreateSession: kimi.getOrCreateSession,
+    sendMessage: kimi.sendMessage,
+    abortSession: kimi.abortSession,
+    cancelActiveRequest: kimi.cancelActiveRequest,
+    ensureSession: kimi.ensureSession,
+    subscribeToSession: kimi.subscribeToSession,
+  },
 };
 
 export function getSelectedAgentProviderId(): AgentProviderId {
   const raw = process.env.ODE_AGENT_PROVIDER?.trim().toLowerCase();
   if (raw === "claudecode" || raw === "claude") return "claudecode";
   if (raw === "codex") return "codex";
+  if (raw === "kimi") return "kimi";
   return "opencode";
 }
 

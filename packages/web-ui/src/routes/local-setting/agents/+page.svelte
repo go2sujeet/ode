@@ -33,6 +33,15 @@
       {/if}
     </div>
 
+    <div class="agent-row">
+      <strong>Kimi CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <span class="badge {$localSettingStore.cliCheckResult.kimi ? 'on' : 'off'}">
+          {$localSettingStore.cliCheckResult.kimi ? "Installed" : "Not found"}
+        </span>
+      {/if}
+    </div>
+
     <div class="agent-row opencode-row">
       <strong>OpenCode CLI</strong>
       {#if $localSettingStore.cliCheckResult}

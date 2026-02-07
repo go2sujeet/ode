@@ -31,7 +31,7 @@ const MODEL_ACTION = "model_select";
 const WORKING_DIR_BLOCK = "working_dir";
 const WORKING_DIR_ACTION = "working_dir_input";
 
-type AgentProvider = "opencode" | "claudecode" | "codex";
+type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi";
 
 function normalizeModel(value: string): string {
   return value.trim().toLowerCase();
@@ -46,15 +46,16 @@ function findMatchingModel(models: string[], value: string | null | undefined): 
 function getSelectableProviders(): AgentProvider[] {
   const enabled = getEnabledAgentProviders().filter(
     (provider): provider is AgentProvider =>
-      provider === "opencode" || provider === "claudecode" || provider === "codex"
+      provider === "opencode" || provider === "claudecode" || provider === "codex" || provider === "kimi"
   );
   if (enabled.length > 0) return enabled;
-  return ["opencode", "claudecode", "codex"];
+  return ["opencode", "claudecode", "codex", "kimi"];
 }
 
-function toSelectableProvider(provider: "opencode" | "claudecode" | "codex"): AgentProvider {
+function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi"): AgentProvider {
   if (provider === "claudecode") return "claudecode";
   if (provider === "codex") return "codex";
+  if (provider === "kimi") return "kimi";
   return "opencode";
 }
 
@@ -78,6 +79,7 @@ function buildSettingsModal(params: {
     opencode: "OpenCode",
     claudecode: "Claude Code",
     codex: "Codex",
+    kimi: "Kimi",
   };
   const providerOptions = enabledProviders.map((provider) => ({
     text: { type: "plain_text" as const, text: providerLabels[provider] },
@@ -291,6 +293,8 @@ export function setupInteractiveHandlers(): void {
       ? "claudecode"
       : selectedOption === "codex"
         ? "codex"
+        : selectedOption === "kimi"
+          ? "kimi"
         : "opencode";
     if (selectedProvider === "opencode") {
       try {
@@ -328,6 +332,8 @@ export function setupInteractiveHandlers(): void {
         ? "claudecode"
         : values?.[PROVIDER_BLOCK]?.[PROVIDER_ACTION]?.selected_option?.value === "codex"
           ? "codex"
+          : values?.[PROVIDER_BLOCK]?.[PROVIDER_ACTION]?.selected_option?.value === "kimi"
+            ? "kimi"
           : "opencode";
     const selectedModel = values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value;
     const workingDirectory = values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";

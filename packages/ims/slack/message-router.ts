@@ -14,7 +14,7 @@ type RouterDeps = {
   postGitHubLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   postSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
-  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex";
+  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex" | "kimi";
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;

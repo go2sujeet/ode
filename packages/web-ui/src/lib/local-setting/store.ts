@@ -5,6 +5,7 @@ export type CliCheckResult = {
   opencode: boolean;
   claude: boolean;
   codex: boolean;
+  kimi: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
 };
@@ -53,6 +54,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
       },
       codex: {
         enabled: input.agents?.codex?.enabled ?? true,
+      },
+      kimi: {
+        enabled: input.agents?.kimi?.enabled ?? true,
       },
     },
   };
@@ -172,6 +176,10 @@ async function checkAgents(): Promise<void> {
           codex: {
             ...state.config.agents.codex,
             enabled: result.codex,
+          },
+          kimi: {
+            ...state.config.agents.kimi,
+            enabled: result.kimi,
           },
         },
       },

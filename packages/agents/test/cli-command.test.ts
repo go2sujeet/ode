@@ -3,6 +3,7 @@ import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared"
 import { buildOpenCodeCommand } from "../opencode/client";
 import { buildClaudeCommand, buildClaudeCommandArgs } from "../claude/client";
 import { buildCodexCommand, buildCodexCommandArgs } from "../codex/client";
+import { buildKimiCommand, buildKimiCommandArgs } from "../kimi/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -62,5 +63,20 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("--model gpt-5-codex");
     expect(command).toContain("session-3");
     expect(command).toContain("'hello from codex'");
+  });
+
+  it("builds the Kimi print command", () => {
+    const args = buildKimiCommandArgs({
+      sessionId: "session-4",
+      workingPath: "/tmp/project",
+      prompt: "hello from kimi",
+    });
+    const command = buildKimiCommand(args);
+
+    expect(command).toContain("kimi --print");
+    expect(command).toContain("--output-format stream-json");
+    expect(command).toContain("--session session-4");
+    expect(command).toContain("--work-dir /tmp/project");
+    expect(command).toContain("-p 'hello from kimi'");
   });
 });

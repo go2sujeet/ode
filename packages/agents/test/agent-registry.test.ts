@@ -22,10 +22,17 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("claudecode");
   });
 
+  it("selects kimi from env", () => {
+    process.env.ODE_AGENT_PROVIDER = "kimi";
+    expect(getSelectedAgentProviderId()).toBe("kimi");
+  });
+
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
     const claudecode = getAgentProvider("claudecode");
+    const kimi = getAgentProvider("kimi");
     expect(opencode.supportsEventStream).toBe(true);
     expect(claudecode.supportsEventStream).toBe(false);
+    expect(kimi.supportsEventStream).toBe(false);
   });
 });
