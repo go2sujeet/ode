@@ -40,7 +40,6 @@ describe("runTrackedRequest", () => {
       stateMachine: new CoreStateMachine("C1:T1"),
       liveEventHistory: new Map(),
       liveParsedState: new Map(),
-      shouldStoreEvents: false,
       sendPrompt: async () => [{ text: "done", messageType: "assistant" }],
       onProgressTick: async () => {},
       onComplete: () => completed.push("ok"),
@@ -77,7 +76,6 @@ describe("runTrackedRequest", () => {
       stateMachine: new CoreStateMachine("C1:T1"),
       liveEventHistory: new Map(),
       liveParsedState: new Map(),
-      shouldStoreEvents: false,
       sendPrompt: async () => {
         throw new Error("boom");
       },

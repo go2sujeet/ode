@@ -32,7 +32,6 @@ type HandleSelectionReplyParams = {
   selection: string;
   messageTs: string;
   cwd: string;
-  shouldStoreEvents: boolean;
   getStateMachine: (context: { channelId: string; threadId: string }) => CoreStateMachine;
   publishFinalText: (params: {
     channelId: string;
@@ -52,7 +51,6 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
     selection,
     messageTs,
     cwd,
-    shouldStoreEvents,
     getStateMachine,
     publishFinalText,
   } = params;
@@ -115,7 +113,6 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
     stateMachine: getStateMachine({ channelId, threadId }),
     liveEventHistory: state.liveEventHistory,
     liveParsedState: state.liveParsedState,
-    shouldStoreEvents,
     sendPrompt: () =>
       deps.agent.sendMessage(
         channelId,

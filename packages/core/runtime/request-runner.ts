@@ -19,7 +19,6 @@ export type RunTrackedRequestParams = {
   stateMachine: CoreStateMachine;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
-  shouldStoreEvents: boolean;
   sendPrompt: () => Promise<OpenCodeMessage[]>;
   onProgressTick: () => Promise<void>;
   onComplete: () => void;
@@ -44,7 +43,6 @@ export async function runTrackedRequest(
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    shouldStoreEvents,
     sendPrompt,
     onProgressTick,
     onComplete,
@@ -66,7 +64,6 @@ export async function runTrackedRequest(
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    shouldStoreEvents,
     onUpdate: () => {},
     onStop: () => {
       stopSignal.resolve();

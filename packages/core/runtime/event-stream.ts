@@ -7,7 +7,6 @@ import {
   type TrackedTool,
 } from "@/config/local/sessions";
 import { resolveMessageFrequency } from "@/config/message-frequency";
-import { storeSessionEvent } from "@/config/local/redis";
 import { CoreStateMachine } from "@/core/state-machine";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
@@ -30,7 +29,6 @@ type StartEventStreamWatcherParams = {
   stateMachine: CoreStateMachine;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
-  shouldStoreEvents: boolean;
   onUpdate: () => void;
   onStop?: () => void;
 };
@@ -45,7 +43,6 @@ export async function startEventStreamWatcher(
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    shouldStoreEvents,
     onUpdate,
     onStop,
   } = params;
@@ -84,8 +81,6 @@ export async function startEventStreamWatcher(
   }
 
   let stopNotified = false;
-  const agentProvider = deps.agent.getProviderForSession(request.sessionId);
-
   const unsubscribe = deps.agent.subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
     log.info("[OPENCODE] Event", {
@@ -110,17 +105,6 @@ export async function startEventStreamWatcher(
     };
     eventHistory.push(sessionEvent);
 
-    if (shouldStoreEvents) {
-      void storeSessionEvent({
-        timestamp: Date.now(),
-        type: event.type || "unknown",
-        sessionId: request.sessionId,
-        agentProvider,
-        channelId: request.channelId,
-        threadId: request.threadId,
-        data: (globalEvent as Record<string, unknown>) ?? (event as Record<string, unknown>),
-      });
-    }
     const pendingQuestion = getPendingQuestion(request.channelId, request.threadId);
 
     if (pendingQuestion) {

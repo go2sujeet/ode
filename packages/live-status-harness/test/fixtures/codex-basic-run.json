@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "runId": "codex_1700000000000_deadbeef",
+    "provider": "codex",
+    "prompt": "fixed",
+    "promptHash": "hash",
+    "cwd": "/tmp/repo",
+    "channelId": "C_TEST",
+    "threadId": "T_TEST",
+    "sessionId": "session-1",
+    "startedAt": 1700000000000,
+    "eventCount": 6
+  },
+  "events": [
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000100,
+      "index": 0,
+      "event": {
+        "type": "codex.raw.thread.started",
+        "properties": {
+          "eventType": "thread.started",
+          "event": {
+            "type": "thread.started",
+            "thread_id": "session-1"
+          }
+        }
+      }
+    },
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000200,
+      "index": 1,
+      "event": {
+        "type": "codex.raw.item.completed",
+        "properties": {
+          "eventType": "item.completed",
+          "event": {
+            "type": "item.completed",
+            "item": {
+              "id": "cmd_1",
+              "type": "command_execution",
+              "command": "/bin/bash -lc 'rg --files'",
+              "status": "in_progress"
+            }
+          }
+        }
+      }
+    },
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000300,
+      "index": 2,
+      "event": {
+        "type": "codex.raw.item.completed",
+        "properties": {
+          "eventType": "item.completed",
+          "event": {
+            "type": "item.completed",
+            "item": {
+              "id": "cmd_1",
+              "type": "command_execution",
+              "command": "/bin/bash -lc 'rg --files'",
+              "aggregated_output": "README.md\npackage.json",
+              "exit_code": 0,
+              "status": "completed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000400,
+      "index": 3,
+      "event": {
+        "type": "codex.raw.turn.completed",
+        "properties": {
+          "eventType": "turn.completed",
+          "event": {
+            "type": "turn.completed",
+            "usage": {
+              "input_tokens": 100,
+              "output_tokens": 50
+            }
+          }
+        }
+      }
+    },
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000500,
+      "index": 4,
+      "event": {
+        "type": "codex.raw.item.completed",
+        "properties": {
+          "eventType": "item.completed",
+          "event": {
+            "type": "item.completed",
+            "item": {
+              "id": "msg_1",
+              "type": "agent_message",
+              "text": "Most important change is to remove duplicated runtime paths."
+            }
+          }
+        }
+      }
+    },
+    {
+      "runId": "codex_1700000000000_deadbeef",
+      "sessionId": "session-1",
+      "provider": "codex",
+      "timestamp": 1700000000600,
+      "index": 5,
+      "event": {
+        "type": "codex.raw.turn.started",
+        "properties": {
+          "eventType": "turn.started",
+          "event": {
+            "type": "turn.started"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -35,3 +35,12 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 - Available skills: `agent-browser`, `slack-developer-researcher`, `opencode-developer-researcher`
 - Use `agent-browser` for any browser automation tasks.
 - If you discover new Slack/OpenCode updates during development, update the matching skill doc under `.opencode/skills/`.
+
+## Agent live status workflow
+- Use `packages/live-status-harness/fixed-prompt.md` as the baseline stream-capture prompt.
+- Capture stream events with `bun run live-status:capture --provider <opencode|claudecode|codex|kimi>`.
+- Store raw ordered events in Redis under the harness keyspace (`harness:live_status:*`).
+- Render status outputs from captured events with `bun run live-status:render --run-id <runId>`.
+- Keep harness scripts in `packages/live-status-harness/` so stream capture/testing stays decoupled from the normal Ode runtime.
+- Before changing live status parsing/formatting, replay a captured run and verify output changes intentionally.
+- For new agent integrations, add at least one harness fixture and one deterministic render test.
