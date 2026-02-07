@@ -201,7 +201,7 @@ function describeSettingsIssues(channelId: string): string[] {
     issues.push(`Agent not enabled: ${provider}`);
   }
 
-  if (provider === "opencode" || provider === "codex") {
+  if (provider === "opencode") {
     const models = getOpenCodeModels();
     const modelSet = new Set(models.map(normalizeModel));
     if (!model) {
