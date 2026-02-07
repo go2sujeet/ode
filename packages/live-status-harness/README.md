@@ -42,14 +42,25 @@ If `--run-id` is omitted, the latest run in Redis is used.
 bun run packages/live-status-harness/scripts/generate-report.ts
 ```
 
-This runs capture + render for each provider (`opencode`, `claudecode`, `codex`, `kimi`), then writes a combined report with each provider's final live status message and final result message.
+This runs capture + render for each provider (`opencode`, `claudecode`, `codex`, `kimi`).
+
+By default, it writes one report per provider:
+
+- `packages/live-status-harness/reports/opencode.md`
+- `packages/live-status-harness/reports/claudecode.md`
+- `packages/live-status-harness/reports/codex.md`
+- `packages/live-status-harness/reports/kimi.md`
+
+Use `--providers <list>` to run only specific providers.
 
 For `opencode`, the report run forces model `openai/gpt-5.3-codex` so it does not depend on channel-level model config.
 
 Optional flags:
 
 - `--providers opencode,claudecode,codex,kimi`
-- `--output <path>` (default: `packages/live-status-harness/reports/agent-live-status.md`)
+- `--layout split|combined|both` (default: `split`)
+- `--output-dir <path>` for provider files (default: `packages/live-status-harness/reports`)
+- `--output <path>` for combined file (default: `packages/live-status-harness/reports/agent-live-status.md`)
 - `--cwd <path>`
 - `--prompt-file <path>`
 - `--redis-prefix <prefix>`

@@ -6,8 +6,12 @@ import { buildHarnessRunId, HarnessRedisStore } from "../redis-store";
 import { renderStatusesFromRun } from "../renderer";
 
 const DEFAULT_OUTPUT_PATH = "packages/live-status-harness/reports/agent-live-status.md";
+const DEFAULT_OUTPUT_DIR = "packages/live-status-harness/reports";
 const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi"];
 const OPENCODE_REPORT_MODEL = "openai/gpt-5.3-codex";
+const REPORT_LAYOUTS = ["split", "combined", "both"] as const;
+
+type ReportLayout = typeof REPORT_LAYOUTS[number];
 
 type ProviderRunSummary = {
   provider: AgentProviderId;
@@ -46,6 +50,14 @@ function parseProviders(raw: string | undefined): AgentProviderId[] {
   );
 
   return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
+}
+
+function parseLayout(raw: string | undefined): ReportLayout {
+  const normalized = raw?.trim().toLowerCase();
+  if (!normalized) return "split";
+  return REPORT_LAYOUTS.includes(normalized as ReportLayout)
+    ? normalized as ReportLayout
+    : "split";
 }
 
 async function runHarnessScript(scriptPath: string, args: string[]): Promise<void> {
@@ -128,6 +140,45 @@ function buildMarkdown(
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+function buildProviderMarkdown(
+  summary: ProviderRunSummary,
+  generatedAt: Date,
+  options: { promptFile?: string; cwd: string; redisPrefix?: string }
+): string {
+  const lines: string[] = [];
+  lines.push(`# Live Status Harness Report - ${summary.provider}`);
+  lines.push("");
+  lines.push(`Generated: ${generatedAt.toISOString()}`);
+  lines.push(`Provider: ${summary.provider}`);
+  lines.push(`Working directory: ${options.cwd}`);
+  if (options.promptFile) {
+    lines.push(`Prompt file: ${options.promptFile}`);
+  }
+  if (options.redisPrefix) {
+    lines.push(`Redis prefix: ${options.redisPrefix}`);
+  }
+  lines.push("");
+  lines.push(`- Run ID: ${summary.runId}`);
+  lines.push(`- Events captured: ${summary.eventCount}`);
+  lines.push(`- Status updates rendered: ${summary.statusCount}`);
+
+  if (summary.error) {
+    lines.push(`- Error: ${summary.error}`);
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  lines.push("");
+  lines.push("## Final Live Status Message");
+  lines.push("");
+  lines.push(toMarkdownCodeBlock(summary.finalStatus));
+  lines.push("");
+  lines.push("## Result Message");
+  lines.push("");
+  lines.push(toMarkdownCodeBlock(summary.resultMessage));
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
 async function runProvider(
   provider: AgentProviderId,
   capturePath: string,
@@ -176,13 +227,16 @@ async function runProvider(
 
 async function main(): Promise<void> {
   const providers = parseProviders(parseArg("providers"));
+  const layout = parseLayout(parseArg("layout"));
   const redisPrefix = parseArg("redis-prefix");
   const promptFile = parseArg("prompt-file");
   const outputPath = parseArg("output") || DEFAULT_OUTPUT_PATH;
+  const outputDir = parseArg("output-dir") || DEFAULT_OUTPUT_DIR;
   const cwd = parseArg("cwd") || process.cwd();
   const failFast = hasFlag("fail-fast");
 
   const absoluteOutputPath = resolve(outputPath);
+  const absoluteOutputDir = resolve(outputDir);
   const capturePath = fileURLToPath(new URL("./capture-stream.ts", import.meta.url));
   const renderPath = fileURLToPath(new URL("./render-status.ts", import.meta.url));
 
@@ -215,12 +269,28 @@ async function main(): Promise<void> {
       }
     }
 
-    const markdown = buildMarkdown(summaries, new Date(), { cwd, promptFile, redisPrefix });
-    await mkdir(dirname(absoluteOutputPath), { recursive: true });
-    await Bun.write(absoluteOutputPath, markdown);
+    const generatedAt = new Date();
+    const outputPaths: string[] = [];
+
+    if (layout === "split" || layout === "both") {
+      await mkdir(absoluteOutputDir, { recursive: true });
+      for (const summary of summaries) {
+        const providerOutputPath = resolve(absoluteOutputDir, `${summary.provider}.md`);
+        const providerMarkdown = buildProviderMarkdown(summary, generatedAt, { cwd, promptFile, redisPrefix });
+        await Bun.write(providerOutputPath, providerMarkdown);
+        outputPaths.push(providerOutputPath);
+      }
+    }
+
+    if (layout === "combined" || layout === "both") {
+      const markdown = buildMarkdown(summaries, generatedAt, { cwd, promptFile, redisPrefix });
+      await mkdir(dirname(absoluteOutputPath), { recursive: true });
+      await Bun.write(absoluteOutputPath, markdown);
+      outputPaths.push(absoluteOutputPath);
+    }
 
     process.stdout.write(
-      `${JSON.stringify({ outputPath: absoluteOutputPath, providers: summaries.map((summary) => summary.provider), failures: summaries.filter((summary) => Boolean(summary.error)).length }, null, 2)}\n`
+      `${JSON.stringify({ layout, outputPaths, providers: summaries.map((summary) => summary.provider), failures: summaries.filter((summary) => Boolean(summary.error)).length }, null, 2)}\n`
     );
   } finally {
     await store.close();
