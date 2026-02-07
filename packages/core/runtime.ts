@@ -1,7 +1,6 @@
 import {
   DEFAULT_CODEX_MODEL,
   getChannelModel,
-  isLocalMode,
   resolveMessageFrequency,
 } from "@/config";
 import {
@@ -30,12 +29,6 @@ type RuntimeDeps = {
   im: IMAdapter;
   agent: AgentAdapter;
 };
-
-function isRedisTrackingEnabled(): boolean {
-  if (!isLocalMode()) return false;
-  const flag = process.env.ODE_REDIS_ENABLED?.trim().toLowerCase();
-  return flag === "true" || flag === "1" || flag === "yes";
-}
 
 type RuntimeState = {
   liveEventHistory: Map<string, SessionEvent[]>;
@@ -144,7 +137,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       options,
       liveEventHistory: state.liveEventHistory,
       liveParsedState: state.liveParsedState,
-      shouldStoreEvents: isRedisTrackingEnabled(),
       publishFinalText,
     });
 

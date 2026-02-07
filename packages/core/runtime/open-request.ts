@@ -1,4 +1,3 @@
-import { storeSessionMeta } from "@/config/local/redis";
 import { resolveMessageFrequency } from "@/config/message-frequency";
 import {
   completeActiveRequest,
@@ -33,7 +32,6 @@ export async function runOpenRequest(params: {
   options?: OpenCodeOptions;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
-  shouldStoreEvents: boolean;
   publishFinalText: (params: {
     channelId: string;
     threadId: string;
@@ -54,7 +52,6 @@ export async function runOpenRequest(params: {
     options,
     liveEventHistory,
     liveParsedState,
-    shouldStoreEvents,
     publishFinalText,
   } = params;
 
@@ -74,20 +71,6 @@ export async function runOpenRequest(params: {
   session.activeRequest = request;
   saveSession(session);
 
-  if (shouldStoreEvents) {
-    const agentProvider = deps.agent.getProviderForSession(session.sessionId);
-    void storeSessionMeta({
-      sessionId: session.sessionId,
-      agentProvider,
-      channelId: session.channelId,
-      threadId: session.threadId,
-      workingDirectory: session.workingDirectory,
-      createdAt: session.createdAt,
-      lastActivityAt: Date.now(),
-      threadOwnerUserId: session.threadOwnerUserId,
-    });
-  }
-
   let lastHeartbeat = Date.now();
   const result = await runTrackedRequest({
     deps,
@@ -97,7 +80,6 @@ export async function runOpenRequest(params: {
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    shouldStoreEvents,
     sendPrompt: () =>
       deps.agent.sendMessage(
         context.channelId,

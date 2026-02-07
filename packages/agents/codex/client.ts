@@ -383,7 +383,10 @@ export async function sendMessage(
         if (event.type === "thread.started" && typeof event.thread_id === "string") {
           latestSessionId = event.thread_id;
         }
-        publishCodexEvent(latestSessionId, event);
+        publishCodexEvent(sessionId, event);
+        if (latestSessionId !== sessionId) {
+          publishCodexEvent(latestSessionId, event);
+        }
       });
 
       const parsed = parseCodexResponse(output);
