@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "live-status:capture": "bun run packages/live-status-harness/scripts/capture-stream.ts",
     "live-status:render": "bun run packages/live-status-harness/scripts/render-status.ts",
+    "live-status:report": "bun run packages/live-status-harness/scripts/generate-report.ts",
     "test:live-status": "bun test packages/live-status-harness/test"
   },
   "bin": {

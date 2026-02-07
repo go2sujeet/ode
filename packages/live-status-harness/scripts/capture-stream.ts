@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { OpenCodeMessageContext } from "@/agents";
 import { getAgentProvider, type AgentProviderId } from "@/agents/registry";
+import type { OpenCodeOptions } from "@/agents/types";
 import { buildHarnessRunId, HarnessRedisStore } from "../redis-store";
 import type { HarnessCapturedEvent, HarnessRunMeta } from "../types";
 
@@ -26,6 +27,20 @@ function normalizeProvider(value: string | undefined): AgentProviderId {
   return "opencode";
 }
 
+function parseModelArg(value: string | undefined): OpenCodeOptions["model"] | undefined {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  const [providerRaw, modelRaw] = normalized.includes("/")
+    ? normalized.split("/", 2)
+    : ["openai", normalized];
+  const providerID = providerRaw?.trim().toLowerCase().replace(/\s+/g, "-") ?? "openai";
+  const modelID = modelRaw?.trim() ?? "";
+  if (!modelID) {
+    throw new Error("Invalid --model value; use <provider>/<model> or <model>");
+  }
+  return { providerID, modelID };
+}
+
 async function loadPrompt(promptPath?: string): Promise<string> {
   const defaultPath = new URL("../fixed-prompt.md", import.meta.url);
   const file = promptPath ? Bun.file(promptPath) : Bun.file(defaultPath);
@@ -45,6 +60,7 @@ async function main(): Promise<void> {
   const threadId = parseArg("thread") || `T_${Date.now()}`;
   const userId = parseArg("user") || DEFAULT_USER_ID;
   const prompt = await loadPrompt(parseArg("prompt-file"));
+  const model = parseModelArg(parseArg("model"));
 
   const runId = parseArg("run-id") || buildHarnessRunId(provider);
   const startedAt = Date.now();
@@ -102,7 +118,7 @@ async function main(): Promise<void> {
       session.sessionId,
       prompt,
       cwd,
-      undefined,
+      model ? { model } : undefined,
       context
     );
 
