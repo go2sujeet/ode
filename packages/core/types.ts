@@ -4,7 +4,7 @@ import type {
   OpenCodeOptions,
   OpenCodeSessionInfo,
 } from "@/agents";
-import type { MessageFrequency } from "@/config/message-frequency";
+import type { StatusMessageFormat } from "@/config/status-message-format";
 import type { SessionMessageState } from "@/utils/session-inspector";
 
 export type CoreMessageContext = {
@@ -44,7 +44,7 @@ export type AgentStatusMessageParams = {
   request: StatusMessageRequest;
   workingPath: string;
   state?: SessionMessageState;
-  frequency: MessageFrequency;
+  statusMessageFormat: StatusMessageFormat;
 };
 
 export interface IMAdapter {

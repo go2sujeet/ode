@@ -37,7 +37,7 @@ describe("buildStatusMessageForAgent", () => {
       request: makeRequest(),
       workingPath: "/tmp/project",
       state: makeState(),
-      frequency: "medium",
+      statusMessageFormat: "medium",
     });
 
     expect(text).toContain("*ClaudeCode*");

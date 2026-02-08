@@ -4,7 +4,6 @@ export type {
   OpenCodeMessage,
   OpenCodeMessageContext,
   OpenCodeOptions,
-  OpenCodeProgressHandler,
   OpenCodeSessionInfo,
 } from "./types";
 

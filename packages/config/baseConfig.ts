@@ -1,7 +1,7 @@
-export type MessageFrequency = "minimum" | "medium" | "aggressive";
+export type StatusMessageFormat = "minimum" | "medium" | "aggressive";
 
 export const TOOL_DISPLAY_CONFIG: Record<
-  MessageFrequency,
+  StatusMessageFormat,
   { itemLimit: number; detailLimit: number | null }
 > = {
   minimum: { itemLimit: 4, detailLimit: 30 },

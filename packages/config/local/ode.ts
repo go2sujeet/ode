@@ -21,13 +21,20 @@ const userSchema = z.object({
   initials: z.string().optional().default(""),
   avatar: z.string().optional().default(""),
   gitStrategy: z.enum(["default", "worktree"]).optional().default("worktree"),
-  defaultMessageFrequency: z.enum([
+  defaultStatusMessageFormat: z.enum([
     "minimum",
     "medium",
     "aggressive",
     "low",
     "high",
   ]).optional().default("medium"),
+  defaultMessageFrequency: z.enum([
+    "minimum",
+    "medium",
+    "aggressive",
+    "low",
+    "high",
+  ]).optional(),
 });
 
 const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi"]);
@@ -126,7 +133,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     initials: "",
     avatar: "",
     gitStrategy: "worktree",
-    defaultMessageFrequency: "medium",
+    defaultStatusMessageFormat: "medium",
   },
   githubInfos: {},
   agents: {
@@ -156,13 +163,16 @@ function ensureConfigFile(): void {
 }
 
 function normalizeConfig(config: OdeConfig): OdeConfig {
-  const frequency = config.user.defaultMessageFrequency;
+  const { defaultMessageFrequency: _deprecatedMessageFrequency, ...normalizedUser } = config.user;
+  const statusMessageFormat = config.user.defaultStatusMessageFormat
+    ?? config.user.defaultMessageFrequency
+    ?? "medium";
   const normalizedFrequency =
-    frequency === "low"
+    statusMessageFormat === "low"
       ? "minimum"
-      : frequency === "high"
+      : statusMessageFormat === "high"
         ? "aggressive"
-        : frequency;
+        : statusMessageFormat;
   const normalizedGitStrategy =
     config.user.gitStrategy === "default" ? "default" : "worktree";
   const intervalCandidate = config.updates?.checkIntervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
@@ -181,9 +191,9 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
   return {
     ...config,
     user: {
-      ...config.user,
+      ...normalizedUser,
       gitStrategy: normalizedGitStrategy,
-      defaultMessageFrequency: normalizedFrequency,
+      defaultStatusMessageFormat: normalizedFrequency,
     },
     updates: {
       autoUpgrade,

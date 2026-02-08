@@ -1,4 +1,4 @@
-import { resolveMessageFrequency } from "@/config/message-frequency";
+import { resolveStatusMessageFormat } from "@/config/status-message-format";
 import {
   completeActiveRequest,
   createActiveRequest,
@@ -101,7 +101,7 @@ export async function runOpenRequest(params: {
         request,
         workingPath: cwd,
         state: liveParsedState.get(getStatusMessageKey(request)),
-        frequency: resolveMessageFrequency(),
+        statusMessageFormat: resolveStatusMessageFormat(),
       });
       if (!request.statusFrozen) {
         await deps.im.updateMessage(context.channelId, statusTs, statusText, false);

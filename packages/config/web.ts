@@ -1,6 +1,6 @@
 export {
   TOOL_DISPLAY_CONFIG,
-  type MessageFrequency,
+  type StatusMessageFormat,
 } from "./baseConfig";
 
 export { type GitStrategy } from "./baseConfig";

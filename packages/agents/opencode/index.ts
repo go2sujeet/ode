@@ -18,7 +18,6 @@ export {
   createSession,
   getOrCreateSession,
   sendMessage,
-  watchSessionProgress,
   abortSession,
   cancelActiveRequest,
   statusFromEvent,
@@ -29,6 +28,5 @@ export type {
   OpenCodeMessage,
   OpenCodeMessageContext,
   OpenCodeOptions,
-  OpenCodeProgressHandler,
   OpenCodeSessionInfo,
 } from "../types";

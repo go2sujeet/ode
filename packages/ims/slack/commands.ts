@@ -246,7 +246,6 @@ export function setupInteractiveHandlers(): void {
 
     const channelId = (body as any).actions?.[0]?.value
       ?? (body as any).channel?.id;
-    const userId = (body as any).user?.id;
     if (!channelId) return;
 
     try {

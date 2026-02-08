@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { TOOL_DISPLAY_CONFIG, type GitStrategy, type MessageFrequency } from "$lib/localConfig";
+  import { TOOL_DISPLAY_CONFIG, type GitStrategy, type StatusMessageFormat } from "$lib/localConfig";
   import { localSettingStore } from "$lib/local-setting/store";
 
-  const messageFrequencyOptions = Object.keys(TOOL_DISPLAY_CONFIG) as MessageFrequency[];
+  const statusMessageFormatOptions = Object.keys(TOOL_DISPLAY_CONFIG) as StatusMessageFormat[];
   const gitStrategyOptions: GitStrategy[] = ["worktree", "default"];
   const gitStrategyLabels: Record<GitStrategy, string> = {
     worktree: "Worktree",
@@ -13,16 +13,16 @@
 <section class="card">
   <h2>Profile</h2>
   <div class="field-group">
-    <p class="field-label">Message Update Frequency</p>
+    <p class="field-label">Status Message Format</p>
     <div class="options-row">
-      {#each messageFrequencyOptions as option}
+      {#each statusMessageFormatOptions as option}
         <button
-          class="option-btn {$localSettingStore.config.user.defaultMessageFrequency === option ? 'active' : ''}"
+          class="option-btn {$localSettingStore.config.user.defaultStatusMessageFormat === option ? 'active' : ''}"
           type="button"
           on:click={() => {
             localSettingStore.updateConfig((config) => ({
               ...config,
-              user: { ...config.user, defaultMessageFrequency: option },
+              user: { ...config.user, defaultStatusMessageFormat: option },
             }));
           }}
         >

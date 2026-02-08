@@ -46,10 +46,10 @@ export {
 } from "./dashboard-config";
 
 export {
-  resolveMessageFrequency,
+  resolveStatusMessageFormat,
   TOOL_DISPLAY_CONFIG,
-  type MessageFrequency,
-} from "./message-frequency";
+  type StatusMessageFormat,
+} from "./status-message-format";
 
 export { resolveGitStrategy, type GitStrategy } from "./git-strategy";
 

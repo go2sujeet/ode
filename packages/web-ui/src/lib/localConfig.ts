@@ -4,4 +4,4 @@ export {
   type DashboardConfig,
 } from "@/config/dashboard-config";
 
-export { type GitStrategy, type MessageFrequency, TOOL_DISPLAY_CONFIG } from "@/config/web";
+export { type GitStrategy, type StatusMessageFormat, TOOL_DISPLAY_CONFIG } from "@/config/web";

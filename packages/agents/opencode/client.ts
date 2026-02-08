@@ -17,7 +17,6 @@ import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
   OpenCodeOptions,
-  OpenCodeProgressHandler,
   OpenCodeSessionInfo,
 } from "../types";
 
@@ -255,11 +254,7 @@ export interface ProgressEvent {
   };
 }
 
-function formatProgressStatus(status: string): string {
-  return status;
-}
-
-export function statusFromSessionStatus(status: unknown): string {
+function statusFromSessionStatus(status: unknown): string {
   if (!status || typeof status !== "object") return "Working";
   const data = status as {
     type?: string;
@@ -326,7 +321,7 @@ function formatToolDetail(part: Record<string, unknown>): string | null {
   }
 }
 
-export function statusFromPart(part: Record<string, unknown>): string | null {
+function statusFromPart(part: Record<string, unknown>): string | null {
   const type = part.type;
   if (typeof type !== "string") return null;
 
@@ -436,7 +431,7 @@ export function statusFromEvent(event: ProgressEvent, sessionId: string): string
         | { sessionID?: string; status?: unknown }
         | undefined;
       if (sessionProperties?.sessionID !== sessionId) return null;
-      return formatProgressStatus(statusFromSessionStatus(sessionProperties?.status));
+      return statusFromSessionStatus(sessionProperties?.status);
     }
     case "session.error": {
       const errorProperties = payload.properties as { sessionID?: string } | undefined;
@@ -453,7 +448,7 @@ export function statusFromEvent(event: ProgressEvent, sessionId: string): string
       const partSessionId = part && typeof part.sessionID === "string" ? part.sessionID : undefined;
       if (!part || partSessionId !== sessionId) return null;
       const status = statusFromPart(part);
-      return status ? formatProgressStatus(status) : null;
+      return status;
     }
   }
 
@@ -463,48 +458,11 @@ export function statusFromEvent(event: ProgressEvent, sessionId: string): string
 
   if (payload.type === "session.summary") {
     const title = typeof properties?.title === "string" ? properties.title : undefined;
-    return formatProgressStatus(title ? `Summarizing: ${title}` : "Summarizing session");
+    return title ? `Summarizing: ${title}` : "Summarizing session";
   }
 
   const simple = SIMPLE_STATUS_BY_TYPE[payload.type];
-  return simple ? formatProgressStatus(simple) : null;
-}
-
-export function watchSessionProgress(
-  sessionId: string,
-  workingPath: string,
-  handler: OpenCodeProgressHandler
-): () => void {
-  let running = true;
-
-  void (async () => {
-    try {
-      const client = await getSessionClient(sessionId);
-      const events = await client.global.event();
-
-      for await (const globalEvent of events.stream) {
-        if (!running) break;
-
-        const event: ProgressEvent = {
-          directory: (globalEvent as any).directory,
-          payload: (globalEvent as any).payload ?? globalEvent,
-        };
-
-        const status = statusFromEvent(event, sessionId);
-        if (status) {
-          handler(status);
-        }
-      }
-    } catch (err) {
-      if (running) {
-        log.warn("OpenCode progress stream error", { error: String(err) });
-      }
-    }
-  })();
-
-  return () => {
-    running = false;
-  };
+  return simple ?? null;
 }
 
 export async function abortSession(sessionId: string, directory?: string): Promise<void> {

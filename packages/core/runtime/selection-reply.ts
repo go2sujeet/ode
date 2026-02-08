@@ -7,7 +7,7 @@ import {
   markMessageProcessed,
   saveSession,
 } from "@/config/local/sessions";
-import { DEFAULT_CODEX_MODEL, getChannelModel, resolveMessageFrequency } from "@/config";
+import { DEFAULT_CODEX_MODEL, getChannelModel, resolveStatusMessageFormat } from "@/config";
 import { runTrackedRequest } from "@/core/runtime/request-runner";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { CoreStateMachine } from "@/core/state-machine";
@@ -128,7 +128,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
         request,
         workingPath: cwd,
         state: state.liveParsedState.get(getStatusMessageKey(request)),
-        frequency: resolveMessageFrequency(),
+        statusMessageFormat: resolveStatusMessageFormat(),
       });
       await deps.im.updateMessage(channelId, statusTs, statusText, false);
     },

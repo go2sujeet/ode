@@ -94,9 +94,15 @@ export function createAgentAdapter(): AgentAdapter {
         })
         .filter((question) => question.question.length > 0);
     },
-    buildStatusMessage({ request, workingPath, state, frequency }) {
+    buildStatusMessage({ request, workingPath, state, statusMessageFormat }) {
       const providerId = getProviderForSession(request.sessionId);
-      return buildStatusMessageByProvider(providerId, request, workingPath, state, frequency);
+      return buildStatusMessageByProvider(
+        providerId,
+        request,
+        workingPath,
+        state,
+        statusMessageFormat
+      );
     },
   };
 }

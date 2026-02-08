@@ -1,4 +1,4 @@
-import type { MessageFrequency } from "@/config/message-frequency";
+import type { StatusMessageFormat } from "@/config/status-message-format";
 import type { AgentAdapter, StatusMessageRequest } from "@/core/types";
 import { buildStatusMessageByProvider } from "@/utils/status";
 import type { SessionMessageState } from "@/utils/session-inspector";
@@ -8,9 +8,9 @@ export function buildStatusMessageForAgent(params: {
   request: StatusMessageRequest;
   workingPath: string;
   state?: SessionMessageState;
-  frequency: MessageFrequency;
+  statusMessageFormat: StatusMessageFormat;
 }): string {
-  const { agent, request, workingPath, state, frequency } = params;
+  const { agent, request, workingPath, state, statusMessageFormat } = params;
   const provider = agent.getProviderForSession(request.sessionId);
-  return buildStatusMessageByProvider(provider, request, workingPath, state, frequency);
+  return buildStatusMessageByProvider(provider, request, workingPath, state, statusMessageFormat);
 }

@@ -1,6 +1,6 @@
 import {
   TOOL_DISPLAY_CONFIG,
-  type MessageFrequency,
+  type StatusMessageFormat,
 } from "@/config/web";
 import type { SessionMessageState } from "./session-inspector";
 
@@ -155,12 +155,12 @@ function truncateToolDetail(detail: string, limit: number | null): string {
 export function buildToolLines(
   state: SessionMessageState,
   workingPath: string,
-  frequency: MessageFrequency
+  statusMessageFormat: StatusMessageFormat
 ): string[] {
   const tools = state.tools || [];
   if (tools.length === 0) return [];
 
-  const { itemLimit, detailLimit } = TOOL_DISPLAY_CONFIG[frequency];
+  const { itemLimit, detailLimit } = TOOL_DISPLAY_CONFIG[statusMessageFormat];
   const items = tools.length > itemLimit ? tools.slice(-itemLimit) : tools;
   const header = tools.length > itemLimit
     ? `*Tool execution (Last ${itemLimit} items in ${tools.length})*`
@@ -182,7 +182,7 @@ export function buildLiveStatusMessage(
   request: StatusRequest,
   workingPath: string,
   state?: SessionMessageState,
-  frequency: MessageFrequency = "medium"
+  statusMessageFormat: StatusMessageFormat = "medium"
 ): string {
   if (!state) {
     if (request.statusFrozen && request.currentText) {
@@ -215,7 +215,7 @@ export function buildLiveStatusMessage(
     lines.push("", "*Tasks*", ...formatTodoLines(todos));
   }
 
-  const toolLines = buildToolLines(state, workingPath, frequency);
+  const toolLines = buildToolLines(state, workingPath, statusMessageFormat);
   if (toolLines.length > 0) {
     lines.push("");
     lines.push(...toolLines);
@@ -229,7 +229,7 @@ export function buildStatusMessageByProvider(
   request: StatusRequest,
   workingPath: string,
   state?: SessionMessageState,
-  frequency: MessageFrequency = "medium"
+  statusMessageFormat: StatusMessageFormat = "medium"
 ): string {
-  return buildLiveStatusMessage(request, workingPath, state, frequency);
+  return buildLiveStatusMessage(request, workingPath, state, statusMessageFormat);
 }

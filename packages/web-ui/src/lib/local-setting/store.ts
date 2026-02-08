@@ -89,7 +89,10 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
     user: {
       ...input.user,
       gitStrategy: input.user.gitStrategy ?? "worktree",
-      defaultMessageFrequency: input.user.defaultMessageFrequency ?? "medium",
+      defaultStatusMessageFormat:
+        input.user.defaultStatusMessageFormat
+        ?? input.user.defaultMessageFrequency
+        ?? "medium",
     },
     agents: {
       opencode: {

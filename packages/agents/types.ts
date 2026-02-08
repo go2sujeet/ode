@@ -32,6 +32,4 @@ export interface OpenCodeSessionInfo {
   created: boolean;
 }
 
-export type OpenCodeProgressHandler = (status: string) => void;
-
 export type PromptPart = { type: "text"; text: string };
