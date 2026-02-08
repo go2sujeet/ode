@@ -285,13 +285,13 @@ async function postGeneralSettingsLauncher(
   await client.chat.postEphemeral({
     channel: channelId,
     user: userId,
-    text: "Open general settings",
+    text: "Open settings",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: "Open general settings for status message format and git strategy.",
+          text: "Choose which settings page to open.",
         },
       },
       {
@@ -300,7 +300,13 @@ async function postGeneralSettingsLauncher(
           {
             type: "button",
             action_id: "open_general_settings_modal",
-            text: { type: "plain_text", text: "Open settings" },
+            text: { type: "plain_text", text: "general setting" },
+            value: channelId,
+          },
+          {
+            type: "button",
+            action_id: "open_settings_modal",
+            text: { type: "plain_text", text: "channel setting" },
             value: channelId,
           },
         ],

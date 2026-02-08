@@ -3,6 +3,7 @@ import {
   getChannelAgentProvider,
   getChannelModel,
   resolveChannelCwd,
+  getWorkspaces,
   getEnabledAgentProviders,
   getOpenCodeModels,
   getCodexModels,
@@ -18,14 +19,17 @@ import {
   setGitHubInfoForUser,
   getUserGeneralSettings,
   setUserGeneralSettings,
+  invalidateOdeConfigCache,
 } from "@/config";
 import { startServer as startOpenCodeServer } from "@/agents/opencode";
 import { startServer as startCodexServer } from "@/agents/codex";
+import { syncSlackWorkspace } from "@/core/web/local-settings";
 
 const SETTINGS_LAUNCH_ACTION = "open_settings_modal";
 const SETTINGS_MODAL_ID = "settings_modal";
 const GENERAL_SETTINGS_LAUNCH_ACTION = "open_general_settings_modal";
 const GENERAL_SETTINGS_MODAL_ID = "general_settings_modal";
+const GENERAL_SYNC_WORKSPACE_ACTION = "general_sync_workspace";
 const GITHUB_LAUNCH_ACTION = "open_github_token_modal";
 const GITHUB_MODAL_ID = "github_token_modal";
 const GITHUB_TOKEN_BLOCK = "github_token";
@@ -361,6 +365,18 @@ function buildGeneralSettingsModal(params: {
             ?? gitStrategyOptions[0],
         },
       },
+      {
+        type: "actions" as const,
+        elements: [
+          {
+            type: "button" as const,
+            action_id: GENERAL_SYNC_WORKSPACE_ACTION,
+            text: { type: "plain_text" as const, text: "Sync Workspace" },
+            style: "primary" as const,
+            value: channelId,
+          },
+        ],
+      },
     ],
   };
 }
@@ -445,6 +461,40 @@ export function setupInteractiveHandlers(): void {
       trigger_id: (body as any).trigger_id,
       view,
     });
+    });
+
+    slackApp.action(GENERAL_SYNC_WORKSPACE_ACTION, async ({ ack, body, client }) => {
+      await ack();
+
+      const channelId = (body as any).actions?.[0]?.value
+        ?? (body as any).view?.private_metadata
+        ?? (body as any).channel?.id;
+      const userId = (body as any).user?.id;
+      if (!channelId || !userId) return;
+
+      const workspaces = getWorkspaces();
+      const syncResults = await Promise.allSettled(
+        workspaces.map(async (workspace) => syncSlackWorkspace(workspace.id))
+      );
+
+      const successful = syncResults
+        .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof syncSlackWorkspace>>> => result.status === "fulfilled")
+        .map((result) => result.value);
+      const syncedWorkspaces = successful.length;
+      const syncedChannels = successful.reduce((sum, workspace) => sum + (workspace.channels ?? workspace.channelDetails.length), 0);
+      const failedWorkspaces = syncResults.length - syncedWorkspaces;
+
+      invalidateOdeConfigCache();
+
+      const message = failedWorkspaces > 0
+        ? `Synced ${syncedWorkspaces} workspaces with ${syncedChannels} channels in total. Failed to sync ${failedWorkspaces} workspaces.`
+        : `Synced ${syncedWorkspaces} workspaces with ${syncedChannels} channels in total.`;
+
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: message,
+      });
     });
 
     slackApp.action(PROVIDER_ACTION, async ({ ack, body, client }) => {
