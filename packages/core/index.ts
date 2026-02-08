@@ -100,7 +100,7 @@ async function startSlackRuntime(reason: string): Promise<void> {
     for (const app of slackApps) {
       await app.start();
     }
-    log.info("Slack connections ready", { reason, count: slackApps.length });
+    log.debug("Slack connections ready", { reason, count: slackApps.length });
   } catch (error) {
     log.warn("Slack connection failed", { reason, error: String(error) });
     await stopSlackRuntime("startup failed");
@@ -139,12 +139,12 @@ async function refreshSlackRuntime(reason: string): Promise<void> {
 
   clearSlackAuthState();
   await initializeWorkspaceAuth();
-  log.info("Slack auth refreshed", { reason, appCount: slackApps.length });
+  log.debug("Slack auth refreshed", { reason, appCount: slackApps.length });
 }
 
 async function runAutoUpgradeCheck(reason: string): Promise<void> {
   if (!isInstalledBinary()) {
-    log.info("Auto-upgrade skipped (non-installed binary)", { reason });
+    log.debug("Auto-upgrade skipped (non-installed binary)", { reason });
     return;
   }
 
@@ -152,11 +152,11 @@ async function runAutoUpgradeCheck(reason: string): Promise<void> {
   try {
     const update = await checkForUpdate(currentVersion);
     if (!update.latestVersion) {
-      log.info("Auto-upgrade check failed", { reason });
+      log.debug("Auto-upgrade check failed", { reason });
       return;
     }
     if (!update.isUpdateAvailable) {
-      log.info("Auto-upgrade check complete (no update)", {
+      log.debug("Auto-upgrade check complete (no update)", {
         reason,
         currentVersion: update.currentVersion,
         latestVersion: update.latestVersion,
@@ -192,7 +192,7 @@ function updateAutoUpgradeScheduler(reason: string): void {
   const { autoUpgrade, checkIntervalMs } = getUpdateConfig();
   if (!autoUpgrade) {
     stopAutoUpgradeScheduler();
-    log.info("Auto-upgrade disabled", { reason });
+    log.debug("Auto-upgrade disabled", { reason });
     return;
   }
 
@@ -207,7 +207,7 @@ function updateAutoUpgradeScheduler(reason: string): void {
   upgradeTimer = setInterval(() => {
     void runAutoUpgradeCheck("scheduled");
   }, checkIntervalMs);
-  log.info("Auto-upgrade scheduler running", { intervalMs: checkIntervalMs });
+  log.debug("Auto-upgrade scheduler running", { intervalMs: checkIntervalMs });
 }
 
 function startLocalConfigWatcher(): void {
@@ -233,8 +233,6 @@ function startLocalConfigWatcher(): void {
 }
 
 async function main(): Promise<void> {
-  log.info("Starting Ode...");
-
   let defaultCwd: string | null = null;
   try {
     defaultCwd = getDefaultCwd();
@@ -258,9 +256,9 @@ async function main(): Promise<void> {
   await startSlackRuntime("startup");
 
   if (slackApps.length > 0) {
-    log.info("Slack app created");
-    log.info("Message handlers registered");
-    log.info("Interactive handlers registered");
+    log.debug("Slack app created");
+    log.debug("Message handlers registered");
+    log.debug("Interactive handlers registered");
   }
 
   // Handle shutdown gracefully
@@ -298,7 +296,7 @@ async function main(): Promise<void> {
     // Recover any interrupted requests from previous run
     await recoverPendingRequests();
 
-    log.info("Bot is running in Socket Mode");
+    log.debug("Bot is running in Socket Mode");
   }
 
   log.info("Configure Ode settings at", { url: getLocalSettingsUrl() });

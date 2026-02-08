@@ -6,11 +6,11 @@ export async function recoverPendingRequests(im: IMAdapter): Promise<void> {
   const pendingSessions = getSessionsWithPendingRequests();
 
   if (pendingSessions.length === 0) {
-    log.info("No pending requests to recover");
+    log.debug("No pending requests to recover");
     return;
   }
 
-  log.info("Found pending requests to recover", { count: pendingSessions.length });
+  log.debug("Found pending requests to recover", { count: pendingSessions.length });
 
   for (const session of pendingSessions) {
     const request = session.activeRequest;
@@ -18,7 +18,7 @@ export async function recoverPendingRequests(im: IMAdapter): Promise<void> {
 
     const age = Date.now() - request.startedAt;
     if (age > 10 * 60 * 1000) {
-      log.info("Clearing stale request", {
+      log.debug("Clearing stale request", {
         channelId: session.channelId,
         threadId: session.threadId,
         age: Math.floor(age / 1000) + "s",

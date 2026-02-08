@@ -211,14 +211,14 @@ export async function ensureSessionWorktree(params: {
 
   ensureDir(worktreeDir);
   if (currentBranch === normalizedBaseBranch) {
-    log.info("Pulling latest base branch before creating worktree", {
+    log.debug("Pulling latest base branch before creating worktree", {
       repoRoot,
       baseBranch: normalizedBaseBranch,
     });
     runGit(["pull", "origin", normalizedBaseBranch], repoRoot, env);
   }
 
-  log.info("Creating worktree for session", { worktreePath, worktreeId });
+  log.debug("Creating worktree for session", { worktreePath, worktreeId });
   if (localBranchExists(repoRoot, worktreeId, env)) {
     runGit(["worktree", "add", worktreePath, worktreeId], repoRoot, env);
   } else {

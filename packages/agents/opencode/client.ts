@@ -121,7 +121,7 @@ export async function getOrCreateSession(
     const existingEnv = normalizeSessionEnvironment(getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
     if (existingEnv !== desiredEnv) {
-      log.info("Session environment changed; creating new session", { channelId, threadId, workingPath });
+      log.debug("Session environment changed; creating new session", { channelId, threadId, workingPath });
       const sessionId = await createSession(workingPath, env);
       setThreadSessionId(channelId, threadId, sessionId);
       return { sessionId, created: true };
@@ -129,7 +129,7 @@ export async function getOrCreateSession(
     return { sessionId: existingSession, created: false };
   }
 
-  log.info("Creating new session for thread", { channelId, threadId, workingPath });
+  log.debug("Creating new session for thread", { channelId, threadId, workingPath });
   const sessionId = await createSession(workingPath, env);
   setThreadSessionId(channelId, threadId, sessionId);
   return { sessionId, created: true };
@@ -149,7 +149,7 @@ export async function sendMessage(
 
   // If sessionId changed, update storage
   if (validSessionId !== sessionId && context?.slack?.threadId) {
-    log.info("Updating stored sessionId", {
+    log.debug("Updating stored sessionId", {
       channelId,
       threadId: context.slack.threadId,
       oldSessionId: sessionId,

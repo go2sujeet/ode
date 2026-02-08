@@ -44,7 +44,7 @@ function getClientForBaseUrl(baseUrl: string): OpencodeClient {
   if (existing) return existing;
   const client = createOpencodeClient({ baseUrl });
   clientByBaseUrl.set(baseUrl, client);
-  log.info("Using OpenCode server", { baseUrl });
+  log.debug("Using OpenCode server", { baseUrl });
   return client;
 }
 
@@ -158,7 +158,7 @@ async function syncModelsFromServer(baseUrl: string): Promise<void> {
     const existing = getOpenCodeModels();
     if (JSON.stringify(existing) === JSON.stringify(models)) return;
     setOpenCodeModels(models);
-    log.info("OpenCode models synced", { count: models.length });
+    log.debug("OpenCode models synced", { count: models.length });
   } catch (error) {
     log.warn("OpenCode model sync failed", { error: String(error) });
   }
@@ -175,7 +175,7 @@ async function ensureServerStarted(): Promise<void> {
 
   const { command, args } = getServerCommand();
   serverStartPromise = (async () => {
-    log.info("Starting managed OpenCode server", { command: [command, ...args].join(" ") });
+    log.debug("Starting managed OpenCode server", { command: [command, ...args].join(" ") });
     const processHandle = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env },
@@ -214,7 +214,7 @@ async function ensureServerStarted(): Promise<void> {
     managedServerUrl = discoveredBaseUrl;
     await waitForServerReady(discoveredBaseUrl);
     await syncModelsFromServer(discoveredBaseUrl);
-    log.info("Managed OpenCode server ready", { baseUrl: discoveredBaseUrl });
+    log.debug("Managed OpenCode server ready", { baseUrl: discoveredBaseUrl });
   })();
 
   try {
@@ -238,7 +238,7 @@ function ensureCleanupInterval(): void {
     const now = Date.now();
     for (const [sessionId, session] of sessionInstances) {
       if (now - session.lastActive > INACTIVE_TIMEOUT_MS) {
-        log.info("Cleaning up inactive session", { sessionId });
+        log.debug("Cleaning up inactive session", { sessionId });
         stopSessionInstance(sessionId);
       }
     }
@@ -273,7 +273,7 @@ async function getOrCreateSessionInstance(
     try {
       await ensureServerStarted();
       const baseUrl = resolveServerUrlForEnv(env);
-      log.info("Using OpenCode server for session", { sessionId, baseUrl });
+      log.debug("Using OpenCode server for session", { sessionId, baseUrl });
       const client = getClientForBaseUrl(baseUrl);
       const sessionInstance: SessionInstance = {
         client,
@@ -388,7 +388,7 @@ export async function createSessionInstance(envOverrides?: SessionEnvironment): 
   await ensureServerStarted();
   const baseUrl = resolveServerUrlForEnv(env);
   const client = getClientForBaseUrl(baseUrl);
-  log.info("Using OpenCode server for new session", { baseUrl });
+  log.debug("Using OpenCode server for new session", { baseUrl });
 
   return {
     client,
@@ -410,7 +410,7 @@ export async function createSessionInstance(envOverrides?: SessionEnvironment): 
       startSessionEventLoop(sessionId, sessionInstance);
       ensureCleanupInterval();
 
-      log.info("Registered OpenCode session", { sessionId });
+      log.debug("Registered OpenCode session", { sessionId });
     },
   };
 }
@@ -477,7 +477,7 @@ export async function ensureValidSession(
   }
 
   // Session doesn't exist in this instance - create a new one
-  log.info("Creating new session for server", { oldSessionId: sessionId });
+  log.debug("Creating new session for server", { oldSessionId: sessionId });
 
   const result = await session.client.session.create({
     directory: workingPath,
@@ -494,7 +494,7 @@ export async function ensureValidSession(
   sessionInstances.delete(sessionId);
   sessionInstances.set(newSessionId, session);
 
-  log.info("Created new session on server", { oldSessionId: sessionId, newSessionId });
+  log.debug("Created new session on server", { oldSessionId: sessionId, newSessionId });
 
   return newSessionId;
 }
