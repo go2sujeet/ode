@@ -205,6 +205,13 @@ export function buildClaudeCommand(
   return { args, command };
 }
 
+function resolveClaudePermissionMode(agent?: string): string | undefined {
+  if (agent?.trim().toLowerCase() === "plan") {
+    return "plan";
+  }
+  return undefined;
+}
+
 function getRecordSessionId(record: ClaudeJsonRecord, fallbackSessionId: string): string {
   return typeof record.session_id === "string" ? record.session_id : fallbackSessionId;
 }
@@ -379,12 +386,15 @@ async function runClaudeWithFallback(
   cwd: string,
   env: SessionEnvironment,
   entry: { controller: AbortController; process?: ChildProcess },
+  forcedPermissionMode?: string,
   onRecord?: (record: ClaudeJsonRecord) => void
 ): Promise<{ output: string; permissionMode: string; command: string }> {
   const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
-  const modes = isRoot
-    ? ["dontAsk", "acceptEdits", "default"]
-    : ["bypassPermissions", "dontAsk", "acceptEdits", "default"];
+  const modes = forcedPermissionMode
+    ? [forcedPermissionMode]
+    : (isRoot
+      ? ["dontAsk", "acceptEdits", "default"]
+      : ["bypassPermissions", "dontAsk", "acceptEdits", "default"]);
   let lastError: Error | null = null;
 
   for (const mode of modes) {
@@ -450,6 +460,7 @@ export async function sendMessage(
   try {
     return await withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
+      const forcedPermissionMode = resolveClaudePermissionMode(agent);
 
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
@@ -484,6 +495,7 @@ export async function sendMessage(
         workingPath,
         envOverrides,
         entry,
+        forcedPermissionMode,
         (record) => {
           publishClaudeRecordAsSessionEvents(record, sessionId);
         }

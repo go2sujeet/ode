@@ -85,7 +85,8 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
   }
 
   const threadOwnerUserId = session?.threadOwnerUserId ?? userId;
-  const agent = /^plan\b/i.test(selection.trim()) ? "plan" : undefined;
+  const normalizedSelection = selection.trimStart().toLowerCase();
+  const agent = /^plan\b/.test(normalizedSelection) ? "plan" : undefined;
   const providerId = deps.agent.getProviderForSession(sessionId);
   const channelModel = getChannelModel(channelId)?.trim();
   const codexModel = providerId === "codex"

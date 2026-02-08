@@ -5,6 +5,7 @@ import { buildClaudeCommand, buildClaudeCommandArgs } from "../claude/client";
 import { buildCodexCommand, buildCodexCommandArgs } from "../codex/client";
 import { buildKimiCommand, buildKimiCommandArgs } from "../kimi/client";
 import { buildKiroCommand, buildKiroCommandArgs } from "../kiro/client";
+import { buildQwenCommand, buildQwenCommandArgs } from "../qwen/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -89,6 +90,23 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("'hello from codex'");
   });
 
+  it("builds the Codex plan command", () => {
+    const args = buildCodexCommandArgs({
+      sessionId: "session-3",
+      model: "gpt-5-codex",
+      prompt: "plan this change",
+      planMode: true,
+    });
+    const command = buildCodexCommand(args);
+
+    expect(command).toContain("codex exec resume");
+    expect(command).toContain("--json");
+    expect(command).toContain("--sandbox read-only");
+    expect(command).not.toContain("--full-auto");
+    expect(command).toContain("session-3");
+    expect(command).toContain("'plan this change'");
+  });
+
   it("builds the Kimi print command", () => {
     const args = buildKimiCommandArgs({
       sessionId: "session-4",
@@ -118,5 +136,32 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("--resume");
     expect(command).toContain("--agent plan");
     expect(command).toContain("'hello from kiro'");
+  });
+
+  it("builds the Qwen plan-mode command", () => {
+    const args = buildQwenCommandArgs({
+      sessionId: "session-5",
+      isNewSession: false,
+      prompt: "plan migration",
+      approvalMode: "plan",
+    });
+    const command = buildQwenCommand(args);
+
+    expect(command).toContain("--approval-mode plan");
+    expect(command).not.toContain("--yolo");
+    expect(command).toContain("--resume session-5");
+    expect(command).toContain("-p 'plan migration'");
+  });
+
+  it("builds the Qwen default automation command", () => {
+    const args = buildQwenCommandArgs({
+      sessionId: "session-6",
+      isNewSession: true,
+      prompt: "implement feature",
+    });
+    const command = buildQwenCommand(args);
+
+    expect(command).toContain("--yolo");
+    expect(command).not.toContain("--approval-mode plan");
   });
 });

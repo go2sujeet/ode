@@ -86,13 +86,18 @@ export function buildQwenCommandArgs(params: {
   sessionId: string;
   isNewSession: boolean;
   prompt: string;
+  approvalMode?: "plan";
 }): string[] {
   const args = [
     "--output-format",
     "stream-json",
     "--include-partial-messages",
-    "--yolo",
   ];
+  if (params.approvalMode === "plan") {
+    args.push("--approval-mode", "plan");
+  } else {
+    args.push("--yolo");
+  }
   if (!params.isNewSession) {
     args.push("--resume", params.sessionId);
   }
@@ -343,6 +348,7 @@ export async function sendMessage(
   try {
     return await withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
+      const approvalMode = agent?.trim().toLowerCase() === "plan" ? "plan" : undefined;
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
       const systemPrompt = buildSystemPrompt(context?.slack);
@@ -353,6 +359,7 @@ export async function sendMessage(
         sessionId,
         isNewSession,
         prompt: qwenPrompt,
+        approvalMode,
       });
       const command = buildQwenCommand(args);
       const envOverrides = sessionEnvironments.get(sessionId) ?? {};
