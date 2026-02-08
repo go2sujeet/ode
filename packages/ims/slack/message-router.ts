@@ -131,7 +131,7 @@ async function maybeNotifySettingsIssues(
     text: `Channel settings need attention:\n- ${settingsIssues.join("\n- ")}`,
     thread_ts: threadId,
   });
-  await deps.postChannelSettingsLauncher(channelId, userId, client);
+  await deps.postGeneralSettingsLauncher(channelId, userId, client);
   return true;
 }
 

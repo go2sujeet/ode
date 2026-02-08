@@ -245,6 +245,36 @@ function isGitHubCommand(text: string): boolean {
   return /^\/gh\b/i.test(text.trim());
 }
 
+type SettingsLauncherButton = {
+  actionId: string;
+  label: string;
+};
+
+function buildSettingsLauncherBlocks(
+  channelId: string,
+  description: string,
+  buttons: SettingsLauncherButton[]
+): any[] {
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: description,
+      },
+    },
+    {
+      type: "actions",
+      elements: buttons.map((button) => ({
+        type: "button",
+        action_id: button.actionId,
+        text: { type: "plain_text", text: button.label },
+        value: channelId,
+      })),
+    },
+  ];
+}
+
 async function postChannelSettingsLauncher(
   channelId: string,
   userId: string,
@@ -254,26 +284,11 @@ async function postChannelSettingsLauncher(
     channel: channelId,
     user: userId,
     text: "Open channel settings",
-    blocks: [
-      {
-        type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "Open channel settings for agent, working directory, base branch, and optional channel system message (model appears for OpenCode and Codex).",
-          },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            action_id: "open_settings_modal",
-            text: { type: "plain_text", text: "Open settings" },
-            value: channelId,
-          },
-        ],
-      },
-    ],
+    blocks: buildSettingsLauncherBlocks(
+      channelId,
+      "Open channel settings for agent, working directory, base branch, and optional channel system message (model appears for OpenCode and Codex).",
+      [{ actionId: "open_settings_modal", label: "Open settings" }]
+    ),
   });
 }
 
@@ -286,32 +301,14 @@ async function postGeneralSettingsLauncher(
     channel: channelId,
     user: userId,
     text: "Open settings",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Choose which settings page to open.",
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            action_id: "open_general_settings_modal",
-            text: { type: "plain_text", text: "general setting" },
-            value: channelId,
-          },
-          {
-            type: "button",
-            action_id: "open_settings_modal",
-            text: { type: "plain_text", text: "channel setting" },
-            value: channelId,
-          },
-        ],
-      },
-    ],
+    blocks: buildSettingsLauncherBlocks(
+      channelId,
+      "Choose which settings page to open.",
+      [
+        { actionId: "open_general_settings_modal", label: "general setting" },
+        { actionId: "open_settings_modal", label: "channel setting" },
+      ]
+    ),
   });
 }
 
