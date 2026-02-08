@@ -257,8 +257,8 @@ function buildGitHubTokenModal(params: {
 }) {
   const { channelId, hasToken, token, gitName, gitEmail } = params;
   const statusText = hasToken
-    ? "A GitHub token is already set for your account. Submit a new value to update it."
-    : "Set a GitHub token to enable GitHub CLI actions and git identity.";
+    ? "A GitHub token is already set for your account. Update it if needed; git name/email are used for commits."
+    : "GitHub token is optional and only needed for GitHub CLI actions. Git name/email are used for commits.";
 
   return {
     type: "modal" as const,
@@ -276,6 +276,7 @@ function buildGitHubTokenModal(params: {
         type: "input" as const,
         block_id: GITHUB_TOKEN_BLOCK,
         label: { type: "plain_text" as const, text: "GitHub Token" },
+        optional: true,
         element: {
           type: "plain_text_input" as const,
           action_id: GITHUB_TOKEN_ACTION,
@@ -638,16 +639,6 @@ export function setupInteractiveHandlers(): void {
     const gitName = values?.[GITHUB_NAME_BLOCK]?.[GITHUB_NAME_ACTION]?.value || "";
     const gitEmail = values?.[GITHUB_EMAIL_BLOCK]?.[GITHUB_EMAIL_ACTION]?.value || "";
     const trimmed = token.trim();
-    const errors: Record<string, string> = {};
-
-    if (!trimmed) {
-      errors[GITHUB_TOKEN_BLOCK] = "Enter a GitHub token.";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      await ack({ response_action: "errors", errors });
-      return;
-    }
 
     await ack();
 

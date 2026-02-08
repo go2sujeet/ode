@@ -441,7 +441,7 @@ export function getChannelDetails(channelId: string): ChannelDetail | null {
 }
 
 export type GitHubInfo = {
-  token: string;
+  token?: string;
   gitName?: string;
   gitEmail?: string;
 };
@@ -454,11 +454,15 @@ export type UserGeneralSettings = {
 export function getGitHubInfoForUser(userId: string): GitHubInfo | null {
   const info = loadOdeConfig().githubInfos?.[userId];
   if (!info) return null;
-  const token = info.token?.trim();
-  if (!token) return null;
-  const gitName = info.gitName?.trim() || undefined;
-  const gitEmail = info.gitEmail?.trim() || undefined;
-  return { token, gitName, gitEmail };
+  const token = info.token?.trim() || "";
+  const gitName = info.gitName?.trim() || "";
+  const gitEmail = info.gitEmail?.trim() || "";
+  if (!token && !gitName && !gitEmail) return null;
+  return {
+    token: token || undefined,
+    gitName: gitName || undefined,
+    gitEmail: gitEmail || undefined,
+  };
 }
 
 export function getUserGeneralSettings(): UserGeneralSettings {
@@ -487,14 +491,16 @@ export function setUserGeneralSettings(settings: UserGeneralSettings): void {
 export function setGitHubInfoForUser(userId: string, info: GitHubInfo): void {
   const config = loadOdeConfig();
   const githubInfos = { ...(config.githubInfos ?? {}) };
-  const token = info.token.trim();
-  if (token.length === 0) {
+  const token = info.token?.trim() || "";
+  const gitName = info.gitName?.trim() || "";
+  const gitEmail = info.gitEmail?.trim() || "";
+  if (!token && !gitName && !gitEmail) {
     delete githubInfos[userId];
   } else {
     githubInfos[userId] = {
       token,
-      gitName: info.gitName?.trim() || "",
-      gitEmail: info.gitEmail?.trim() || "",
+      gitName,
+      gitEmail,
     };
   }
   saveOdeConfig({ ...config, githubInfos });
