@@ -151,4 +151,5 @@ describe("kimi stream status parsing", () => {
     expect(state.tools[0]?.status).toBe("completed");
     expect(state.phaseStatus).toBe("Finished tool: Read");
   });
+
 });

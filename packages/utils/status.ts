@@ -15,6 +15,14 @@ export type StatusRequest = {
 
 export type AgentStatusProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen";
 
+const PROVIDER_FALLBACK_TITLES: Partial<Record<AgentStatusProvider, string>> = {
+  claudecode: "Claude Code Working...",
+  codex: "Codex Working...",
+  kimi: "Kimi Working...",
+  kiro: "Kiro Working...",
+  qwen: "Qwen Working...",
+};
+
 type StatusTodo = {
   content: string;
   status: string;
@@ -267,11 +275,27 @@ export function buildLiveStatusMessage(
 }
 
 export function buildStatusMessageByProvider(
-  _provider: AgentStatusProvider,
+  provider: AgentStatusProvider,
   request: StatusRequest,
   workingPath: string,
   state?: SessionMessageState,
   statusMessageFormat: StatusMessageFormat = "medium"
 ): string {
+  const fallbackTitle = state && !state.sessionTitle
+    ? PROVIDER_FALLBACK_TITLES[provider]
+    : undefined;
+
+  if (fallbackTitle && state) {
+    return buildLiveStatusMessage(
+      request,
+      workingPath,
+      {
+        ...state,
+        sessionTitle: fallbackTitle,
+      },
+      statusMessageFormat
+    );
+  }
+
   return buildLiveStatusMessage(request, workingPath, state, statusMessageFormat);
 }

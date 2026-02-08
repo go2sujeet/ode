@@ -113,4 +113,5 @@ describe("codex stream status parsing", () => {
     expect(text).toContain("`Bash` git status --short");
     expect(text).toContain("Drafting response");
   });
+
 });

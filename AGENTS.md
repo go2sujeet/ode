@@ -34,7 +34,7 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 ## Skills
 - Available skills: `agent-browser`, `slack-developer-researcher`, `opencode-developer-researcher`, `qwen-code-skill`
 - Use `agent-browser` for any browser automation tasks.
-- If you discover new Slack/OpenCode updates during development, update the matching skill doc under `.opencode/skills/`.
+- If you discover new Slack/OpenCode updates during development, update the matching skill doc under `.agents/skills/` (mirrored via `.claude/skills/`).
 
 ## Agent live status workflow
 - Use `packages/live-status-harness/fixed-prompt.md` as the baseline stream-capture prompt.

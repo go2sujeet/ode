@@ -93,4 +93,5 @@ describe("kiro stream status parsing", () => {
     expect(text).toContain("Tool execution");
     expect(text).toContain("`Grep` TODO|FIXME in tmp/repo");
   });
+
 });

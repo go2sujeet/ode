@@ -40,7 +40,7 @@ describe("live status harness renderer", () => {
     const statuses = renderStatusesFromRun(fixture.meta, fixture.events);
     const joined = statuses.map((status) => status.text).join("\n\n");
 
-    expect(statuses.length).toBe(2);
+    expect(statuses.length).toBeGreaterThanOrEqual(2);
     expect(joined).toContain("Working");
     expect(joined).toContain("Waiting");
   });

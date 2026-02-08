@@ -377,4 +377,32 @@ describe("claude stream status parsing", () => {
     expect(text).toContain("Drafting response");
     expect(text).not.toContain(longResponse);
   });
+
+  it("falls back to provider header when title is unavailable", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "stream_event",
+        event: {
+          type: "message_start",
+        },
+      }),
+    ]);
+
+    const text = buildStatusMessageByProvider(
+      "claudecode",
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "minimum"
+    );
+
+    expect(text).toContain("*Claude Code Working...*");
+  });
 });
