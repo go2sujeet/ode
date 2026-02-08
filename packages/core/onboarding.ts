@@ -1,4 +1,5 @@
 import { createInterface, type Interface } from "node:readline/promises";
+import { emitKeypressEvents } from "node:readline";
 import process from "node:process";
 import {
   getWebHost,
@@ -55,30 +56,92 @@ async function askRequired(rl: Interface, prompt: string): Promise<string> {
   }
 }
 
-function parseSelection(input: string, max: number): number[] | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  const values = trimmed.split(",").map((part) => part.trim()).filter(Boolean);
-  if (values.length === 0) return null;
-
-  const numbers = new Set<number>();
-  for (const value of values) {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed) || parsed < 1 || parsed > max) {
-      return [];
-    }
-    numbers.add(parsed);
-  }
-
-  return Array.from(numbers).sort((a, b) => a - b);
-}
-
 function detectAgents(): AgentOption[] {
   return agentOptions.map((agent) => ({
     ...agent,
     installed: Boolean(Bun.which(agent.command)),
   }));
+}
+
+async function selectAgentsWithKeyboard(agents: AgentOption[], defaultSelected: number[]): Promise<number[]> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return defaultSelected;
+  }
+
+  return new Promise((resolve) => {
+    const selected = new Set(defaultSelected.map((index) => index - 1));
+    let cursor = 0;
+    const lineCount = agents.length + 2;
+
+    const render = (initial = false): void => {
+      if (!initial) {
+        process.stdout.write(`\x1b[${lineCount}F`);
+      }
+      process.stdout.write("\x1b[J");
+      console.log("Step 2/2: Select coding agents to enable.");
+      console.log("Use Up/Down to move, Space to toggle, Enter to confirm.");
+      for (const [index, agent] of agents.entries()) {
+        const pointer = index === cursor ? ">" : " ";
+        const checked = selected.has(index) ? "x" : " ";
+        const status = agent.installed ? "installed" : "not found";
+        console.log(` ${pointer} [${checked}] ${agent.label} (${agent.command}) - ${status}`);
+      }
+    };
+
+    const cleanup = (): void => {
+      process.stdin.off("keypress", onKeypress);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+    };
+
+    const finalize = (): void => {
+      cleanup();
+      process.stdout.write("\n");
+      resolve(Array.from(selected).sort((a, b) => a - b).map((index) => index + 1));
+    };
+
+    const onKeypress = (_input: string, key: { name?: string; ctrl?: boolean }): void => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        process.kill(process.pid, "SIGINT");
+        return;
+      }
+
+      if (key.name === "up") {
+        cursor = (cursor - 1 + agents.length) % agents.length;
+        render();
+        return;
+      }
+
+      if (key.name === "down") {
+        cursor = (cursor + 1) % agents.length;
+        render();
+        return;
+      }
+
+      if (key.name === "space") {
+        if (selected.has(cursor)) {
+          selected.delete(cursor);
+        } else {
+          selected.add(cursor);
+        }
+        render();
+        return;
+      }
+
+      if (key.name === "return" || key.name === "enter") {
+        finalize();
+      }
+    };
+
+    emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("keypress", onKeypress);
+    render(true);
+  });
 }
 
 async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
@@ -142,28 +205,13 @@ async function setupCodingAgents(rl: Interface, config: OdeConfig): Promise<OdeC
     .filter((entry) => entry.installed)
     .map((entry) => entry.index + 1);
 
-  console.log("Step 2/2: Select coding agents to enable.");
-  for (const [index, agent] of agents.entries()) {
-    const selected = defaultSelected.includes(index + 1) ? "x" : " ";
-    const status = agent.installed ? "installed" : "not found";
-    console.log(`  ${index + 1}. [${selected}] ${agent.label} (${agent.command}) - ${status}`);
+  rl.pause();
+  let finalIndices: number[];
+  try {
+    finalIndices = await selectAgentsWithKeyboard(agents, defaultSelected);
+  } finally {
+    rl.resume();
   }
-
-  let selectedIndices: number[] | null = null;
-  while (selectedIndices === null) {
-    const input = await ask(
-      rl,
-      "Choose agents by number (comma-separated). Press Enter to keep detected defaults: "
-    );
-    const parsed = parseSelection(input, agents.length);
-    if (parsed !== null && parsed.length === 0) {
-      console.log("Please enter valid numbers from the list, like 1,3.");
-      continue;
-    }
-    selectedIndices = parsed;
-  }
-
-  const finalIndices = selectedIndices ?? defaultSelected;
   const selectedIds = new Set<AgentId>(
     finalIndices.map((index) => agents[index - 1]!.id)
   );

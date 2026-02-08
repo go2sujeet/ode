@@ -241,7 +241,7 @@ async function main(): Promise<void> {
   } catch {
     defaultCwd = null;
   }
-  log.info("Config loaded", { defaultCwd, mode: "local" });
+  log.debug("Config loaded", { defaultCwd, mode: "local" });
 
   loadOdeConfig();
   await runOnboardingIfNeeded();
