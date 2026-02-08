@@ -70,6 +70,7 @@ const channelDetailSchema = z.object({
   ),
   model: z.string().optional().default(""),
   workingDirectory: z.string().optional().default(""),
+  baseBranch: z.string().optional().default("main"),
   channelSystemMessage: z.string().optional().default(""),
 });
 
@@ -163,6 +164,11 @@ function ensureConfigFile(): void {
   writeFileSync(ODE_CONFIG_FILE, JSON.stringify(EMPTY_TEMPLATE, null, 2));
 }
 
+function normalizeBaseBranch(baseBranch: string | null | undefined): string {
+  const normalized = baseBranch?.trim();
+  return normalized && normalized.length > 0 ? normalized : "main";
+}
+
 function normalizeConfig(config: OdeConfig): OdeConfig {
   const { defaultMessageFrequency: _deprecatedMessageFrequency, ...normalizedUser } = config.user;
   const statusMessageFormat = config.user.defaultStatusMessageFormat
@@ -189,6 +195,13 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
     .map((model) => model.trim())
     .filter(Boolean)));
   const completeOnboarding = config.completeOnboarding === true;
+  const workspaces = config.workspaces.map((workspace) => ({
+    ...workspace,
+    channelDetails: workspace.channelDetails.map((channel) => ({
+      ...channel,
+      baseBranch: normalizeBaseBranch(channel.baseBranch),
+    })),
+  }));
   return {
     ...config,
     user: {
@@ -217,6 +230,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       },
     },
     completeOnboarding,
+    workspaces,
   };
 }
 
@@ -479,6 +493,18 @@ export function setChannelWorkingDirectory(channelId: string, workingDirectory: 
   updateChannel(channelId, (channel) => ({
     ...channel,
     workingDirectory: normalized,
+  }));
+}
+
+export function getChannelBaseBranch(channelId: string): string {
+  return normalizeBaseBranch(getChannelDetails(channelId)?.baseBranch);
+}
+
+export function setChannelBaseBranch(channelId: string, baseBranch: string | null): void {
+  const normalized = normalizeBaseBranch(baseBranch);
+  updateChannel(channelId, (channel) => ({
+    ...channel,
+    baseBranch: normalized,
   }));
 }
 

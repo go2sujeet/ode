@@ -1,5 +1,5 @@
 import { loadSession, saveSession, type PersistedSession } from "@/config/local/sessions";
-import { resolveChannelCwd, resolveGitStrategy } from "@/config";
+import { getChannelBaseBranch, resolveChannelCwd, resolveGitStrategy } from "@/config";
 import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
 import { CoreStateMachine } from "@/core/state-machine";
 import { categorizeRuntimeError } from "@/core/runtime/helpers";
@@ -62,11 +62,13 @@ export async function prepareRuntimeSession(params: {
     try {
       stateMachine.transition("prepare_worktree");
       const worktreeId = `ode_${threadId}`;
+      const baseBranch = getChannelBaseBranch(channelId);
       const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
         channelId,
         threadId,
         cwd,
         worktreeId,
+        baseBranch,
         sessionEnv,
         gitIdentity,
       });

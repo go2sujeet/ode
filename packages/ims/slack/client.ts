@@ -255,7 +255,7 @@ async function postSettingsLauncher(
         type: "section",
           text: {
             type: "mrkdwn",
-            text: "Open channel settings for agent, working directory, and optional channel system message (model appears for OpenCode and Codex).",
+            text: "Open channel settings for agent, working directory, base branch, and optional channel system message (model appears for OpenCode and Codex).",
           },
       },
       {

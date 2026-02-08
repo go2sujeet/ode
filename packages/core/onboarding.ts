@@ -170,6 +170,7 @@ async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<O
         channelDetails: discoveredWorkspace.channelDetails.map((channel) => ({
           ...channel,
           agentProvider: channel.agentProvider ?? "opencode",
+          baseBranch: channel.baseBranch?.trim() || "main",
           channelSystemMessage: channel.channelSystemMessage ?? "",
         })),
       };

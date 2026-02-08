@@ -104,6 +104,7 @@ const buildDiscoveredChannelDetails = (
     agentProvider: "opencode",
     model: fallbackModel,
     workingDirectory: "",
+    baseBranch: "main",
     channelSystemMessage: "",
   }));
 
@@ -129,6 +130,7 @@ const buildSyncedChannelDetails = (
       agentProvider,
       model: existing?.model ?? (agentProvider === "opencode" || agentProvider === "codex" ? fallbackModel : ""),
       workingDirectory: existing?.workingDirectory ?? "",
+      baseBranch: existing?.baseBranch?.trim() ? existing.baseBranch.trim() : "main",
       channelSystemMessage: existing?.channelSystemMessage ?? "",
     };
   });

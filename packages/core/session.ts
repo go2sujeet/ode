@@ -89,11 +89,12 @@ export async function prepareSessionWorkspace(params: {
   threadId: string;
   cwd: string;
   worktreeId: string;
+  baseBranch: string;
   sessionEnv: SessionEnvironment;
   gitIdentity: GitIdentity;
 }): Promise<PreparedWorkspace> {
-  const { channelId, threadId, cwd, worktreeId, sessionEnv, gitIdentity } = params;
-  const worktree = await ensureSessionWorktree({ cwd, worktreeId, env: sessionEnv });
+  const { channelId, threadId, cwd, worktreeId, baseBranch, sessionEnv, gitIdentity } = params;
+  const worktree = await ensureSessionWorktree({ cwd, worktreeId, baseBranch, env: sessionEnv });
   let resolvedCwd = cwd;
 
   if (!worktree.skipped && worktree.worktreePath !== cwd) {

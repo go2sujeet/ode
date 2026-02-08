@@ -11,6 +11,8 @@ import {
   setChannelAgentProvider,
   setChannelModel,
   setChannelWorkingDirectory,
+  getChannelBaseBranch,
+  setChannelBaseBranch,
   getChannelSystemMessage,
   setChannelSystemMessage,
   setGitHubInfoForUser,
@@ -34,6 +36,8 @@ const MODEL_BLOCK = "model";
 const MODEL_ACTION = "model_select";
 const WORKING_DIR_BLOCK = "working_dir";
 const WORKING_DIR_ACTION = "working_dir_input";
+const BASE_BRANCH_BLOCK = "base_branch";
+const BASE_BRANCH_ACTION = "base_branch_input";
 const CHANNEL_SYSTEM_MESSAGE_BLOCK = "channel_system_message";
 const CHANNEL_SYSTEM_MESSAGE_ACTION = "channel_system_message_input";
 
@@ -73,6 +77,7 @@ function buildSettingsModal(params: {
   selectedProvider?: AgentProvider;
   selectedModel?: string | null;
   workingDirectory?: string | null;
+  baseBranch?: string | null;
   channelSystemMessage?: string | null;
 }) {
   const {
@@ -83,6 +88,7 @@ function buildSettingsModal(params: {
     selectedProvider = "opencode",
     selectedModel,
     workingDirectory,
+    baseBranch,
     channelSystemMessage,
   } = params;
   const providerLabels: Record<AgentProvider, string> = {
@@ -115,10 +121,10 @@ function buildSettingsModal(params: {
     ? matchedSelectedModel
     : (selectedProvider === "codex" ? "__default__" : (opencodeModels[0] ?? "__none__"));
   const introText = selectedProvider === "opencode"
-    ? "Configure agent, model (OpenCode), and working directory for this channel."
+    ? "Configure agent, model (OpenCode), working directory, and base branch for this channel."
     : selectedProvider === "codex"
-      ? "Configure agent, optional Codex model, and working directory for this channel."
-      : "Configure agent and working directory for this channel.";
+      ? "Configure agent, optional Codex model, working directory, and base branch for this channel."
+      : "Configure agent, working directory, and base branch for this channel.";
 
   const blocks: any[] = [
     {
@@ -170,6 +176,19 @@ function buildSettingsModal(params: {
       action_id: WORKING_DIR_ACTION,
       initial_value: workingDirectory ?? "",
       placeholder: { type: "plain_text" as const, text: "e.g., ~/Code/ode" },
+    },
+  });
+
+  blocks.push({
+    type: "input" as const,
+    block_id: BASE_BRANCH_BLOCK,
+    optional: true,
+    label: { type: "plain_text" as const, text: "Base Branch" },
+    element: {
+      type: "plain_text_input" as const,
+      action_id: BASE_BRANCH_ACTION,
+      initial_value: baseBranch?.trim() || "main",
+      placeholder: { type: "plain_text" as const, text: "e.g., main" },
     },
   });
 
@@ -289,6 +308,7 @@ export function setupInteractiveHandlers(): void {
       selectedProvider: toSelectableProvider(getChannelAgentProvider(channelId)),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
+      baseBranch: getChannelBaseBranch(channelId),
       channelSystemMessage: getChannelSystemMessage(channelId),
     });
 
@@ -353,6 +373,9 @@ export function setupInteractiveHandlers(): void {
       || getChannelModel(channelId)
       || undefined;
     const workingDirectory = view.state?.values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
+    const baseBranch = view.state?.values?.[BASE_BRANCH_BLOCK]?.[BASE_BRANCH_ACTION]?.value
+      || getChannelBaseBranch(channelId)
+      || "main";
     const channelSystemMessage = view.state?.values?.[CHANNEL_SYSTEM_MESSAGE_BLOCK]?.[CHANNEL_SYSTEM_MESSAGE_ACTION]?.value
       || getChannelSystemMessage(channelId)
       || "";
@@ -365,6 +388,7 @@ export function setupInteractiveHandlers(): void {
       selectedProvider,
       selectedModel,
       workingDirectory,
+      baseBranch,
       channelSystemMessage,
     });
 
@@ -388,6 +412,7 @@ export function setupInteractiveHandlers(): void {
           : "opencode";
     const selectedModel = values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value;
     const workingDirectory = values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
+    const baseBranch = values?.[BASE_BRANCH_BLOCK]?.[BASE_BRANCH_ACTION]?.value || "main";
     const channelSystemMessage = values?.[CHANNEL_SYSTEM_MESSAGE_BLOCK]?.[CHANNEL_SYSTEM_MESSAGE_ACTION]?.value || "";
 
     const errors: Record<string, string> = {};
@@ -438,6 +463,7 @@ export function setupInteractiveHandlers(): void {
 
       const workingDirValue = workingDirectory.trim();
       setChannelWorkingDirectory(channelId, workingDirValue.length > 0 ? workingDirValue : null);
+      setChannelBaseBranch(channelId, baseBranch);
       setChannelSystemMessage(channelId, channelSystemMessage);
     } catch (err) {
       const userId = (body as any).user?.id;

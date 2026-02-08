@@ -89,6 +89,15 @@ function localBranchExists(repoRoot: string, branch: string, env?: Record<string
   }
 }
 
+function remoteBranchExists(repoRoot: string, branch: string, env?: Record<string, string>): boolean {
+  try {
+    runGit(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`], repoRoot, env);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });
@@ -150,9 +159,11 @@ function ensureWorktreeConfig(repoRoot: string, env?: Record<string, string>): v
 export async function ensureSessionWorktree(params: {
   cwd: string;
   worktreeId: string;
+  baseBranch: string;
   env?: Record<string, string>;
 }): Promise<WorktreeResult> {
-  const { cwd, worktreeId, env } = params;
+  const { cwd, worktreeId, baseBranch, env } = params;
+  const normalizedBaseBranch = baseBranch.trim() || "main";
   const repoRoot = resolveRepoRoot(cwd, env);
   if (!repoRoot) {
     return { worktreePath: cwd, repoRoot: null, created: false, reused: false, skipped: true };
@@ -180,8 +191,8 @@ export async function ensureSessionWorktree(params: {
 
   const currentBranch = getCurrentBranch(repoRoot, env);
   const dirtyPaths = getDirtyPaths(repoRoot, env);
-  if (currentBranch === "main" && dirtyPaths.length > 0) {
-    const message = "Main has uncommitted changes, skipping worktree and staying on main.";
+  if (currentBranch === normalizedBaseBranch && dirtyPaths.length > 0) {
+    const message = `${normalizedBaseBranch} has uncommitted changes, skipping worktree and staying on ${normalizedBaseBranch}.`;
     log.warn(message, { repoRoot });
     return {
       worktreePath: repoRoot,
@@ -193,15 +204,52 @@ export async function ensureSessionWorktree(params: {
     };
   }
 
+  let hasLocalBaseBranch = localBranchExists(repoRoot, normalizedBaseBranch, env);
+  let hasRemoteBaseBranch = remoteBranchExists(repoRoot, normalizedBaseBranch, env);
+  if (!hasLocalBaseBranch && !hasRemoteBaseBranch) {
+    try {
+      runGit(["fetch", "origin", normalizedBaseBranch], repoRoot, env);
+    } catch {
+      // Handle branch-not-found with a user-facing message below.
+    }
+    hasLocalBaseBranch = localBranchExists(repoRoot, normalizedBaseBranch, env);
+    hasRemoteBaseBranch = remoteBranchExists(repoRoot, normalizedBaseBranch, env);
+  }
+
+  if (!hasLocalBaseBranch && !hasRemoteBaseBranch) {
+    const message = `Base branch '${normalizedBaseBranch}' not found in this repo. Open channel settings and update Base Branch.`;
+    log.warn(message, { repoRoot, baseBranch: normalizedBaseBranch });
+    return {
+      worktreePath: repoRoot,
+      repoRoot,
+      created: false,
+      reused: false,
+      skipped: true,
+      message,
+    };
+  }
+
   ensureDir(worktreeDir);
-  log.info("Pulling latest main before creating worktree", { repoRoot });
-  runGit(["pull", "origin", "main"], repoRoot, env);
+  if (currentBranch === normalizedBaseBranch) {
+    log.info("Pulling latest base branch before creating worktree", {
+      repoRoot,
+      baseBranch: normalizedBaseBranch,
+    });
+    runGit(["pull", "origin", normalizedBaseBranch], repoRoot, env);
+  } else {
+    log.info("Fetching latest base branch before creating worktree", {
+      repoRoot,
+      baseBranch: normalizedBaseBranch,
+    });
+    runGit(["fetch", "origin", normalizedBaseBranch], repoRoot, env);
+  }
 
   log.info("Creating worktree for session", { worktreePath, worktreeId });
+  const startPoint = hasLocalBaseBranch ? normalizedBaseBranch : `origin/${normalizedBaseBranch}`;
   if (localBranchExists(repoRoot, worktreeId, env)) {
     runGit(["worktree", "add", worktreePath, worktreeId], repoRoot, env);
   } else {
-    runGit(["worktree", "add", worktreePath, "-b", worktreeId, "main"], repoRoot, env);
+    runGit(["worktree", "add", worktreePath, "-b", worktreeId, startPoint], repoRoot, env);
   }
   copyEnvFile(repoRoot, worktreePath);
 

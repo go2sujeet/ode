@@ -135,6 +135,19 @@
     }));
   }
 
+  function onChannelBaseBranchChange(workspaceId: string, channelId: string, baseBranch: string): void {
+    localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
+      ...workspace,
+      channelDetails: workspace.channelDetails.map((channel) =>
+        channel.id === channelId ? { ...channel, baseBranch } : channel
+      ),
+    }));
+  }
+
+  function onChannelBaseBranchInput(workspaceId: string, channelId: string, event: Event): void {
+    onChannelBaseBranchChange(workspaceId, channelId, (event.currentTarget as HTMLInputElement).value);
+  }
+
   function onChannelSystemMessageInput(workspaceId: string, channelId: string, event: Event): void {
     onChannelSystemMessageChange(workspaceId, channelId, (event.currentTarget as HTMLTextAreaElement).value);
   }
@@ -281,6 +294,14 @@
           value={channel.workingDirectory}
           placeholder="~/Code/project"
           on:input={(event) => onChannelWorkingDirectoryInput(selectedWorkspace.id, channel.id, event)}
+        />
+
+        <label for={`channel-base-branch-${channel.id}`}>Base branch</label>
+        <input
+          id={`channel-base-branch-${channel.id}`}
+          value={channel.baseBranch}
+          placeholder="main"
+          on:input={(event) => onChannelBaseBranchInput(selectedWorkspace.id, channel.id, event)}
         />
 
         <label for={`channel-system-message-${channel.id}`}>Channel System Message (optional)</label>

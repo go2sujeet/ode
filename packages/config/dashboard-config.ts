@@ -41,6 +41,7 @@ export type DashboardConfig = {
       agentProvider?: "opencode" | "claudecode" | "codex" | "kimi";
       model: string;
       workingDirectory: string;
+      baseBranch: string;
       channelSystemMessage?: string;
     }[];
   }[];
@@ -78,6 +79,11 @@ const cloneDefaultDashboardConfig = (): DashboardConfig => structuredClone(defau
 
 const asString = (value: unknown, fallback = "") =>
   typeof value === "string" ? value : fallback;
+
+const asBaseBranch = (value: unknown) => {
+  const normalized = asString(value).trim();
+  return normalized.length > 0 ? normalized : "main";
+};
 
 const asNumber = (value: unknown, fallback = 0) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -124,6 +130,7 @@ const sanitizeChannelDetail = (
     agentProvider: asAgentProvider(detail.agentProvider),
     model: asString(detail.model),
     workingDirectory: asString(detail.workingDirectory),
+    baseBranch: asBaseBranch(detail.baseBranch),
     channelSystemMessage: asString(detail.channelSystemMessage),
   };
 };
