@@ -2,6 +2,7 @@
 
 import packageJson from "../../package.json" with { type: "json" };
 import { isInstalledBinary, performUpgrade } from "./upgrade";
+import { runOnboarding } from "./onboarding";
 
 const args = process.argv.slice(2);
 const CURRENT_VERSION = packageJson.version ?? "0.0.0";
@@ -14,11 +15,13 @@ function printHelp(): void {
       "",
       "Usage:",
       "  ode [--local]",
+      "  ode onboarding",
       "  ode upgrade",
       "  ode --version",
       "",
       "Examples:",
       "  ode --local",
+      "  ode onboarding",
       "  ode upgrade",
     ].join("\n")
   );
@@ -51,6 +54,11 @@ if (args.includes("--version") || args[0] === "version") {
 
 if (args[0] === "upgrade") {
   await upgrade();
+  process.exit(0);
+}
+
+if (args[0] === "onboarding") {
+  await runOnboarding({ force: true });
   process.exit(0);
 }
 

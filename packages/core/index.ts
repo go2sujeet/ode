@@ -25,6 +25,7 @@ import {
 import { log } from "@/utils";
 import { hasWebUiBuild, startLocalWebServer, stopLocalWebServer } from "./web/server";
 import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
+import { runOnboardingIfNeeded } from "./onboarding";
 import packageJson from "../../package.json" with { type: "json" };
 
 const CONFIG_WATCH_INTERVAL_MS = 1000;
@@ -243,6 +244,7 @@ async function main(): Promise<void> {
   log.info("Config loaded", { defaultCwd, mode: "local" });
 
   loadOdeConfig();
+  await runOnboardingIfNeeded();
 
   if (isLocalMode()) {
     startLocalWebServer();

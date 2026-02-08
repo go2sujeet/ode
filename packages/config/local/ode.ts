@@ -101,6 +101,7 @@ const odeConfigSchema = z.object({
     .optional()
     .default({}),
   agents: agentsSchema,
+  completeOnboarding: z.boolean().optional().default(false),
   workspaces: z.array(workspaceSchema),
   updates: updateSchema.optional().default({
     autoUpgrade: true,
@@ -134,6 +135,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     codex: { enabled: true, models: [] },
     kimi: { enabled: true },
   },
+  completeOnboarding: false,
   workspaces: [],
   updates: {
     autoUpgrade: true,
@@ -175,6 +177,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
   const codexModels = Array.from(new Set((config.agents?.codex?.models ?? [])
     .map((model) => model.trim())
     .filter(Boolean)));
+  const completeOnboarding = config.completeOnboarding === true;
   return {
     ...config,
     user: {
@@ -202,6 +205,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
         enabled: config.agents?.kimi?.enabled ?? true,
       },
     },
+    completeOnboarding,
   };
 }
 

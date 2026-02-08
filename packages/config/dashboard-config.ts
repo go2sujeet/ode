@@ -1,4 +1,5 @@
 export type DashboardConfig = {
+  completeOnboarding: boolean;
   user: {
     name: string;
     email: string;
@@ -55,6 +56,7 @@ const defaultWorkspace: DashboardConfig["workspaces"][number] = {
 };
 
 export const defaultDashboardConfig: DashboardConfig = {
+  completeOnboarding: false,
   user: {
     name: "",
     email: "",
@@ -199,6 +201,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const workspaces = sanitizeWorkspaces(record.workspaces);
 
   return {
+    completeOnboarding: record.completeOnboarding === true,
     user: {
       name: asString(user.name),
       email: asString(user.email),
