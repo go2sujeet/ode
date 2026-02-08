@@ -312,7 +312,7 @@ function stopSessionInstance(sessionId: string): void {
   session.eventLoopRunning = false;
   session.handlers.clear();
   sessionInstances.delete(sessionId);
-  log.info("Stopped OpenCode instance", { sessionId });
+  log.debug("Stopped OpenCode session state", { sessionId });
 }
 
 // Event loop for a specific session

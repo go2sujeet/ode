@@ -428,7 +428,7 @@ export async function sendMessage(
     log.warn("No Slack bot token available for channel", { channelId });
   }
 
-  log.info("[SLACK] Outgoing message", {
+  log.debug("[SLACK] Outgoing message", {
     workspace,
     channel: channelId,
     thread: threadId,

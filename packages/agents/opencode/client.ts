@@ -204,14 +204,14 @@ export async function sendMessage(
         ? buildOpenCodeCommand(serverUrl, activeSessionId, payload)
         : null;
 
-      log.info("Sending message via SDK", { sessionId: activeSessionId, agent, model, command });
+      log.debug("Sending message via SDK", { sessionId: activeSessionId, agent, model, command });
 
       const result = await client.session.prompt({
         sessionID: activeSessionId,
         ...payload,
       });
 
-      log.info("OpenCode SDK response received", {
+      log.debug("OpenCode SDK response received", {
         hasData: !!result.data,
         dataKeys: result.data ? Object.keys(result.data) : [],
         error: result.error,
@@ -238,7 +238,7 @@ export async function sendMessage(
         }
       }
 
-      log.info("OpenCode completed", { messageCount: messages.length });
+      log.debug("OpenCode completed", { messageCount: messages.length });
       return messages;
     });
   } finally {
