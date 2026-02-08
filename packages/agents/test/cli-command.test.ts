@@ -47,6 +47,17 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).not.toContain("CHANNEL SYSTEM MESSAGE:");
   });
 
+  it("includes branch rename guidance before creating pull requests", () => {
+    const systemPrompt = buildSystemPrompt({
+      channelId: "C123",
+      threadId: "1770543888.045599",
+      userId: "U789",
+    });
+
+    expect(systemPrompt).toContain("Before creating any pull request, make sure the current branch name is meaningful.");
+    expect(systemPrompt).toContain("Preferred branch format before PR: `feat/<short-slug>-<threadShortId>`");
+  });
+
   it("builds the OpenCode curl command", () => {
     const command = buildOpenCodeCommand("http://127.0.0.1:8080", "session-2", {
       directory: "/tmp/project",

@@ -22,6 +22,9 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     "- If GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL are set, use them explicitly in commit commands.",
     "- Prefer: git commit --author=\"$GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>\" -m \"...\"",
     "- Use GH_TOKEN for gh commands when available; fall back to git commands when GH_TOKEN is not set.",
+    "- Before creating any pull request, make sure the current branch name is meaningful.",
+    "- If the branch looks like a thread/worktree ID (for example `ode_<threadId>`), rename it first.",
+    "- Preferred branch format before PR: `feat/<short-slug>-<threadShortId>` (slug from the PR topic, short thread suffix for uniqueness).",
     "",
   ];
 
