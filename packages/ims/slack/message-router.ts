@@ -1,11 +1,18 @@
 import { log } from "@/utils";
 
 type RouterDeps = {
-  getApp: () => any;
+  app: any;
   isAuthorizedChannel: (channelId: string) => boolean;
-  resolveWorkspaceAuth: (teamId?: string, enterpriseId?: string) => { workspaceName?: string; botToken?: string } | undefined;
+  resolveWorkspaceAuth: (
+    teamId?: string,
+    enterpriseId?: string
+  ) => { workspaceName?: string; botToken?: string; [key: string]: unknown } | undefined;
   getChannelWorkspaceName: (channelId: string) => string | undefined;
   setChannelWorkspaceName: (channelId: string, workspaceName: string) => void;
+  setChannelWorkspaceAuth: (
+    channelId: string,
+    auth: { workspaceName?: string; botToken?: string; [key: string]: unknown } | undefined
+  ) => void;
   isThreadActive: (channelId: string, threadId: string) => boolean;
   markThreadActive: (channelId: string, threadId: string) => void;
   isGitHubCommand: (text: string) => boolean;
@@ -25,7 +32,7 @@ type RouterDeps = {
 };
 
 export function registerSlackMessageRouter(deps: RouterDeps): void {
-  const slackApp = deps.getApp();
+  const slackApp = deps.app;
 
   slackApp.message(async ({ message, say, client }: any) => {
     if (message.subtype !== undefined) return;
@@ -49,6 +56,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       if (auth?.workspaceName && !deps.getChannelWorkspaceName(channelId)) {
         deps.setChannelWorkspaceName(channelId, auth.workspaceName);
       }
+      deps.setChannelWorkspaceAuth(channelId, auth);
     }
 
     if (userId === currentBotUserId) {

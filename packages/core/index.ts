@@ -14,7 +14,7 @@ import { stopAllServers } from "@/agents";
 import {
   getDefaultCwd,
   isLocalMode,
-  getSlackAppToken,
+  getSlackAppTokens,
   getWebHost,
   getWebPort,
   loadOdeConfig,
@@ -37,59 +37,69 @@ function getLocalSettingsUrl(): string {
 }
 
 let webDevServer: ChildProcess | null = null;
-let slackApp: Awaited<ReturnType<typeof createSlackApp>> | null = null;
-let slackAppToken: string | null = null;
+let slackApps: Array<Awaited<ReturnType<typeof createSlackApp>>> = [];
+let slackAppTokens: string[] = [];
 let slackStarting = false;
 let stopConfigWatcher: (() => void) | null = null;
 let upgradeTimer: ReturnType<typeof setInterval> | null = null;
 let upgradeInitialTimer: ReturnType<typeof setTimeout> | null = null;
 
-function getLocalSlackAppToken(): string | null {
+function getLocalSlackAppTokens(): string[] {
   try {
-    const token = getSlackAppToken().trim();
-    return token.length > 0 ? token : null;
+    const tokens = getSlackAppTokens()
+      .map((entry) => entry.token.trim())
+      .filter((token) => token.length > 0);
+    return Array.from(new Set(tokens));
   } catch {
-    return null;
+    return [];
   }
 }
 
 async function stopSlackRuntime(reason: string): Promise<void> {
-  if (slackApp) {
+  for (const app of slackApps) {
     try {
-      await slackApp.stop();
+      await app.stop();
     } catch (error) {
       log.error("Failed to stop Slack app", { reason, error: String(error) });
     }
   }
 
-  slackApp = null;
-  slackAppToken = null;
+  slackApps = [];
+  slackAppTokens = [];
   resetSlackState();
-  log.info("Slack connection stopped", { reason });
+  log.info("Slack connections stopped", { reason });
 }
 
 async function startSlackRuntime(reason: string): Promise<void> {
-  if (slackStarting || slackApp) return;
+  if (slackStarting || slackApps.length > 0) return;
 
   if (isLocalMode()) {
-    const token = getLocalSlackAppToken();
-    if (!token) {
+    const tokens = getLocalSlackAppTokens();
+    if (tokens.length === 0) {
       log.warn("Slack app token missing", { mode: "local" });
       return;
     }
-    slackAppToken = token;
   }
 
   slackStarting = true;
   try {
+    const appTokens = getLocalSlackAppTokens();
+    if (appTokens.length === 0) return;
+
     clearSlackAuthState();
     await initializeWorkspaceAuth();
-    const app = await createSlackApp();
+    slackApps = [];
+    for (const appToken of appTokens) {
+      const app = await createSlackApp(appToken);
+      slackApps.push(app);
+    }
+    slackAppTokens = appTokens;
     setupMessageHandlers();
     setupInteractiveHandlers();
-    await app.start();
-    slackApp = app;
-    log.info("Slack connection ready", { reason });
+    for (const app of slackApps) {
+      await app.start();
+    }
+    log.info("Slack connections ready", { reason, count: slackApps.length });
   } catch (error) {
     log.warn("Slack connection failed", { reason, error: String(error) });
     await stopSlackRuntime("startup failed");
@@ -104,26 +114,31 @@ async function refreshSlackRuntime(reason: string): Promise<void> {
   loadOdeConfig();
   updateAutoUpgradeScheduler(reason);
 
-  const nextToken = getLocalSlackAppToken();
-  if (!nextToken) {
+  const nextTokens = getLocalSlackAppTokens();
+  if (nextTokens.length === 0) {
     await stopSlackRuntime("missing app token");
     return;
   }
 
-  if (!slackApp) {
+  if (slackApps.length === 0) {
     await startSlackRuntime(reason);
     return;
   }
 
-  if (slackAppToken && slackAppToken !== nextToken) {
-    await stopSlackRuntime("app token changed");
+  const runningTokens = new Set(slackAppTokens);
+  const nextTokenSet = new Set(nextTokens);
+  const changed = runningTokens.size !== nextTokenSet.size
+    || Array.from(nextTokenSet).some((token) => !runningTokens.has(token));
+
+  if (changed) {
+    await stopSlackRuntime("app token set changed");
     await startSlackRuntime(reason);
     return;
   }
 
   clearSlackAuthState();
   await initializeWorkspaceAuth();
-  log.info("Slack auth refreshed", { reason });
+  log.info("Slack auth refreshed", { reason, appCount: slackApps.length });
 }
 
 async function runAutoUpgradeCheck(reason: string): Promise<void> {
@@ -240,7 +255,7 @@ async function main(): Promise<void> {
 
   await startSlackRuntime("startup");
 
-  if (slackApp) {
+  if (slackApps.length > 0) {
     log.info("Slack app created");
     log.info("Message handlers registered");
     log.info("Interactive handlers registered");
@@ -274,7 +289,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  if (slackApp) {
+  if (slackApps.length > 0) {
     // Give socket connection time to fully establish before recovery
     await new Promise((resolve) => setTimeout(resolve, 1000));
 

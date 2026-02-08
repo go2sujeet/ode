@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
+  import type { DashboardConfig } from "$lib/localConfig";
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath, slugify } from "$lib/local-setting/workspaces";
 
@@ -16,6 +17,9 @@
   let isCanonicalizingWorkspaceRoute = false;
 
   $: selectedWorkspace = getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces);
+  $: duplicateWorkspaceIds = getDuplicateWorkspaceIds($localSettingStore.config.workspaces);
+  $: duplicateSlackBotTokens = getDuplicateSlackBotTokens($localSettingStore.config.workspaces);
+  $: selectedWorkspaceErrors = getWorkspaceErrors(selectedWorkspace, duplicateWorkspaceIds, duplicateSlackBotTokens);
   $: enabledProviders = (Object.keys(providerLabels) as AgentProvider[]).filter((provider) => {
     if (provider === "opencode") return $localSettingStore.config.agents.opencode.enabled;
     if (provider === "claudecode") return $localSettingStore.config.agents.claudecode.enabled;
@@ -64,6 +68,14 @@
     }));
   }
 
+  function onWorkspaceTextInput(
+    workspaceId: string,
+    field: "name" | "domain" | "slackAppToken" | "slackBotToken",
+    event: Event
+  ): void {
+    onWorkspaceFieldInput(workspaceId, field, (event.currentTarget as HTMLInputElement).value);
+  }
+
   function onChannelProviderChange(workspaceId: string, channelId: string, event: Event): void {
     const selected = (event.currentTarget as HTMLSelectElement).value;
     const provider = selected === "claudecode"
@@ -97,6 +109,10 @@
     }));
   }
 
+  function onChannelModelSelect(workspaceId: string, channelId: string, event: Event): void {
+    onChannelModelChange(workspaceId, channelId, (event.currentTarget as HTMLSelectElement).value);
+  }
+
   function onChannelWorkingDirectoryChange(workspaceId: string, channelId: string, workingDirectory: string): void {
     localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
       ...workspace,
@@ -104,6 +120,53 @@
         channel.id === channelId ? { ...channel, workingDirectory } : channel
       ),
     }));
+  }
+
+  function onChannelWorkingDirectoryInput(workspaceId: string, channelId: string, event: Event): void {
+    onChannelWorkingDirectoryChange(workspaceId, channelId, (event.currentTarget as HTMLInputElement).value);
+  }
+
+  function getDuplicateWorkspaceIds(workspaces: DashboardConfig["workspaces"]): Set<string> {
+    const counts = new Map<string, number>();
+    for (const workspace of workspaces) {
+      const workspaceId = workspace.id.trim();
+      if (!workspaceId) continue;
+      counts.set(workspaceId, (counts.get(workspaceId) ?? 0) + 1);
+    }
+    return new Set(Array.from(counts.entries()).filter(([, count]) => count > 1).map(([id]) => id));
+  }
+
+  function getWorkspaceErrors(
+    workspace: DashboardConfig["workspaces"][number] | null,
+    duplicateIds: Set<string>,
+    duplicateBotTokens: Set<string>
+  ): string[] {
+    if (!workspace) return [];
+    const errors: string[] = [];
+    if (!workspace.id.trim()) {
+      errors.push("Workspace ID is required.");
+    } else if (duplicateIds.has(workspace.id.trim())) {
+      errors.push(`Workspace ID '${workspace.id}' is duplicated.`);
+    }
+    if (!(workspace.slackAppToken?.trim() ?? "")) {
+      errors.push("Slack App Token is required.");
+    }
+    if (!(workspace.slackBotToken?.trim() ?? "")) {
+      errors.push("Slack Bot Token is required.");
+    } else if (duplicateBotTokens.has(workspace.slackBotToken.trim())) {
+      errors.push("Slack Bot Token must be unique across workspaces.");
+    }
+    return errors;
+  }
+
+  function getDuplicateSlackBotTokens(workspaces: DashboardConfig["workspaces"]): Set<string> {
+    const counts = new Map<string, number>();
+    for (const workspace of workspaces) {
+      const botToken = workspace.slackBotToken?.trim() ?? "";
+      if (!botToken) continue;
+      counts.set(botToken, (counts.get(botToken) ?? 0) + 1);
+    }
+    return new Set(Array.from(counts.entries()).filter(([, count]) => count > 1).map(([token]) => token));
   }
 </script>
 
@@ -113,7 +176,7 @@
       <h2>{selectedWorkspace.name || "Workspace 1"}</h2>
       <button
         on:click={() => void localSettingStore.syncSlackWorkspace(selectedWorkspace.id)}
-        disabled={$localSettingStore.isSyncingSlack || $localSettingStore.isLoading || $localSettingStore.isSaving}
+        disabled={$localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isLoading || $localSettingStore.isSaving}
       >
         {$localSettingStore.isSyncingSlack ? "Syncing..." : "Sync"}
       </button>
@@ -124,7 +187,7 @@
       id="workspace-app-token"
       type="text"
       value={selectedWorkspace.slackAppToken ?? ""}
-      on:input={(event) => onWorkspaceFieldInput(selectedWorkspace.id, "slackAppToken", (event.currentTarget as HTMLInputElement).value)}
+      on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "slackAppToken", event)}
     />
 
     <label for="workspace-bot-token">Slack Bot Token</label>
@@ -132,8 +195,16 @@
       id="workspace-bot-token"
       type="text"
       value={selectedWorkspace.slackBotToken ?? ""}
-      on:input={(event) => onWorkspaceFieldInput(selectedWorkspace.id, "slackBotToken", (event.currentTarget as HTMLInputElement).value)}
+      on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "slackBotToken", event)}
     />
+
+    {#if selectedWorkspaceErrors.length > 0}
+      <div class="validation-errors" role="alert">
+        {#each selectedWorkspaceErrors as error}
+          <p>{error}</p>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   <section class="card">
@@ -141,14 +212,14 @@
     <input
       id="workspace-name"
       value={selectedWorkspace.name}
-      on:input={(event) => onWorkspaceFieldInput(selectedWorkspace.id, "name", (event.currentTarget as HTMLInputElement).value)}
+      on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "name", event)}
     />
 
     <label for="workspace-domain">Domain</label>
     <input
       id="workspace-domain"
       value={selectedWorkspace.domain}
-      on:input={(event) => onWorkspaceFieldInput(selectedWorkspace.id, "domain", (event.currentTarget as HTMLInputElement).value)}
+      on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "domain", event)}
     />
   </section>
 
@@ -175,11 +246,11 @@
           {#if shouldShowChannelModel(channel)}
             <div class="channel-field">
               <label for={`channel-model-${channel.id}`}>Model</label>
-              <select
-                id={`channel-model-${channel.id}`}
-                value={channel.model}
-                on:change={(event) => onChannelModelChange(selectedWorkspace.id, channel.id, (event.currentTarget as HTMLSelectElement).value)}
-              >
+                <select
+                  id={`channel-model-${channel.id}`}
+                  value={channel.model}
+                  on:change={(event) => onChannelModelSelect(selectedWorkspace.id, channel.id, event)}
+                >
                 {#if !$localSettingStore.config.agents.opencode.models.includes(channel.model) && channel.model}
                   <option value={channel.model}>{channel.model}</option>
                 {/if}
@@ -196,12 +267,7 @@
           id={`channel-working-directory-${channel.id}`}
           value={channel.workingDirectory}
           placeholder="~/Code/project"
-          on:input={(event) =>
-            onChannelWorkingDirectoryChange(
-              selectedWorkspace.id,
-              channel.id,
-              (event.currentTarget as HTMLInputElement).value
-            )}
+          on:input={(event) => onChannelWorkingDirectoryInput(selectedWorkspace.id, channel.id, event)}
         />
       </div>
     {/each}
@@ -230,6 +296,20 @@
     padding: 10px;
     margin-top: 8px;
     background: var(--bg-soft);
+  }
+
+  .validation-errors {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px;
+    background: var(--bg-soft);
+    display: grid;
+    gap: 4px;
+  }
+
+  .validation-errors p {
+    margin: 0;
+    color: var(--accent);
   }
 
   .channel-inline {

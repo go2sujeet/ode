@@ -40,6 +40,12 @@ type SlackChannel = {
   is_member?: boolean;
 };
 
+type SlackTeam = {
+  id?: string;
+  name?: string;
+  domain?: string;
+};
+
 const slackRequest = async <T>(token: string, path: string, params?: URLSearchParams) => {
   const url = new URL(`https://slack.com/api/${path}`);
   if (params) {
@@ -80,6 +86,86 @@ const fetchSlackChannels = async (token: string) => {
   return channels;
 };
 
+const formatSlackDomain = (domain?: string): string => (domain ? `${domain}.slack.com` : "");
+
+const fetchSlackWorkspaceSnapshot = async (botToken: string): Promise<{ team: SlackTeam; channels: SlackChannel[] }> => {
+  const teamInfo = await slackRequest<{ team: SlackTeam }>(botToken, "team.info");
+  const channels = await fetchSlackChannels(botToken);
+  return { team: teamInfo.team ?? {}, channels };
+};
+
+const buildDiscoveredChannelDetails = (
+  channels: SlackChannel[],
+  fallbackModel: string
+): DashboardConfig["workspaces"][number]["channelDetails"] =>
+  channels.map((channel) => ({
+    id: channel.id,
+    name: channel.name ? `#${channel.name}` : "",
+    agentProvider: "opencode",
+    model: fallbackModel,
+    workingDirectory: "",
+  }));
+
+const buildSyncedChannelDetails = (
+  channels: SlackChannel[],
+  workspace: DashboardConfig["workspaces"][number],
+  fallbackModel: string
+): DashboardConfig["workspaces"][number]["channelDetails"] =>
+  channels.map((channel) => {
+    const existing = workspace.channelDetails.find((item) => item.id === channel.id);
+    const agentProvider: "opencode" | "claudecode" | "codex" | "kimi" =
+      existing?.agentProvider === "claudecode"
+        ? "claudecode"
+        : existing?.agentProvider === "codex"
+          ? "codex"
+          : existing?.agentProvider === "kimi"
+            ? "kimi"
+            : "opencode";
+
+    return {
+      id: channel.id,
+      name: channel.name ? `#${channel.name}` : "",
+      agentProvider,
+      model: existing?.model ?? (agentProvider === "opencode" || agentProvider === "codex" ? fallbackModel : ""),
+      workingDirectory: existing?.workingDirectory ?? "",
+    };
+  });
+
+export const discoverSlackWorkspace = async (
+  slackAppToken: string,
+  slackBotToken: string
+): Promise<DashboardConfig["workspaces"][number]> => {
+  const appToken = slackAppToken.trim();
+  const botToken = slackBotToken.trim();
+  if (!appToken) {
+    throw new Error("Missing Slack app token");
+  }
+  if (!botToken) {
+    throw new Error("Missing Slack bot token");
+  }
+
+  const config = await readLocalSettings();
+  const snapshot = await fetchSlackWorkspaceSnapshot(botToken);
+  const fallbackModel = config.agents.opencode.models[0] ?? "";
+  const discoveredWorkspaceId = snapshot.team.id?.trim();
+  const workspaceId = discoveredWorkspaceId || `workspace-${config.workspaces.length + 1}`;
+  const workspaceName = snapshot.team.name?.trim() || `Workspace ${config.workspaces.length + 1}`;
+  const channelDetails = buildDiscoveredChannelDetails(snapshot.channels, fallbackModel);
+
+  return {
+    id: workspaceId,
+    name: workspaceName,
+    domain: formatSlackDomain(snapshot.team.domain),
+    status: "active",
+    channels: channelDetails.length,
+    members: 0,
+    lastSync: new Date().toISOString(),
+    slackAppToken: appToken,
+    slackBotToken: botToken,
+    channelDetails,
+  };
+};
+
 export const syncSlackWorkspace = async (workspaceId: string): Promise<DashboardConfig["workspaces"][number]> => {
   const config = await readLocalSettings();
   const workspaceIndex = config.workspaces.findIndex((item) => item.id === workspaceId);
@@ -93,36 +179,14 @@ export const syncSlackWorkspace = async (workspaceId: string): Promise<Dashboard
     throw new Error("Missing Slack bot token");
   }
 
-  const teamInfo = await slackRequest<{ team: { name?: string; domain?: string } }>(
-    botToken,
-    "team.info"
-  );
-  const slackChannels = await fetchSlackChannels(botToken);
+  const snapshot = await fetchSlackWorkspaceSnapshot(botToken);
   const fallbackModel = config.agents.opencode.models[0] ?? "";
-
-  const channelDetails = slackChannels.map((channel) => {
-    const existing = workspace.channelDetails.find((item) => item.id === channel.id);
-    const agentProvider: "opencode" | "claudecode" | "codex" | "kimi" =
-      existing?.agentProvider === "claudecode"
-        ? "claudecode"
-        : existing?.agentProvider === "codex"
-          ? "codex"
-          : existing?.agentProvider === "kimi"
-            ? "kimi"
-          : "opencode";
-    return {
-      id: channel.id,
-      name: channel.name ? `#${channel.name}` : "",
-      agentProvider,
-      model: existing?.model ?? (agentProvider === "opencode" || agentProvider === "codex" ? fallbackModel : ""),
-      workingDirectory: existing?.workingDirectory ?? "",
-    };
-  });
+  const channelDetails = buildSyncedChannelDetails(snapshot.channels, workspace, fallbackModel);
 
   const updatedWorkspace: DashboardConfig["workspaces"][number] = {
     ...workspace,
-    name: teamInfo.team?.name ?? workspace.name,
-    domain: teamInfo.team?.domain ? `${teamInfo.team.domain}.slack.com` : workspace.domain,
+    name: snapshot.team.name ?? workspace.name,
+    domain: formatSlackDomain(snapshot.team.domain) || workspace.domain,
     channels: channelDetails.length,
     lastSync: new Date().toISOString(),
     channelDetails,

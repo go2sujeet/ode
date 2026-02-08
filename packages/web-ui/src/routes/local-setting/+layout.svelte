@@ -9,6 +9,8 @@
   let pathname = "/local-setting";
   let normalizedPathname = pathname;
   let activeSection: "profile" | "agents" | "slack" = "profile";
+  let pendingSlackAppToken = "";
+  let pendingSlackBotToken = "";
 
   $: pathname = $page.url.pathname;
   $: normalizedPathname = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
@@ -20,6 +22,55 @@
         : "profile";
 
   $: selectedWorkspace = getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces);
+
+  async function addWorkspace(): Promise<void> {
+    const workspace = await localSettingStore.discoverSlackWorkspace(
+      pendingSlackAppToken,
+      pendingSlackBotToken
+    );
+    if (!workspace) return;
+    pendingSlackAppToken = "";
+    pendingSlackBotToken = "";
+    await goto(getWorkspacePath(workspace));
+  }
+
+  function onPendingSlackAppTokenInput(event: Event): void {
+    pendingSlackAppToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function onPendingSlackBotTokenInput(event: Event): void {
+    pendingSlackBotToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function removeWorkspace(workspaceId: string): void {
+    const workspaces = $localSettingStore.config.workspaces;
+    const removingIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
+    if (removingIndex < 0) return;
+
+    const workspaceToRemove = workspaces[removingIndex];
+    const workspaceLabel = workspaceToRemove?.name?.trim() || workspaceToRemove?.id || workspaceId;
+    if (!window.confirm(`Remove workspace '${workspaceLabel}'?`)) {
+      return;
+    }
+
+    const remainingWorkspaces = workspaces.filter((workspace) => workspace.id !== workspaceId);
+    localSettingStore.removeWorkspace(workspaceId);
+
+    if (activeSection !== "slack" || selectedWorkspace?.id !== workspaceId) return;
+
+    const nextWorkspace =
+      remainingWorkspaces[removingIndex]
+      ?? remainingWorkspaces[removingIndex - 1]
+      ?? remainingWorkspaces[0]
+      ?? null;
+
+    if (nextWorkspace) {
+      void goto(getWorkspacePath(nextWorkspace), { replaceState: true });
+      return;
+    }
+
+    void goto("/local-setting", { replaceState: true });
+  }
 
   onMount(() => {
     if (!$localSettingStore.loaded) {
@@ -53,14 +104,51 @@
             <span class="empty-tip">No workspaces</span>
           {:else}
             {#each $localSettingStore.config.workspaces as workspace}
-              <button
-                class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'slack' ? 'active' : ''}"
-                on:click={() => goto(getWorkspacePath(workspace))}
-              >
-                {workspace.name || workspace.id}
-              </button>
+              <div class="workspace-row">
+                <button
+                  class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'slack' ? 'active' : ''}"
+                  on:click={() => goto(getWorkspacePath(workspace))}
+                >
+                  {workspace.name || workspace.id}
+                </button>
+                <button
+                  class="workspace-remove"
+                  type="button"
+                  on:click={() => removeWorkspace(workspace.id)}
+                  disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
+                >
+                  Remove
+                </button>
+              </div>
             {/each}
           {/if}
+
+          <label for="new-workspace-app-token">Slack App Token</label>
+          <input
+            id="new-workspace-app-token"
+            type="text"
+            value={pendingSlackAppToken}
+            on:input={onPendingSlackAppTokenInput}
+            placeholder="xapp-..."
+          />
+
+          <label for="new-workspace-bot-token">Slack Bot Token</label>
+          <input
+            id="new-workspace-bot-token"
+            type="text"
+            value={pendingSlackBotToken}
+            on:input={onPendingSlackBotTokenInput}
+            placeholder="xoxb-..."
+          />
+
+          <button
+            class="nav-item add-workspace"
+            type="button"
+            on:click={() => void addWorkspace()}
+            disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
+          >
+            {$localSettingStore.isAddingWorkspace ? "Adding..." : "Add workspace"}
+          </button>
         </div>
       </aside>
 
@@ -70,7 +158,7 @@
         <footer class="actions">
           <button
             on:click={() => void localSettingStore.saveConfig()}
-            disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isCheckingCli}
+            disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
           >
             Save
           </button>
@@ -160,6 +248,19 @@
     color: var(--ink-soft);
   }
 
+  .workspace-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .workspace-remove {
+    border-color: var(--line);
+    color: var(--ink-soft);
+    background: var(--bg-soft);
+    padding: 9px 8px;
+  }
+
   .nav-item {
     width: 100%;
     text-align: left;
@@ -180,6 +281,10 @@
   .nav-item.active {
     border-color: var(--accent);
     background: var(--bg-soft);
+  }
+
+  .add-workspace {
+    border-style: dashed;
   }
 
   .content {

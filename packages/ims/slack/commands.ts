@@ -1,4 +1,4 @@
-import { getApp } from "./client";
+import { getApps } from "./client";
 import {
   getChannelAgentProvider,
   getChannelModel,
@@ -240,9 +240,8 @@ function buildGitHubTokenModal(params: {
 }
 
 export function setupInteractiveHandlers(): void {
-  const slackApp = getApp();
-
-  slackApp.action(SETTINGS_LAUNCH_ACTION, async ({ ack, body, client }) => {
+  for (const slackApp of getApps()) {
+    slackApp.action(SETTINGS_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 
     const channelId = (body as any).actions?.[0]?.value
@@ -277,9 +276,9 @@ export function setupInteractiveHandlers(): void {
       trigger_id: (body as any).trigger_id,
       view,
     });
-  });
+    });
 
-  slackApp.action(GITHUB_LAUNCH_ACTION, async ({ ack, body, client }) => {
+    slackApp.action(GITHUB_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 
     const channelId = (body as any).actions?.[0]?.value
@@ -300,9 +299,9 @@ export function setupInteractiveHandlers(): void {
       trigger_id: (body as any).trigger_id,
       view,
     });
-  });
+    });
 
-  slackApp.action(PROVIDER_ACTION, async ({ ack, body, client }) => {
+    slackApp.action(PROVIDER_ACTION, async ({ ack, body, client }) => {
     await ack();
 
     const view = (body as any).view;
@@ -350,9 +349,9 @@ export function setupInteractiveHandlers(): void {
       hash: view.hash,
       view: updatedView,
     });
-  });
+    });
 
-  slackApp.view(SETTINGS_MODAL_ID, async ({ ack, view, body, client }) => {
+    slackApp.view(SETTINGS_MODAL_ID, async ({ ack, view, body, client }) => {
     const channelId = view.private_metadata;
     const values = view.state.values;
     const selectedProvider =
@@ -434,9 +433,9 @@ export function setupInteractiveHandlers(): void {
         text: "Channel settings updated.",
       });
     }
-  });
+    });
 
-  slackApp.view(GITHUB_MODAL_ID, async ({ ack, view, body, client }) => {
+    slackApp.view(GITHUB_MODAL_ID, async ({ ack, view, body, client }) => {
     const values = view.state.values;
     const token = values?.[GITHUB_TOKEN_BLOCK]?.[GITHUB_TOKEN_ACTION]?.value || "";
     const gitName = values?.[GITHUB_NAME_BLOCK]?.[GITHUB_NAME_ACTION]?.value || "";
@@ -480,10 +479,10 @@ export function setupInteractiveHandlers(): void {
       user: userId,
       text: "GitHub info updated.",
     });
-  });
+    });
 
   // Handle user choice button clicks (from Ode ask_user actions)
-  slackApp.action(/^user_choice_\d+$/, async ({ ack, body, client }) => {
+    slackApp.action(/^user_choice_\d+$/, async ({ ack, body, client }) => {
     await ack();
 
     const action = (body as any).actions?.[0];
@@ -518,5 +517,6 @@ export function setupInteractiveHandlers(): void {
     if (selectionMsg.ts) {
       await handleButtonSelection(channel, threadTs, userId || "unknown", value, selectionMsg.ts);
     }
-  });
+    });
+  }
 }

@@ -15,6 +15,7 @@ type LocalSettingState = {
   isLoading: boolean;
   isSaving: boolean;
   isSyncingSlack: boolean;
+  isAddingWorkspace: boolean;
   isCheckingCli: boolean;
   loaded: boolean;
   message: string;
@@ -27,6 +28,7 @@ const initialState: LocalSettingState = {
   isLoading: false,
   isSaving: false,
   isSyncingSlack: false,
+  isAddingWorkspace: false,
   isCheckingCli: false,
   loaded: false,
   message: "",
@@ -35,6 +37,51 @@ const initialState: LocalSettingState = {
 };
 
 const store = writable<LocalSettingState>(initialState);
+
+function validateWorkspaceConfig(config: DashboardConfig): string | null {
+  const idCounts = new Map<string, number>();
+  const botTokenCounts = new Map<string, number>();
+  for (const workspace of config.workspaces) {
+    const workspaceId = workspace.id.trim();
+    if (!workspaceId) {
+      return "Workspace id is required for every workspace.";
+    }
+    idCounts.set(workspaceId, (idCounts.get(workspaceId) ?? 0) + 1);
+
+    const botToken = workspace.slackBotToken?.trim() ?? "";
+    if (botToken) {
+      botTokenCounts.set(botToken, (botTokenCounts.get(botToken) ?? 0) + 1);
+    }
+  }
+
+  const duplicateIds = Array.from(idCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id);
+  if (duplicateIds.length > 0) {
+    return `Duplicate workspace ids: ${duplicateIds.join(", ")}`;
+  }
+
+  const duplicatedBotTokens = Array.from(botTokenCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([token]) => token);
+  if (duplicatedBotTokens.length > 0) {
+    return `Duplicate Slack bot tokens found across workspaces.`;
+  }
+
+  const missingTokenWorkspaces = config.workspaces.filter((workspace) => {
+    const appToken = workspace.slackAppToken?.trim() ?? "";
+    const botToken = workspace.slackBotToken?.trim() ?? "";
+    return !appToken || !botToken;
+  });
+  if (missingTokenWorkspaces.length > 0) {
+    const labels = missingTokenWorkspaces
+      .map((workspace) => workspace.name.trim() || workspace.id)
+      .join(", ");
+    return `Missing Slack app/bot token for: ${labels}`;
+  }
+
+  return null;
+}
 
 function normalizeConfig(input: DashboardConfig): DashboardConfig {
   return {
@@ -80,6 +127,13 @@ function updateWorkspace(
   }));
 }
 
+function removeWorkspace(workspaceId: string): void {
+  updateConfig((config) => ({
+    ...config,
+    workspaces: config.workspaces.filter((workspace) => workspace.id !== workspaceId),
+  }));
+}
+
 async function loadConfig(): Promise<void> {
   const current = get(store);
   if (current.isLoading) return;
@@ -112,9 +166,18 @@ async function loadConfig(): Promise<void> {
 }
 
 async function saveConfig(): Promise<void> {
+  const payload = get(store).config;
+  const validationError = validateWorkspaceConfig(payload);
+  if (validationError) {
+    store.update((state) => ({
+      ...state,
+      message: `Validation failed: ${validationError}`,
+    }));
+    return;
+  }
+
   store.update((state) => ({ ...state, isSaving: true, message: "" }));
   try {
-    const payload = get(store).config;
     const response = await fetch("/api/config", {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -235,12 +298,85 @@ async function syncSlackWorkspace(workspaceId: string): Promise<void> {
   }
 }
 
+async function discoverSlackWorkspace(
+  slackAppToken: string,
+  slackBotToken: string
+): Promise<DashboardConfig["workspaces"][number] | null> {
+  const appToken = slackAppToken.trim();
+  const botToken = slackBotToken.trim();
+  if (!appToken || !botToken) {
+    store.update((state) => ({
+      ...state,
+      message: "Validation failed: Slack app token and bot token are required.",
+    }));
+    return null;
+  }
+
+  store.update((state) => ({ ...state, isAddingWorkspace: true, message: "" }));
+  try {
+    const response = await fetch("/api/slack-discover", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slackAppToken: appToken, slackBotToken: botToken }),
+    });
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      workspace?: DashboardConfig["workspaces"][number];
+    };
+    if (!response.ok || !payload.ok || !payload.workspace) {
+      throw new Error(payload.error || "Failed to discover Slack workspace");
+    }
+
+    let addedWorkspace: DashboardConfig["workspaces"][number] | null = null;
+    let duplicateId = "";
+    store.update((state) => {
+      if (state.config.workspaces.some((workspace) => workspace.id === payload.workspace!.id)) {
+        duplicateId = payload.workspace!.id;
+        return {
+          ...state,
+          isAddingWorkspace: false,
+        };
+      }
+      addedWorkspace = payload.workspace!;
+      return {
+        ...state,
+        isAddingWorkspace: false,
+        config: {
+          ...state.config,
+          workspaces: [...state.config.workspaces, payload.workspace!],
+        },
+        message: `Added Slack workspace: ${payload.workspace!.name || payload.workspace!.id}`,
+      };
+    });
+
+    if (duplicateId) {
+      store.update((state) => ({
+        ...state,
+        message: `Workspace already exists: ${duplicateId}`,
+      }));
+      return null;
+    }
+
+    return addedWorkspace;
+  } catch (error) {
+    store.update((state) => ({
+      ...state,
+      isAddingWorkspace: false,
+      message: `Add workspace failed: ${error instanceof Error ? error.message : String(error)}`,
+    }));
+    return null;
+  }
+}
+
 export const localSettingStore = {
   subscribe: store.subscribe,
   loadConfig,
   saveConfig,
   checkAgents,
   syncSlackWorkspace,
+  discoverSlackWorkspace,
   updateConfig,
   updateWorkspace,
+  removeWorkspace,
 };

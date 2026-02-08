@@ -67,7 +67,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     codex: { enabled: true, models: [] },
     kimi: { enabled: true },
   },
-  workspaces: [defaultWorkspace],
+  workspaces: [],
 };
 
 const cloneDefaultDashboardConfig = (): DashboardConfig => structuredClone(defaultDashboardConfig);
@@ -123,16 +123,20 @@ const sanitizeChannelDetail = (
   };
 };
 
-const sanitizePrimaryWorkspace = (workspaces: unknown): DashboardConfig["workspaces"][number] => {
-  if (!Array.isArray(workspaces) || workspaces.length === 0) {
-    return structuredClone(defaultWorkspace);
-  }
-  const first = workspaces[0];
-  if (!first || typeof first !== "object") {
-    return structuredClone(defaultWorkspace);
+const sanitizeWorkspace = (
+  workspaceInput: unknown,
+  fallbackId: string,
+  fallbackName: string
+): DashboardConfig["workspaces"][number] => {
+  if (!workspaceInput || typeof workspaceInput !== "object") {
+    return {
+      ...structuredClone(defaultWorkspace),
+      id: fallbackId,
+      name: fallbackName,
+    };
   }
 
-  const workspace = first as Record<string, unknown>;
+  const workspace = workspaceInput as Record<string, unknown>;
   const channelDetails = Array.isArray(workspace.channelDetails)
     ? (workspace.channelDetails
         .map((channel) => sanitizeChannelDetail(channel))
@@ -142,8 +146,8 @@ const sanitizePrimaryWorkspace = (workspaces: unknown): DashboardConfig["workspa
   const slackBotToken = asString(workspace.slackBotToken, "");
 
   return {
-    id: asString(workspace.id) || defaultWorkspace.id,
-    name: asString(workspace.name) || defaultWorkspace.name,
+    id: asString(workspace.id) || fallbackId,
+    name: asString(workspace.name) || fallbackName,
     domain: asString(workspace.domain),
     status: asStatus(workspace.status),
     channels: asNumber(workspace.channels),
@@ -153,6 +157,16 @@ const sanitizePrimaryWorkspace = (workspaces: unknown): DashboardConfig["workspa
     slackBotToken: slackBotToken || undefined,
     channelDetails,
   };
+};
+
+const sanitizeWorkspaces = (workspaces: unknown): DashboardConfig["workspaces"] => {
+  if (!Array.isArray(workspaces) || workspaces.length === 0) {
+    return [];
+  }
+
+  return workspaces.map((workspace, index) =>
+    sanitizeWorkspace(workspace, `workspace-${index + 1}`, `Workspace ${index + 1}`)
+  );
 };
 
 export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
@@ -182,7 +196,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const opencodeModels = asStringArray(opencodeRecord.models);
   const codexModels = asStringArray(codexRecord.models);
 
-  const primaryWorkspace = sanitizePrimaryWorkspace(record.workspaces);
+  const workspaces = sanitizeWorkspaces(record.workspaces);
 
   return {
     user: {
@@ -209,6 +223,6 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
         enabled: kimiRecord.enabled !== false,
       },
     },
-    workspaces: [primaryWorkspace],
+    workspaces,
   };
 };

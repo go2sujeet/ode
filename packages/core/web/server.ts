@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { join, resolve, sep } from "path";
 import { EMBEDDED_ASSETS, HAS_EMBEDDED_ASSETS } from "./embedded-assets";
 import {
+  discoverSlackWorkspace,
   readLocalSettings,
   syncSlackWorkspace,
   writeLocalSettings,
@@ -141,6 +142,39 @@ function jsonResponse(status: number, payload: JsonResponse): Response {
   });
 }
 
+function validateWorkspaceConfig(config: typeof defaultDashboardConfig): string | null {
+  const idCounts = new Map<string, number>();
+  const botTokenCounts = new Map<string, number>();
+  for (const workspace of config.workspaces) {
+    const workspaceId = workspace.id.trim();
+    if (!workspaceId) {
+      return "Workspace id is required for every workspace";
+    }
+    idCounts.set(workspaceId, (idCounts.get(workspaceId) ?? 0) + 1);
+    const appToken = workspace.slackAppToken?.trim() ?? "";
+    const botToken = workspace.slackBotToken?.trim() ?? "";
+    if (!appToken || !botToken) {
+      const label = workspace.name.trim() || workspace.id;
+      return `Missing Slack app/bot token for workspace: ${label}`;
+    }
+    botTokenCounts.set(botToken, (botTokenCounts.get(botToken) ?? 0) + 1);
+  }
+
+  const duplicateIds = Array.from(idCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id);
+  if (duplicateIds.length > 0) {
+    return `Duplicate workspace ids: ${duplicateIds.join(", ")}`;
+  }
+
+  const duplicateBotTokenCount = Array.from(botTokenCounts.values()).filter((count) => count > 1).length;
+  if (duplicateBotTokenCount > 0) {
+    return "Duplicate Slack bot tokens found across workspaces";
+  }
+
+  return null;
+}
+
 function resolveAssetPath(pathname: string): string {
   const appAssetIndex = pathname.indexOf("/_app/");
   if (appAssetIndex >= 0) {
@@ -271,6 +305,10 @@ async function handleRequest(request: Request): Promise<Response> {
       try {
         const payload = await request.json();
         const sanitized = sanitizeDashboardConfig(payload);
+        const validationError = validateWorkspaceConfig(sanitized);
+        if (validationError) {
+          return jsonResponse(400, { ok: false, error: validationError });
+        }
         await writeLocalSettings(sanitized);
         return jsonResponse(200, { ok: true, config: sanitized });
       } catch (error) {
@@ -367,6 +405,23 @@ async function handleRequest(request: Request): Promise<Response> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Slack sync failed";
       return jsonResponse(500, { ok: false, error: message });
+    }
+  }
+
+  if (pathname === "/api/slack-discover") {
+    if (request.method !== "POST") {
+      return jsonResponse(405, { ok: false, error: "Method not allowed" });
+    }
+    try {
+      const payload = (await request.json()) as Record<string, unknown>;
+      const slackAppToken = typeof payload.slackAppToken === "string" ? payload.slackAppToken : "";
+      const slackBotToken = typeof payload.slackBotToken === "string" ? payload.slackBotToken : "";
+      const workspace = await discoverSlackWorkspace(slackAppToken, slackBotToken);
+      return jsonResponse(200, { ok: true, workspace });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Slack workspace discovery failed";
+      const status = message.startsWith("Missing Slack") ? 400 : 500;
+      return jsonResponse(status, { ok: false, error: message });
     }
   }
 

@@ -1,6 +1,7 @@
 export {
   createSlackApp,
   getApp,
+  getApps,
   sendMessage,
   deleteMessage,
   setupMessageHandlers,
