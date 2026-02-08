@@ -89,15 +89,6 @@ function localBranchExists(repoRoot: string, branch: string, env?: Record<string
   }
 }
 
-function remoteBranchExists(repoRoot: string, branch: string, env?: Record<string, string>): boolean {
-  try {
-    runGit(["show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`], repoRoot, env);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });
@@ -204,19 +195,8 @@ export async function ensureSessionWorktree(params: {
     };
   }
 
-  let hasLocalBaseBranch = localBranchExists(repoRoot, normalizedBaseBranch, env);
-  let hasRemoteBaseBranch = remoteBranchExists(repoRoot, normalizedBaseBranch, env);
-  if (!hasLocalBaseBranch && !hasRemoteBaseBranch) {
-    try {
-      runGit(["fetch", "origin", normalizedBaseBranch], repoRoot, env);
-    } catch {
-      // Handle branch-not-found with a user-facing message below.
-    }
-    hasLocalBaseBranch = localBranchExists(repoRoot, normalizedBaseBranch, env);
-    hasRemoteBaseBranch = remoteBranchExists(repoRoot, normalizedBaseBranch, env);
-  }
-
-  if (!hasLocalBaseBranch && !hasRemoteBaseBranch) {
+  const hasLocalBaseBranch = localBranchExists(repoRoot, normalizedBaseBranch, env);
+  if (!hasLocalBaseBranch) {
     const message = `Base branch '${normalizedBaseBranch}' not found in this repo. Open channel settings and update Base Branch.`;
     log.warn(message, { repoRoot, baseBranch: normalizedBaseBranch });
     return {
@@ -236,20 +216,13 @@ export async function ensureSessionWorktree(params: {
       baseBranch: normalizedBaseBranch,
     });
     runGit(["pull", "origin", normalizedBaseBranch], repoRoot, env);
-  } else {
-    log.info("Fetching latest base branch before creating worktree", {
-      repoRoot,
-      baseBranch: normalizedBaseBranch,
-    });
-    runGit(["fetch", "origin", normalizedBaseBranch], repoRoot, env);
   }
 
   log.info("Creating worktree for session", { worktreePath, worktreeId });
-  const startPoint = hasLocalBaseBranch ? normalizedBaseBranch : `origin/${normalizedBaseBranch}`;
   if (localBranchExists(repoRoot, worktreeId, env)) {
     runGit(["worktree", "add", worktreePath, worktreeId], repoRoot, env);
   } else {
-    runGit(["worktree", "add", worktreePath, "-b", worktreeId, startPoint], repoRoot, env);
+    runGit(["worktree", "add", worktreePath, "-b", worktreeId, normalizedBaseBranch], repoRoot, env);
   }
   copyEnvFile(repoRoot, worktreePath);
 
