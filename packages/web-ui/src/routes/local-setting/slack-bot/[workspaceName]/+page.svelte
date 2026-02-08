@@ -126,6 +126,19 @@
     onChannelWorkingDirectoryChange(workspaceId, channelId, (event.currentTarget as HTMLInputElement).value);
   }
 
+  function onChannelSystemMessageChange(workspaceId: string, channelId: string, channelSystemMessage: string): void {
+    localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
+      ...workspace,
+      channelDetails: workspace.channelDetails.map((channel) =>
+        channel.id === channelId ? { ...channel, channelSystemMessage } : channel
+      ),
+    }));
+  }
+
+  function onChannelSystemMessageInput(workspaceId: string, channelId: string, event: Event): void {
+    onChannelSystemMessageChange(workspaceId, channelId, (event.currentTarget as HTMLTextAreaElement).value);
+  }
+
   function getDuplicateWorkspaceIds(workspaces: DashboardConfig["workspaces"]): Set<string> {
     const counts = new Map<string, number>();
     for (const workspace of workspaces) {
@@ -269,6 +282,15 @@
           placeholder="~/Code/project"
           on:input={(event) => onChannelWorkingDirectoryInput(selectedWorkspace.id, channel.id, event)}
         />
+
+        <label for={`channel-system-message-${channel.id}`}>Channel System Message (optional)</label>
+        <textarea
+          id={`channel-system-message-${channel.id}`}
+          rows="3"
+          value={channel.channelSystemMessage ?? ""}
+          placeholder="Appended to the system prompt for this channel"
+          on:input={(event) => onChannelSystemMessageInput(selectedWorkspace.id, channel.id, event)}
+        ></textarea>
       </div>
     {/each}
   </section>

@@ -107,6 +107,7 @@ async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<O
         channelDetails: discoveredWorkspace.channelDetails.map((channel) => ({
           ...channel,
           agentProvider: channel.agentProvider ?? "opencode",
+          channelSystemMessage: channel.channelSystemMessage ?? "",
         })),
       };
       const existingWorkspace = nextConfig.workspaces.find((item) => item.id === workspace.id);

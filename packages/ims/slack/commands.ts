@@ -11,6 +11,8 @@ import {
   setChannelAgentProvider,
   setChannelModel,
   setChannelWorkingDirectory,
+  getChannelSystemMessage,
+  setChannelSystemMessage,
   setGitHubInfoForUser,
 } from "@/config";
 import { startServer as startOpenCodeServer } from "@/agents/opencode";
@@ -32,6 +34,8 @@ const MODEL_BLOCK = "model";
 const MODEL_ACTION = "model_select";
 const WORKING_DIR_BLOCK = "working_dir";
 const WORKING_DIR_ACTION = "working_dir_input";
+const CHANNEL_SYSTEM_MESSAGE_BLOCK = "channel_system_message";
+const CHANNEL_SYSTEM_MESSAGE_ACTION = "channel_system_message_input";
 
 type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi";
 
@@ -69,6 +73,7 @@ function buildSettingsModal(params: {
   selectedProvider?: AgentProvider;
   selectedModel?: string | null;
   workingDirectory?: string | null;
+  channelSystemMessage?: string | null;
 }) {
   const {
     channelId,
@@ -78,6 +83,7 @@ function buildSettingsModal(params: {
     selectedProvider = "opencode",
     selectedModel,
     workingDirectory,
+    channelSystemMessage,
   } = params;
   const providerLabels: Record<AgentProvider, string> = {
     opencode: "OpenCode",
@@ -164,6 +170,20 @@ function buildSettingsModal(params: {
       action_id: WORKING_DIR_ACTION,
       initial_value: workingDirectory ?? "",
       placeholder: { type: "plain_text" as const, text: "e.g., ~/Code/ode" },
+    },
+  });
+
+  blocks.push({
+    type: "input" as const,
+    block_id: CHANNEL_SYSTEM_MESSAGE_BLOCK,
+    optional: true,
+    label: { type: "plain_text" as const, text: "Channel System Message (optional)" },
+    element: {
+      type: "plain_text_input" as const,
+      action_id: CHANNEL_SYSTEM_MESSAGE_ACTION,
+      multiline: true,
+      initial_value: channelSystemMessage ?? "",
+      placeholder: { type: "plain_text" as const, text: "Instructions appended to the system prompt for this channel" },
     },
   });
 
@@ -269,6 +289,7 @@ export function setupInteractiveHandlers(): void {
       selectedProvider: toSelectableProvider(getChannelAgentProvider(channelId)),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
+      channelSystemMessage: getChannelSystemMessage(channelId),
     });
 
     await client.views.open({
@@ -332,6 +353,9 @@ export function setupInteractiveHandlers(): void {
       || getChannelModel(channelId)
       || undefined;
     const workingDirectory = view.state?.values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
+    const channelSystemMessage = view.state?.values?.[CHANNEL_SYSTEM_MESSAGE_BLOCK]?.[CHANNEL_SYSTEM_MESSAGE_ACTION]?.value
+      || getChannelSystemMessage(channelId)
+      || "";
 
     const updatedView = buildSettingsModal({
       channelId,
@@ -341,6 +365,7 @@ export function setupInteractiveHandlers(): void {
       selectedProvider,
       selectedModel,
       workingDirectory,
+      channelSystemMessage,
     });
 
     await client.views.update({
@@ -363,6 +388,7 @@ export function setupInteractiveHandlers(): void {
           : "opencode";
     const selectedModel = values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value;
     const workingDirectory = values?.[WORKING_DIR_BLOCK]?.[WORKING_DIR_ACTION]?.value || "";
+    const channelSystemMessage = values?.[CHANNEL_SYSTEM_MESSAGE_BLOCK]?.[CHANNEL_SYSTEM_MESSAGE_ACTION]?.value || "";
 
     const errors: Record<string, string> = {};
     if (!isAgentEnabled(selectedProvider)) {
@@ -412,6 +438,7 @@ export function setupInteractiveHandlers(): void {
 
       const workingDirValue = workingDirectory.trim();
       setChannelWorkingDirectory(channelId, workingDirValue.length > 0 ? workingDirValue : null);
+      setChannelSystemMessage(channelId, channelSystemMessage);
     } catch (err) {
       const userId = (body as any).user?.id;
       if (userId) {

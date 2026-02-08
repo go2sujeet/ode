@@ -70,6 +70,7 @@ const channelDetailSchema = z.object({
   ),
   model: z.string().optional().default(""),
   workingDirectory: z.string().optional().default(""),
+  channelSystemMessage: z.string().optional().default(""),
 });
 
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
@@ -478,6 +479,18 @@ export function setChannelWorkingDirectory(channelId: string, workingDirectory: 
   updateChannel(channelId, (channel) => ({
     ...channel,
     workingDirectory: normalized,
+  }));
+}
+
+export function getChannelSystemMessage(channelId: string): string | null {
+  return getChannelDetails(channelId)?.channelSystemMessage ?? null;
+}
+
+export function setChannelSystemMessage(channelId: string, channelSystemMessage: string | null): void {
+  const normalized = channelSystemMessage?.trim() ?? "";
+  updateChannel(channelId, (channel) => ({
+    ...channel,
+    channelSystemMessage: normalized,
   }));
 }
 

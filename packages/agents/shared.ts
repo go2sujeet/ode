@@ -62,6 +62,12 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("- When sharing tasks, put each item on its own line");
     lines.push("- Use four states: * not started, ♻️ in progress, ✅ done, 🚫 cancelled");
     lines.push("- If you include a task list, keep the tasks you have done at the top of the response");
+
+    const channelSystemMessage = slack.channelSystemMessage?.trim();
+    if (channelSystemMessage) {
+      lines.push("");
+      lines.push(channelSystemMessage);
+    }
   }
 
   return lines.join("\n");

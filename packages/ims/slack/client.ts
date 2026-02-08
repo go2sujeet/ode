@@ -11,6 +11,7 @@ import {
   getOpenCodeModels,
   isAgentEnabled,
   getGitHubInfoForUser,
+  getChannelSystemMessage,
   resolveChannelCwd,
 } from "@/config";
 import { markdownToSlack, splitForSlack } from "./formatter";
@@ -94,6 +95,7 @@ async function buildSlackContext(
       hasCustomSlackTool: await hasOdeSlackTool(cwd),
       odeSlackApiUrl: getOdeSlackApiUrl(),
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
+      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
     },
   };
 }
@@ -253,7 +255,7 @@ async function postSettingsLauncher(
         type: "section",
           text: {
             type: "mrkdwn",
-            text: "Open channel settings for agent and working directory (model appears for OpenCode and Codex).",
+            text: "Open channel settings for agent, working directory, and optional channel system message (model appears for OpenCode and Codex).",
           },
       },
       {

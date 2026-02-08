@@ -35,6 +35,18 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("'hello world'");
   });
 
+  it("appends channel system message into system prompt", () => {
+    const systemPrompt = buildSystemPrompt({
+      channelId: "C123",
+      threadId: "T456",
+      userId: "U789",
+      channelSystemMessage: "Always ask for confirmation before destructive file operations.",
+    });
+
+    expect(systemPrompt).toContain("Always ask for confirmation before destructive file operations.");
+    expect(systemPrompt).not.toContain("CHANNEL SYSTEM MESSAGE:");
+  });
+
   it("builds the OpenCode curl command", () => {
     const command = buildOpenCodeCommand("http://127.0.0.1:8080", "session-2", {
       directory: "/tmp/project",

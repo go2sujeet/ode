@@ -20,6 +20,7 @@ export interface SlackContext {
   hasCustomSlackTool?: boolean;
   odeSlackApiUrl?: string;
   hasGitHubToken?: boolean;
+  channelSystemMessage?: string;
 }
 
 export interface OpenCodeMessageContext {

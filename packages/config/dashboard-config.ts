@@ -41,6 +41,7 @@ export type DashboardConfig = {
       agentProvider?: "opencode" | "claudecode" | "codex" | "kimi";
       model: string;
       workingDirectory: string;
+      channelSystemMessage?: string;
     }[];
   }[];
 };
@@ -123,6 +124,7 @@ const sanitizeChannelDetail = (
     agentProvider: asAgentProvider(detail.agentProvider),
     model: asString(detail.model),
     workingDirectory: asString(detail.workingDirectory),
+    channelSystemMessage: asString(detail.channelSystemMessage),
   };
 };
 
