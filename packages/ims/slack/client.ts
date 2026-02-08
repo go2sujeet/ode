@@ -401,7 +401,7 @@ export async function initializeWorkspaceAuth(): Promise<void> {
     const auth = await fetchWorkspaceAuth(workspace.appToken, botToken, workspace.workspaceId, name);
     if (!auth) continue;
     registerWorkspaceAuth(auth);
-    log.info("Registered Slack workspace auth", {
+    log.debug("Registered Slack workspace auth", {
       workspace: name,
       workspaceId: auth.workspaceId,
       teamId: auth.teamId,

@@ -531,7 +531,7 @@ export function startLocalWebServer(): void {
     fetch: handleRequest,
   });
 
-  log.info("Web UI server started", { host, port });
+  log.debug("Web UI server started", { host, port });
 }
 
 export function stopLocalWebServer(): void {

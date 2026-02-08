@@ -145,18 +145,31 @@ async function selectAgentsWithKeyboard(agents: AgentOption[], defaultSelected: 
 }
 
 async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
-  const wantsSetup = await askYesNo(
+  console.log("Step 1/2: Slack workspace setup.");
+  let nextConfig = config;
+  const existingWorkspaces = nextConfig.workspaces;
+  if (existingWorkspaces.length > 0) {
+    console.log("Connected workspaces:");
+    for (const workspace of existingWorkspaces) {
+      const label = workspace.name || workspace.id;
+      const domain = workspace.domain ? ` (${workspace.domain})` : "";
+      console.log(`- ${label}${domain}`);
+    }
+  } else {
+    console.log("No Slack workspaces connected yet.");
+  }
+
+  const addWorkspace = await askYesNo(
     rl,
-    "Step 1/2: Set up Slack now? You can skip and configure it later in the web UI.",
-    true
+    "Add a new Slack workspace now? You can skip and configure it later in the web UI.",
+    existingWorkspaces.length === 0
   );
 
-  if (!wantsSetup) {
-    console.log("Skipped Slack setup.");
+  if (!addWorkspace) {
+    console.log("Skipped adding a new Slack workspace.");
     return config;
   }
 
-  let nextConfig = config;
   while (true) {
     const slackBotToken = await askRequired(rl, "Paste Slack bot token (xoxb-...): ");
     const slackAppToken = await askRequired(rl, "Paste Slack app token (xapp-...): ");
