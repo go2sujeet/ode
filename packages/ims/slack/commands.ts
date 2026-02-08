@@ -132,21 +132,31 @@ function buildSettingsModal(params: {
     text: { type: "plain_text" as const, text: AGENT_PROVIDER_LABELS[provider] },
     value: provider,
   }));
-  const modelOptions = opencodeModels.length > 0
-    ? opencodeModels.map((model) => ({
-        text: { type: "plain_text" as const, text: model },
-        value: model,
-      }))
-    : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: "__none__" }];
-  const codexModelOptions = [
-    { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: "__default__" },
-    ...codexModels.map((model) => ({
-      text: { type: "plain_text" as const, text: model },
-      value: model,
-    })),
-  ];
+  const providerModels = selectedProvider === "opencode"
+    ? opencodeModels
+    : selectedProvider === "codex"
+      ? codexModels
+      : null;
+  const modelOptions = providerModels && selectedProvider === "opencode"
+    ? (opencodeModels.length > 0
+      ? opencodeModels.map((model) => ({
+          text: { type: "plain_text" as const, text: model },
+          value: model,
+        }))
+      : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: "__none__" }])
+    : providerModels && selectedProvider === "codex"
+      ? [
+          { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: "__default__" },
+          ...codexModels.map((model) => ({
+            text: { type: "plain_text" as const, text: model },
+            value: model,
+          })),
+        ]
+      : [];
 
-  const availableModels = selectedProvider === "codex" ? codexModelOptions.map((entry) => entry.value) : opencodeModels;
+  const availableModels = selectedProvider === "codex"
+    ? modelOptions.map((entry) => entry.value)
+    : providerModels ?? [];
   const matchedSelectedModel = findMatchingModel(availableModels, selectedModel);
   const initialModel = matchedSelectedModel
     ? matchedSelectedModel
@@ -168,6 +178,7 @@ function buildSettingsModal(params: {
     {
       type: "input" as const,
       block_id: PROVIDER_BLOCK,
+      dispatch_action: true,
       label: { type: "plain_text" as const, text: "Provider" },
       element: {
         type: "static_select" as const,
@@ -178,9 +189,8 @@ function buildSettingsModal(params: {
     },
   ];
 
-  if (selectedProvider === "opencode" || selectedProvider === "codex") {
-    const options = selectedProvider === "opencode" ? modelOptions : codexModelOptions;
-    const initialOption = options.find((option) => option.value === initialModel);
+  if (providerModels) {
+    const initialOption = modelOptions.find((option) => option.value === initialModel);
     blocks.push(
       {
         type: "input" as const,
@@ -190,7 +200,7 @@ function buildSettingsModal(params: {
         element: {
           type: "static_select" as const,
           action_id: MODEL_ACTION,
-          options,
+          options: modelOptions,
           initial_option: initialOption,
         },
       },

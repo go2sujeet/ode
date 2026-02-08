@@ -65,7 +65,20 @@
   }
 
   function shouldShowChannelModel(channel: { agentProvider?: string }): boolean {
-    return getChannelProvider(channel) === "opencode";
+    const provider = getChannelProvider(channel);
+    return getProviderModels(provider) !== null;
+  }
+
+  function getProviderModels(provider: AgentProvider): string[] | null {
+    const config = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
+    const entry = config[provider];
+    return Array.isArray(entry?.models) ? entry.models : null;
+  }
+
+  function getChannelModelSelectValue(channel: { agentProvider?: string; model: string }): string {
+    const provider = getChannelProvider(channel);
+    if (provider === "codex" && !channel.model) return "__default__";
+    return channel.model;
   }
 
   function onWorkspaceFieldInput(
@@ -90,16 +103,20 @@
   function onChannelProviderChange(workspaceId: string, channelId: string, event: Event): void {
     const selected = (event.currentTarget as HTMLSelectElement).value;
     const provider = parseAgentProvider(selected);
+    const providerModels = getProviderModels(provider) ?? [];
     localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
       ...workspace,
       channelDetails: workspace.channelDetails.map((channel) => {
         if (channel.id !== channelId) return channel;
+        const nextModel = provider === "codex"
+          ? (providerModels.includes(channel.model) ? channel.model : "")
+          : (providerModels.length > 0
+            ? (providerModels.includes(channel.model) ? channel.model : (providerModels[0] ?? ""))
+            : "");
         return {
           ...channel,
           agentProvider: provider,
-          model: provider === "opencode"
-            ? channel.model || $localSettingStore.config.agents.opencode.models[0] || ""
-            : "",
+          model: nextModel,
         };
       }),
     }));
@@ -115,7 +132,8 @@
   }
 
   function onChannelModelSelect(workspaceId: string, channelId: string, event: Event): void {
-    onChannelModelChange(workspaceId, channelId, (event.currentTarget as HTMLSelectElement).value);
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    onChannelModelChange(workspaceId, channelId, value === "__default__" ? "" : value);
   }
 
   function onChannelWorkingDirectoryChange(workspaceId: string, channelId: string, workingDirectory: string): void {
@@ -279,13 +297,20 @@
               <label for={`channel-model-${channel.id}`}>Model</label>
                 <select
                   id={`channel-model-${channel.id}`}
-                  value={channel.model}
+                  value={getChannelModelSelectValue(channel)}
                   on:change={(event) => onChannelModelSelect(selectedWorkspace.id, channel.id, event)}
                 >
-                {#if !$localSettingStore.config.agents.opencode.models.includes(channel.model) && channel.model}
+                {#if getChannelProvider(channel) === "codex"}
+                  <option value="__default__">Use default (gpt-5.3-codex)</option>
+                {/if}
+                {#if (getProviderModels(getChannelProvider(channel)) ?? []).length === 0
+                  && getChannelProvider(channel) !== "codex"}
+                  <option value="" disabled>No models configured</option>
+                {/if}
+                {#if !(getProviderModels(getChannelProvider(channel)) ?? []).includes(channel.model) && channel.model}
                   <option value={channel.model}>{channel.model}</option>
                 {/if}
-                {#each $localSettingStore.config.agents.opencode.models as model}
+                {#each getProviderModels(getChannelProvider(channel)) ?? [] as model}
                   <option value={model}>{model}</option>
                 {/each}
               </select>
