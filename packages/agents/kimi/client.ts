@@ -61,6 +61,21 @@ function formatShellCommand(args: string[]): string {
     .join(" ");
 }
 
+const KIMI_PLAN_SYSTEM_PROMPT = [
+  "PLAN MODE REQUIREMENT:",
+  "- This turn is planning-only.",
+  "- Do not modify files.",
+  "- Do not execute shell commands.",
+  "- Return an implementation plan and risk notes.",
+].join("\n");
+
+function buildKimiSystemPrompt(baseSystemPrompt: string, agent?: string): string {
+  if (agent?.trim().toLowerCase() !== "plan") {
+    return baseSystemPrompt;
+  }
+  return `${baseSystemPrompt}\n\n${KIMI_PLAN_SYSTEM_PROMPT}`;
+}
+
 export function buildKimiCommandArgs(params: {
   sessionId: string;
   workingPath: string;
@@ -292,7 +307,7 @@ export async function sendMessage(
       const agent = options?.agent;
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
-      const systemPrompt = buildSystemPrompt(context?.slack);
+      const systemPrompt = buildKimiSystemPrompt(buildSystemPrompt(context?.slack), agent);
       const kimiPrompt = `<system-prompt>\n${systemPrompt}\n</system-prompt>\n\n${prompt}`;
 
       const args = buildKimiCommandArgs({

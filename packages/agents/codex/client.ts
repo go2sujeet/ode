@@ -118,14 +118,19 @@ export function buildCodexCommandArgs(params: {
   sessionId: string;
   prompt: string;
   model?: string;
+  planMode?: boolean;
 }): string[] {
   const args = [
     "exec",
     "resume",
     "--json",
-    "--full-auto",
     "--skip-git-repo-check",
   ];
+  if (params.planMode) {
+    args.push("--sandbox", "read-only");
+  } else {
+    args.push("--full-auto");
+  }
   if (params.model) {
     args.push("--model", params.model);
   }
@@ -357,6 +362,7 @@ export async function sendMessage(
     await syncCodexModelsFromCache();
     return await withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
+      const planMode = agent?.trim().toLowerCase() === "plan";
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
       const systemPrompt = buildSystemPrompt(context?.slack);
@@ -367,6 +373,7 @@ export async function sendMessage(
         sessionId,
         prompt: codexPrompt,
         model,
+        planMode,
       });
 
       const command = buildCodexCommand(args);

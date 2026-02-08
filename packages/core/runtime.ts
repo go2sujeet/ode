@@ -109,8 +109,8 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       threadHistory,
     });
 
-    const trimmed = text.trim();
-    const agent = /^plan\b/i.test(trimmed) ? "plan" : undefined;
+    const normalizedText = text.trimStart().toLowerCase();
+    const agent = /^plan\b/.test(normalizedText) ? "plan" : undefined;
     const providerId = deps.agent.getProviderForSession(sessionId);
     const channelModel = getChannelModel(channelId)?.trim();
     const codexModel = providerId === "codex"
