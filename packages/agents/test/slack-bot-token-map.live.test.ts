@@ -1,6 +1,6 @@
 import { describe, it } from "bun:test";
 import { WebClient } from "@slack/web-api";
-import { getSlackAppToken } from "@/config";
+import { getSlackAppTokens } from "@/config";
 import { getAllBotTokens } from "@/config/db";
 import { log } from "@/utils";
 
@@ -11,7 +11,8 @@ function truncateToken(token: string): string {
 
 describe("slack bot token map", () => {
   it("logs team and enterprise ids for db bot tokens", async () => {
-    const appToken = getSlackAppToken();
+    const appTokens = getSlackAppTokens();
+    const uniqueAppTokens = Array.from(new Set(appTokens.map((entry) => entry.token).filter(Boolean)));
     const tokens = await getAllBotTokens();
 
     if (tokens.length === 0) {
@@ -56,7 +57,7 @@ describe("slack bot token map", () => {
 
     console.log(results)
     log.info("Slack bot token mapping", {
-      appToken: truncateToken(appToken ?? "missing"),
+      appTokens: uniqueAppTokens.map((token) => truncateToken(token)),
       count: results.length,
       results,
     });

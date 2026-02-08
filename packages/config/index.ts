@@ -17,7 +17,6 @@ export {
   getChannelDetails,
   getChannelModel,
   getChannelAgentProvider,
-  getSlackAppToken,
   getSlackAppTokens,
   getSlackBotTokens,
   getSlackTargetChannels,
