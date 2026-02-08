@@ -120,12 +120,7 @@ export function buildCodexCommandArgs(params: {
   model?: string;
   planMode?: boolean;
 }): string[] {
-  const args = [
-    "exec",
-    "resume",
-    "--json",
-    "--skip-git-repo-check",
-  ];
+  const args = ["exec", "--json", "--skip-git-repo-check"];
   if (params.planMode) {
     args.push("--sandbox", "read-only");
   } else {
@@ -134,7 +129,7 @@ export function buildCodexCommandArgs(params: {
   if (params.model) {
     args.push("--model", params.model);
   }
-  args.push(params.sessionId, params.prompt);
+  args.push("resume", params.sessionId, params.prompt);
   return args;
 }
 

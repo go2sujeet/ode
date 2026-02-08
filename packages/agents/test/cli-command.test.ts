@@ -82,7 +82,7 @@ describe("agent cli command formatting", () => {
     });
     const command = buildCodexCommand(args);
 
-    expect(command).toContain("codex exec resume");
+    expect(command).toContain("codex exec --json --skip-git-repo-check");
     expect(command).toContain("--json");
     expect(command).toContain("--full-auto");
     expect(command).toContain("--model gpt-5-codex");
@@ -99,7 +99,7 @@ describe("agent cli command formatting", () => {
     });
     const command = buildCodexCommand(args);
 
-    expect(command).toContain("codex exec resume");
+    expect(command).toContain("codex exec --json --skip-git-repo-check");
     expect(command).toContain("--json");
     expect(command).toContain("--sandbox read-only");
     expect(command).not.toContain("--full-auto");
