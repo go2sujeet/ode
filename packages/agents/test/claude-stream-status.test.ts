@@ -196,29 +196,6 @@ describe("claude stream status parsing", () => {
     expect(state.sessionTitle).toBe("Fix Slack status updates");
   });
 
-  it("infers session title from claude tool stream when explicit title is missing", () => {
-    const now = Date.now();
-    const state = buildSessionMessageState([
-      rawEvent(now, {
-        type: "stream_event",
-        event: {
-          type: "content_block_start",
-          index: 1,
-          content_block: {
-            type: "tool_use",
-            id: "tool-3",
-            name: "Read",
-            input: {
-              filePath: "/tmp/repo/README.md",
-            },
-          },
-        },
-      }),
-    ]);
-
-    expect(state.sessionTitle).toBe("Inspect file: /tmp/repo/README.md");
-  });
-
   it("renders claude status message from raw records", () => {
     const now = Date.now();
     const state = buildSessionMessageState([

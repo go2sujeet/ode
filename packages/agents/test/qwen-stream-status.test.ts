@@ -109,24 +109,4 @@ describe("qwen stream status parsing", () => {
     expect(text).toContain("`list_directory` packages");
   });
 
-  it("infers session title from qwen stream tool blocks", () => {
-    const now = Date.now();
-    const state = buildSessionMessageState([
-      rawEvent(now, {
-        type: "stream_event",
-        event: {
-          type: "content_block_start",
-          index: 0,
-          content_block: {
-            type: "tool_use",
-            id: "tool-9",
-            name: "grep_search",
-            input: { pattern: "session.status", path: "/tmp/repo" },
-          },
-        },
-      }),
-    ]);
-
-    expect(state.sessionTitle).toBe("Search for: session.status");
-  });
 });

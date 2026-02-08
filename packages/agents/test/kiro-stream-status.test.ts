@@ -94,35 +94,4 @@ describe("kiro stream status parsing", () => {
     expect(text).toContain("`Grep` TODO|FIXME in tmp/repo");
   });
 
-  it("infers session title from kiro text stream", () => {
-    const now = Date.now();
-    const state = buildSessionMessageState([
-      {
-        timestamp: now,
-        type: "session.status",
-        data: {
-          properties: {
-            status: {
-              type: "busy",
-            },
-          },
-        },
-      },
-      {
-        timestamp: now + 1,
-        type: "message.part.updated",
-        data: {
-          properties: {
-            part: {
-              id: "kiro-text",
-              type: "text",
-              text: "I will start by checking the core runtime flow.",
-            },
-          },
-        },
-      },
-    ]);
-
-    expect(state.sessionTitle).toBe("Start by checking the core runtime flow.");
-  });
 });

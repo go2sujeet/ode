@@ -56,11 +56,6 @@ export type SessionStateOptions = {
   baseState?: Partial<SessionMessageState>;
 };
 
-type SessionTitleCandidate = {
-  value: string;
-  score: number;
-};
-
 function unwrapEventData(data: unknown): Record<string, unknown> {
   if (!data || typeof data !== "object") return {};
   const record = data as Record<string, unknown>;
@@ -112,200 +107,6 @@ function formatSessionStatus(value: unknown): string | undefined {
   }
 }
 
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function sanitizeTitleText(value: string): string | undefined {
-  if (!value) return undefined;
-  let text = value.replace(/```[\s\S]*?```/g, " ");
-  text = text.replace(/`([^`]+)`/g, "$1");
-  text = normalizeWhitespace(text);
-  if (!text) return undefined;
-
-  text = text
-    .replace(/^[>\-\*\d\.)\s]+/, "")
-    .replace(/^(?:okay|ok|sure|great|nice|alright)[,!\s]+/i, "")
-    .replace(/^(?:let me|i(?:'| a)?m going to|i(?:'| a)?ll|i will|now(?: i)?(?:'| a)?ll|first(?:,)?(?: i(?:'| a)?ll)?)[\s,:-]+/i, "")
-    .trim();
-
-  if (!text) return undefined;
-  const firstLine = text.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
-  const firstSentence = firstLine.split(/(?<=[.!?])\s+/)[0]?.trim() ?? firstLine;
-  let candidate = normalizeWhitespace(firstSentence);
-  if (/^[a-z]/.test(candidate)) {
-    candidate = `${candidate.charAt(0).toUpperCase()}${candidate.slice(1)}`;
-  }
-  if (!candidate || candidate.length < 8) return undefined;
-  if (/^(working|thinking|drafting response|finalizing response|waiting|done|investigating)$/i.test(candidate)) {
-    return undefined;
-  }
-  if (candidate.length <= 90) return candidate;
-  return `${candidate.slice(0, 87).trimEnd()}...`;
-}
-
-function maybeBuildToolCandidate(toolName: unknown, input: unknown, title: unknown): SessionTitleCandidate | undefined {
-  const normalizedName = typeof toolName === "string" ? toolName.trim() : "";
-  const safeInput = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const safeTitle = typeof title === "string" ? sanitizeTitleText(title) : undefined;
-
-  const name = normalizedName.toLowerCase();
-  const command = typeof safeInput.command === "string" ? normalizeWhitespace(safeInput.command) : "";
-  const filePath = typeof safeInput.filePath === "string"
-    ? safeInput.filePath
-    : typeof safeInput.file_path === "string"
-      ? safeInput.file_path
-      : typeof safeInput.absolute_path === "string"
-        ? safeInput.absolute_path
-        : typeof safeInput.path === "string"
-          ? safeInput.path
-          : "";
-  const pattern = typeof safeInput.pattern === "string" ? normalizeWhitespace(safeInput.pattern) : "";
-
-  if (name === "bash" || name === "shell" || name === "run_shell_command" || name === "command_execution") {
-    if (command) {
-      const shortened = command.length > 70 ? `${command.slice(0, 67).trimEnd()}...` : command;
-      return { value: `Run command: ${shortened}`, score: 3 };
-    }
-  }
-
-  if (name.includes("read")) {
-    if (filePath) return { value: `Inspect file: ${filePath}`, score: 3 };
-  }
-
-  if (name.includes("grep") || name.includes("search")) {
-    if (pattern) return { value: `Search for: ${pattern}`, score: 3 };
-  }
-
-  if (name.includes("glob") || name.includes("list_directory")) {
-    if (filePath) return { value: `Explore path: ${filePath}`, score: 2 };
-  }
-
-  if (safeTitle) {
-    return { value: safeTitle, score: 2 };
-  }
-
-  if (normalizedName) {
-    return { value: `Run tool: ${normalizedName}`, score: 1 };
-  }
-
-  return undefined;
-}
-
-function extractTitleCandidateFromEvent(
-  type: string,
-  eventData: Record<string, unknown>,
-  eventProps: Record<string, unknown>
-): SessionTitleCandidate | undefined {
-  if (type.startsWith("codex.raw.")) {
-    const record = (eventProps.event ?? eventData.event) as Record<string, unknown> | undefined;
-    const item = record?.item as Record<string, unknown> | undefined;
-    if (item?.type === "command_execution") {
-      return maybeBuildToolCandidate("command_execution", item, undefined);
-    }
-    if (typeof item?.text === "string") {
-      const text = sanitizeTitleText(item.text);
-      if (text) return { value: text, score: 2 };
-    }
-  }
-
-  if (type.startsWith("kimi.raw.")) {
-    const record = (eventProps.record ?? eventData.record) as Record<string, unknown> | undefined;
-    const toolCalls = Array.isArray(record?.tool_calls) ? record?.tool_calls : [];
-    const firstCall = toolCalls[0] as Record<string, unknown> | undefined;
-    const fn = firstCall?.function as Record<string, unknown> | undefined;
-    const fnName = fn?.name;
-    const fnArgsRaw = fn?.arguments;
-    const parsedArgs = typeof fnArgsRaw === "object" && fnArgsRaw
-      ? fnArgsRaw as Record<string, unknown>
-      : typeof fnArgsRaw === "string"
-        ? (() => {
-            try {
-              const parsed = JSON.parse(fnArgsRaw) as unknown;
-              return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-                ? parsed as Record<string, unknown>
-                : { raw: fnArgsRaw };
-            } catch {
-              return { raw: fnArgsRaw };
-            }
-          })()
-        : undefined;
-    const toolCandidate = maybeBuildToolCandidate(fnName, parsedArgs, undefined);
-    if (toolCandidate) return toolCandidate;
-
-    const content = record?.content;
-    if (typeof content === "string") {
-      const text = sanitizeTitleText(content);
-      if (text) return { value: text, score: 2 };
-    }
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        if (!part || typeof part !== "object") continue;
-        const candidate = (part as Record<string, unknown>).text
-          ?? (part as Record<string, unknown>).think;
-        if (typeof candidate !== "string") continue;
-        const text = sanitizeTitleText(candidate);
-        if (text) return { value: text, score: 2 };
-      }
-    }
-  }
-
-  if (type.startsWith("claude.raw.") || type.startsWith("qwen.raw.")) {
-    const record = (eventProps.record ?? eventData.record) as Record<string, unknown> | undefined;
-    const event = record?.event as Record<string, unknown> | undefined;
-    const contentBlock = event?.content_block as Record<string, unknown> | undefined;
-    if (contentBlock?.type === "tool_use") {
-      return maybeBuildToolCandidate(contentBlock.name, contentBlock.input, undefined);
-    }
-
-    const message = record?.message as Record<string, unknown> | undefined;
-    const content = Array.isArray(message?.content) ? message?.content : [];
-    for (const block of content) {
-      if (!block || typeof block !== "object") continue;
-      const blockRecord = block as Record<string, unknown>;
-      if (blockRecord.type === "tool_use") {
-        const toolCandidate = maybeBuildToolCandidate(blockRecord.name, blockRecord.input, undefined);
-        if (toolCandidate) return toolCandidate;
-      }
-      if (typeof blockRecord.text === "string") {
-        const text = sanitizeTitleText(blockRecord.text);
-        if (text) return { value: text, score: 2 };
-      }
-    }
-  }
-
-  if (type === "message.part.updated") {
-    const part = (eventProps as { part?: Record<string, unknown> }).part;
-    if (!part || typeof part !== "object") return undefined;
-
-    if (part.type === "tool") {
-      const state = part.state && typeof part.state === "object"
-        ? part.state as Record<string, unknown>
-        : undefined;
-      return maybeBuildToolCandidate(part.tool, state?.input, state?.title);
-    }
-
-    if (part.type === "text" && typeof part.text === "string") {
-      const text = sanitizeTitleText(part.text);
-      if (text) return { value: text, score: 2 };
-    }
-  }
-
-  if (type === "todo.updated") {
-    const todos = (eventProps as { todos?: unknown }).todos;
-    if (!Array.isArray(todos)) return undefined;
-    for (const todo of todos) {
-      if (!todo || typeof todo !== "object") continue;
-      const content = (todo as Record<string, unknown>).content;
-      if (typeof content !== "string") continue;
-      const text = sanitizeTitleText(content);
-      if (text) return { value: text, score: 2 };
-    }
-  }
-
-  return undefined;
-}
-
 export function buildSessionMessageState(
   events: SessionEvent[],
   options: SessionStateOptions = {}
@@ -332,14 +133,6 @@ export function buildSessionMessageState(
   const claudeToolById = new Map<string, ClaudeInspectorToolState>();
   const codexToolById = new Map<string, SessionTool>();
   const kimiToolById = new Map<string, SessionTool>();
-  let inferredTitle: SessionTitleCandidate | undefined;
-
-  const applyCandidate = (candidate: SessionTitleCandidate | undefined) => {
-    if (!candidate || state.sessionTitle) return;
-    if (!inferredTitle || candidate.score > inferredTitle.score) {
-      inferredTitle = candidate;
-    }
-  };
 
   for (const existingTool of state.tools) {
     claudeToolById.set(existingTool.id, { ...existingTool });
@@ -351,8 +144,6 @@ export function buildSessionMessageState(
     const eventData = unwrapEventData(event.data);
     const eventProps = getEventProperties(eventData);
     const type = event.type;
-
-    applyCandidate(extractTitleCandidateFromEvent(type, eventData, eventProps));
 
     const claudeRecord = extractClaudeRecord(type, eventData, eventProps);
     if (claudeRecord) {
@@ -395,7 +186,6 @@ export function buildSessionMessageState(
         const trimmedTitle = title.trim();
         if (trimmedTitle && !trimmedTitle.startsWith("New session")) {
           state.sessionTitle = trimmedTitle;
-          inferredTitle = undefined;
         }
       }
     }
@@ -478,18 +268,6 @@ export function buildSessionMessageState(
         status: t.status || "pending",
       }));
     }
-  }
-
-  const hasNonOpenCodeProviderSignals = relevantEvents.some((event) =>
-    event.type.startsWith("claude.raw.")
-    || event.type.startsWith("codex.raw.")
-    || event.type.startsWith("kimi.raw.")
-    || event.type.startsWith("qwen.raw.")
-    || event.type === "session.status"
-  );
-
-  if (!state.sessionTitle && hasNonOpenCodeProviderSignals && inferredTitle?.value) {
-    state.sessionTitle = inferredTitle.value;
   }
 
   return state;

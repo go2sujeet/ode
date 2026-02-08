@@ -114,20 +114,4 @@ describe("codex stream status parsing", () => {
     expect(text).toContain("Drafting response");
   });
 
-  it("infers session title from codex stream commands", () => {
-    const now = Date.now();
-    const state = buildSessionMessageState([
-      rawEvent(now, {
-        type: "item.started",
-        item: {
-          id: "item_cmd",
-          type: "command_execution",
-          command: "git status --short",
-          status: "in_progress",
-        },
-      }),
-    ]);
-
-    expect(state.sessionTitle).toBe("Run command: git status --short");
-  });
 });
