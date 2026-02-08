@@ -32,14 +32,21 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("kiro");
   });
 
+  it("selects qwen from env", () => {
+    process.env.ODE_AGENT_PROVIDER = "qwen";
+    expect(getSelectedAgentProviderId()).toBe("qwen");
+  });
+
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
     const claudecode = getAgentProvider("claudecode");
     const kimi = getAgentProvider("kimi");
     const kiro = getAgentProvider("kiro");
+    const qwen = getAgentProvider("qwen");
     expect(opencode.supportsEventStream).toBe(true);
     expect(claudecode.supportsEventStream).toBe(false);
     expect(kimi.supportsEventStream).toBe(false);
     expect(kiro.supportsEventStream).toBe(false);
+    expect(qwen.supportsEventStream).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ export type CliCheckResult = {
   codex: boolean;
   kimi: boolean;
   kiro: boolean;
+  qwen: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
 };
@@ -112,6 +113,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
       },
       kiro: {
         enabled: input.agents?.kiro?.enabled ?? true,
+      },
+      qwen: {
+        enabled: input.agents?.qwen?.enabled ?? true,
       },
     },
   };
@@ -255,6 +259,10 @@ async function checkAgents(): Promise<void> {
           kiro: {
             ...state.config.agents.kiro,
             enabled: result.kiro,
+          },
+          qwen: {
+            ...state.config.agents.qwen,
+            enabled: result.qwen,
           },
         },
       },

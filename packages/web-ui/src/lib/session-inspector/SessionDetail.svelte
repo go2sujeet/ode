@@ -153,6 +153,7 @@
     if (meta?.agentProvider === "codex" || meta?.sessionId?.startsWith("codex_")) return "codex";
     if (meta?.agentProvider === "kimi" || meta?.sessionId?.startsWith("kimi_")) return "kimi";
     if (meta?.agentProvider === "kiro" || meta?.sessionId?.startsWith("kiro_")) return "kiro";
+    if (meta?.agentProvider === "qwen" || meta?.sessionId?.startsWith("qwen_")) return "qwen";
     if (meta?.sessionId?.startsWith("claude_") || meta?.sessionId?.startsWith("claudecode_")) {
       return "claudecode";
     }
@@ -164,6 +165,7 @@
     if (provider === "codex") return "Codex";
     if (provider === "kimi") return "Kimi";
     if (provider === "kiro") return "Kiro";
+    if (provider === "qwen") return "Qwen Code";
     return "OpenCode";
   }
 </script>

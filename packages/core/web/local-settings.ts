@@ -115,7 +115,7 @@ const buildSyncedChannelDetails = (
 ): DashboardConfig["workspaces"][number]["channelDetails"] =>
   channels.map((channel) => {
     const existing = workspace.channelDetails.find((item) => item.id === channel.id);
-    const agentProvider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" =
+    const agentProvider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen" =
       existing?.agentProvider === "claudecode"
         ? "claudecode"
         : existing?.agentProvider === "codex"
@@ -124,6 +124,8 @@ const buildSyncedChannelDetails = (
             ? "kimi"
             : existing?.agentProvider === "kiro"
               ? "kiro"
+              : existing?.agentProvider === "qwen"
+                ? "qwen"
             : "opencode";
 
     return {

@@ -13,6 +13,7 @@ const claudeProvider = getAgentProvider("claudecode");
 const codexProvider = getAgentProvider("codex");
 const kimiProvider = getAgentProvider("kimi");
 const kiroProvider = getAgentProvider("kiro");
+const qwenProvider = getAgentProvider("qwen");
 
 export const selectedAgent = agent.id;
 export const supportsEventStream = agent.supportsEventStream;
@@ -34,5 +35,6 @@ export async function stopAllServers(): Promise<void> {
     Promise.resolve().then(() => codexProvider.stopServer()),
     Promise.resolve().then(() => kimiProvider.stopServer()),
     Promise.resolve().then(() => kiroProvider.stopServer()),
+    Promise.resolve().then(() => qwenProvider.stopServer()),
   ]);
 }

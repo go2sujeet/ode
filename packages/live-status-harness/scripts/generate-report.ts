@@ -7,7 +7,7 @@ import { renderStatusesFromRun } from "../renderer";
 
 const DEFAULT_OUTPUT_PATH = "packages/live-status-harness/reports/agent-live-status.md";
 const DEFAULT_OUTPUT_DIR = "packages/live-status-harness/reports";
-const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi", "kiro"];
+const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "qwen"];
 const OPENCODE_REPORT_MODEL = "openai/gpt-5.3-codex";
 const REPORT_LAYOUTS = ["split", "combined", "both"] as const;
 
@@ -46,7 +46,7 @@ function parseProviders(raw: string | undefined): AgentProviderId[] {
 
   const providers = parsed.filter(
     (value): value is AgentProviderId =>
-      value === "opencode" || value === "claudecode" || value === "codex" || value === "kimi" || value === "kiro"
+      value === "opencode" || value === "claudecode" || value === "codex" || value === "kimi" || value === "kiro" || value === "qwen"
   );
 
   return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
