@@ -64,13 +64,9 @@ export function buildKimiCommand(args: string[]): string {
   return formatShellCommand(["kimi", ...args]);
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishKimiEvent(sessionId: string, record: KimiJsonRecord): void {
   const role = typeof record.role === "string" && record.role.trim() ? record.role.trim() : "unknown";
-  publishSessionEvent(sessionId, {
+  runtime.publishSessionEvent(sessionId, {
     type: `kimi.raw.${role}`,
     properties: {
       record,

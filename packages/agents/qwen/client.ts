@@ -79,10 +79,6 @@ function getRecordSessionId(record: QwenJsonRecord, fallbackSessionId: string): 
   return typeof record.session_id === "string" ? record.session_id : fallbackSessionId;
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishQwenRecordAsSessionEvents(record: QwenJsonRecord, fallbackSessionId: string): void {
   const sessionId = getRecordSessionId(record, fallbackSessionId);
   const rawType = typeof record.type === "string" && record.type.trim()
@@ -96,9 +92,9 @@ function publishQwenRecordAsSessionEvents(record: QwenJsonRecord, fallbackSessio
       streamEventType: typeof record.event?.type === "string" ? record.event.type : undefined,
     },
   };
-  publishSessionEvent(sessionId, eventPayload);
+  runtime.publishSessionEvent(sessionId, eventPayload);
   if (sessionId !== fallbackSessionId) {
-    publishSessionEvent(fallbackSessionId, eventPayload);
+    runtime.publishSessionEvent(fallbackSessionId, eventPayload);
   }
 }
 

@@ -192,10 +192,6 @@ function getRecordSessionId(record: ClaudeJsonRecord, fallbackSessionId: string)
   return typeof record.session_id === "string" ? record.session_id : fallbackSessionId;
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishClaudeRecordAsSessionEvents(
   record: ClaudeJsonRecord,
   fallbackSessionId: string
@@ -204,7 +200,7 @@ function publishClaudeRecordAsSessionEvents(
   const rawType = typeof record.type === "string" && record.type.trim()
     ? record.type.trim()
     : "unknown";
-  publishSessionEvent(sessionId, {
+  runtime.publishSessionEvent(sessionId, {
     type: `claude.raw.${rawType}`,
     properties: {
       record,
@@ -427,7 +423,7 @@ export async function sendMessage(
       if (isNewSession) {
         const fallbackTitle = deriveSessionTitleFromPrompt(message);
         if (fallbackTitle) {
-          publishSessionEvent(sessionId, {
+          runtime.publishSessionEvent(sessionId, {
             type: "session.updated",
             properties: {
               sessionID: sessionId,

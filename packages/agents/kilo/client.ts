@@ -138,10 +138,6 @@ function getRecordSessionId(record: KiloJsonRecord, fallbackSessionId: string): 
   return fallbackSessionId;
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishKiloRecordAsSessionEvents(record: KiloJsonRecord, fallbackSessionId: string): void {
   const sessionId = getRecordSessionId(record, fallbackSessionId);
   const rawType = typeof record.type === "string" && record.type.trim()
@@ -157,9 +153,9 @@ function publishKiloRecordAsSessionEvents(record: KiloJsonRecord, fallbackSessio
       streamEventType: typeof record.event?.type === "string" ? record.event.type : undefined,
     },
   };
-  publishSessionEvent(sessionId, eventPayload);
+  runtime.publishSessionEvent(sessionId, eventPayload);
   if (sessionId !== fallbackSessionId) {
-    publishSessionEvent(fallbackSessionId, eventPayload);
+    runtime.publishSessionEvent(fallbackSessionId, eventPayload);
   }
 }
 
@@ -189,7 +185,7 @@ function textFromContent(record: KiloJsonRecord): string {
 
 function publishKiloTextUpdate(sessionId: string, text: string): void {
   if (!text.trim()) return;
-  publishSessionEvent(sessionId, {
+  runtime.publishSessionEvent(sessionId, {
     type: "message.part.updated",
     properties: {
       part: {
@@ -210,7 +206,7 @@ function publishKiloToolUpdate(params: {
   output?: string;
   error?: string;
 }): void {
-  publishSessionEvent(params.sessionId, {
+  runtime.publishSessionEvent(params.sessionId, {
     type: "message.part.updated",
     properties: {
       part: {
@@ -453,7 +449,7 @@ export async function sendMessage(
       const command = buildKiloCommand(args);
       const envOverrides = runtime.getSessionEnvironment(sessionId);
 
-      publishSessionEvent(sessionId, {
+      runtime.publishSessionEvent(sessionId, {
         type: "session.status",
         properties: {
           status: {
@@ -518,7 +514,7 @@ export async function sendMessage(
       }
 
       publishKiloTextUpdate(observedSessionId ?? sessionId, text);
-      publishSessionEvent(observedSessionId ?? sessionId, {
+      runtime.publishSessionEvent(observedSessionId ?? sessionId, {
         type: "session.status",
         properties: {
           status: {

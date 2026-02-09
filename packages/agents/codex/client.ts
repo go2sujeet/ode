@@ -103,15 +103,11 @@ export function buildCodexCommand(args: string[]): string {
   return formatShellCommand(["codex", ...args]);
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishCodexEvent(sessionId: string, event: CodexJsonEvent): void {
   const rawType = typeof event.type === "string" && event.type.trim()
     ? event.type.trim()
     : "unknown";
-  publishSessionEvent(sessionId, {
+  runtime.publishSessionEvent(sessionId, {
     type: `codex.raw.${rawType}`,
     properties: {
       event,

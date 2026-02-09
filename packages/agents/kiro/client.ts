@@ -58,12 +58,8 @@ export function buildKiroCommand(binary: string, args: string[]): string {
   return formatShellCommand([binary, ...args]);
 }
 
-function publishSessionEvent(sessionId: string, event: unknown): void {
-  runtime.publishSessionEvent(sessionId, event);
-}
-
 function publishKiroTextUpdate(sessionId: string, text: string): void {
-  publishSessionEvent(sessionId, {
+  runtime.publishSessionEvent(sessionId, {
     type: "message.part.updated",
     properties: {
       part: {
@@ -85,7 +81,7 @@ function publishKiroToolUpdate(params: {
   output?: string;
   error?: string;
 }): void {
-  publishSessionEvent(params.sessionId, {
+  runtime.publishSessionEvent(params.sessionId, {
     type: "message.part.updated",
     properties: {
       part: {
@@ -404,7 +400,7 @@ export async function sendMessage(
       });
       const command = buildKiroCommand(binary, args);
 
-      publishSessionEvent(sessionId, {
+      runtime.publishSessionEvent(sessionId, {
         type: "session.status",
         properties: {
           status: {
@@ -425,7 +421,7 @@ export async function sendMessage(
 
       const text = parser.finalize(output) || parseKiroResponse(output);
       publishKiroTextUpdate(sessionId, text);
-      publishSessionEvent(sessionId, {
+      runtime.publishSessionEvent(sessionId, {
         type: "session.status",
         properties: {
           status: {
