@@ -1,37 +1,32 @@
 # Ode
 
-Ode is a chat bot that bridges your coding agents (currently only opencode, more coming soon) to your favorite chat apps.
+Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Codex and much more) to your favorite chat apps. Perfect for personal or team developers working on the go.
 
 ![Ode demo](static/ode-demo.png)
 
-## Motivation
+## Highlight features
 
-* Why sit in front of your Mac all the time when you have options to work from anywhere, collaborate with your team, and leverage AI-powered coding assistance?
-* Just one setup on your Mac or VPS server, anyone in your team can work on it.
-* Bring everyone to this agentic coding era, just chat.
+* Coding from anywhere, just chat and get response in slack.
+* Map coding session 1 - 1 to slack thread, and use worktree to get isolated, parallel coding is so easy.
+* Anyone in the channel can join coding without any extra setup, pay one account for all team members.
+* Message live message updates, you don't wait for response without any information, you can monitor from real-time text updates.
+* Per user git config, who start the thread becomes corresponding git commit author.
 
-## Why Slack & OpenCode
+## Why Slack
 
 * Slack has thread based messaging, making it easy to port to sessions in coding agents. Just focus on one thing in one thread.
-* OpenCode is open-source, powerful, and has server / client architecture, enabling seamless integration with IM clients like Slack.
-
-## Features
-
-- **Slack Socket Mode**: Secure real-time messaging without webhooks
-- **OpenCode Integration**: Execute AI coding tasks via OpenCode's HTTP API
-- **Thread Tracking**: Maintains context within conversation threads
-- **Local Settings UI**: Web interface to manage Ode config in local mode
-- **Live message updates**: OpenCode messages are updated real-time in slack messages
-- **More than text**: Ode bot can send you images, give you buttons that utilize slack's interactive ability.
+* Support for message edit, markdown like text render make slack perfect to show coding related information.
+* Also want to support as much chatting tools as possible.
 
 ## Setup
 
 ### Prerequisites
 
-- OpenCode installed configured
-- Register a Slack Bot with Socket Mode enabled, give event permissions and some chat permissions.
+- Configured OpenCode / Claude Code / Codex / Kimi Code... at least 1 coding cli.
+- Register a Slack Bot with Socket Mode enabled, have its APP TOKEN (xapp...) and BOT TOKEN (xbot..)
+  - Configuration and auth scope can be a little bit complicated if not so familiar with slack bots. If not sure, can use /static/slack-app-manifest.json to generate from manifest file.
 
-### Installation
+### Installation and Running
 
 One-line install (macOS/Linux):
 
@@ -39,45 +34,33 @@ One-line install (macOS/Linux):
 curl -fsSL https://raw.githubusercontent.com/odefun/ode/main/scripts/install.sh | bash
 ```
 
-Upgrade:
-
-```bash
-ode upgrade
-```
-
-## Running
-
-Local mode (starts the settings UI automatically):
-
 ```bash
 ode 
 # ODE_WEB_HOST=0.0.0.0 ode if you want to expose setting page
 ```
 
-Settings UI:
+Settings UI can be accessible via http://127.0.0.1:9293 or use `/setting` command in slack like `@bot /setting`.
 
-```
-http://127.0.0.1:9293
-```
+## Cli Support
+[x] OpenCode
+[x] Codex
+[x] Claude Code
+[x] Kimi Code
+[x] Qwen Code
+[x] Kilo Code
+[x] Kiro Cli
 
 ## Usage
 
-1. Invite the bot to a channel
-2. Mention the bot or reply in an active thread
-3. The bot will process your message with OpenCode and reply
+1. Invite the bot to a channel.
+2. Run `@bot /setting`, select channel setting, choose your coding cli (opencode also can choose model) and working directory.
+3. @ your bot with the prompt you want.
+3. The bot will process your message with the coding agent.
 
 ## Worktrees
 
-- Each session uses a dedicated git worktree at `<repoRoot>/.worktree/<sessionId>`
-- On first use, Ode pulls `origin/main`, creates the worktree, and copies `.env` if it exists
-
-## Local Settings UI
-
-The local settings UI exposes `http://<ODE_WEB_HOST>:<ODE_WEB_PORT>/local-setting` and lets you edit:
-- Agent enablement and OpenCode models
-- Slack workspace tokens and channels
-- Per-channel model + agent selection
-- Working directory per channel
+- Each slack thread uses a dedicated git worktree at `<repoRoot>/.worktree/<threadId>`
+- If you don't want to use worktree, can run `@bot /setting` and select general setting, choose default.
 
 ## License
 

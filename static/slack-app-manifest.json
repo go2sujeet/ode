@@ -1,0 +1,61 @@
+{
+  "display_information": {
+    "name": "ode",
+    "description": "",
+    "background_color": "#000000"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "ode",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "commands",
+        "files:read",
+        "files:write",
+        "groups:history",
+        "groups:read",
+        "groups:write",
+        "groups:write.invites",
+        "groups:write.topic",
+        "im:history",
+        "im:read",
+        "incoming-webhook",
+        "links.embed:write",
+        "links:read",
+        "links:write",
+        "metadata.message:read",
+        "mpim:read",
+        "pins:read",
+        "reactions:read",
+        "reactions:write",
+        "remote_files:read",
+        "team:read",
+        "users:read"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.channels",
+        "message.groups",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": true,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}
