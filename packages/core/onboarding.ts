@@ -12,7 +12,7 @@ import {
 } from "@/config";
 import { discoverSlackWorkspace } from "./web/local-settings";
 
-type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen";
+type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
 
 type AgentOption = {
   id: AgentId;
@@ -27,6 +27,7 @@ const agentOptions: Omit<AgentOption, "installed">[] = [
   { id: "codex", label: "Codex", command: "codex" },
   { id: "kimi", label: "Kimi", command: "kimi" },
   { id: "kiro", label: "Kiro", command: "kiro-cli" },
+  { id: "kilo", label: "Kilo", command: "kilo" },
   { id: "qwen", label: "Qwen Code", command: "qwen" },
 ];
 
@@ -268,6 +269,10 @@ async function setupCodingAgents(rl: Interface, config: OdeConfig): Promise<OdeC
         ...config.agents.kiro,
         enabled: selectedIds.has("kiro"),
       },
+      kilo: {
+        ...config.agents.kilo,
+        enabled: selectedIds.has("kilo"),
+      },
       qwen: {
         ...config.agents.qwen,
         enabled: selectedIds.has("qwen"),
@@ -318,6 +323,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
       nextConfig.agents.codex.enabled ? "Codex" : null,
       nextConfig.agents.kimi.enabled ? "Kimi" : null,
       nextConfig.agents.kiro.enabled ? "Kiro" : null,
+      nextConfig.agents.kilo.enabled ? "Kilo" : null,
       nextConfig.agents.qwen.enabled ? "Qwen Code" : null,
     ].filter((value): value is string => Boolean(value));
     console.log("Onboarding complete.");

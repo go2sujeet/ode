@@ -27,6 +27,9 @@ export type DashboardConfig = {
     kiro: {
       enabled: boolean;
     };
+    kilo: {
+      enabled: boolean;
+    };
     qwen: {
       enabled: boolean;
     };
@@ -44,7 +47,7 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
-      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen";
+      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
       model: string;
       workingDirectory: string;
       baseBranch: string;
@@ -78,6 +81,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     codex: { enabled: true, models: [] },
     kimi: { enabled: true },
     kiro: { enabled: true },
+    kilo: { enabled: true },
     qwen: { enabled: true },
   },
   workspaces: [],
@@ -118,7 +122,7 @@ const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status
 
 const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<
   DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]
->>(["opencode", "claudecode", "codex", "kimi", "kiro", "qwen"]);
+>>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"]);
 
 function isKnownAgentProvider(
   value: string
@@ -223,6 +227,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const kiroRecord = agentsRecord.kiro && typeof agentsRecord.kiro === "object"
     ? (agentsRecord.kiro as Record<string, unknown>)
     : {};
+  const kiloRecord = agentsRecord.kilo && typeof agentsRecord.kilo === "object"
+    ? (agentsRecord.kilo as Record<string, unknown>)
+    : {};
   const qwenRecord = agentsRecord.qwen && typeof agentsRecord.qwen === "object"
     ? (agentsRecord.qwen as Record<string, unknown>)
     : {};
@@ -261,6 +268,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       },
       kiro: {
         enabled: kiroRecord.enabled !== false,
+      },
+      kilo: {
+        enabled: kiloRecord.enabled !== false,
       },
       qwen: {
         enabled: qwenRecord.enabled !== false,

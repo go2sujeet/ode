@@ -37,7 +37,7 @@ const userSchema = z.object({
   ]).optional(),
 });
 
-const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "qwen"]);
+const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"]);
 
 const agentsSchema = z.object({
   opencode: z.object({
@@ -57,6 +57,9 @@ const agentsSchema = z.object({
   kiro: z.object({
     enabled: z.boolean().optional().default(true),
   }).optional().default({ enabled: true }),
+  kilo: z.object({
+    enabled: z.boolean().optional().default(true),
+  }).optional().default({ enabled: true }),
   qwen: z.object({
     enabled: z.boolean().optional().default(true),
   }).optional().default({ enabled: true }),
@@ -66,6 +69,7 @@ const agentsSchema = z.object({
   codex: { enabled: true, models: [] },
   kimi: { enabled: true },
   kiro: { enabled: true },
+  kilo: { enabled: true },
   qwen: { enabled: true },
 });
 
@@ -152,6 +156,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     codex: { enabled: true, models: [] },
     kimi: { enabled: true },
     kiro: { enabled: true },
+    kilo: { enabled: true },
     qwen: { enabled: true },
   },
   completeOnboarding: false,
@@ -240,6 +245,9 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       },
       kiro: {
         enabled: config.agents?.kiro?.enabled ?? true,
+      },
+      kilo: {
+        enabled: config.agents?.kilo?.enabled ?? true,
       },
       qwen: {
         enabled: config.agents?.qwen?.enabled ?? true,
@@ -340,6 +348,7 @@ export function getEnabledAgentProviders(): AgentProvider[] {
   if (agents.codex.enabled) enabled.push("codex");
   if (agents.kimi.enabled) enabled.push("kimi");
   if (agents.kiro.enabled) enabled.push("kiro");
+  if (agents.kilo.enabled) enabled.push("kilo");
   if (agents.qwen.enabled) enabled.push("qwen");
   return enabled.length > 0 ? enabled : ["opencode"];
 }
@@ -351,6 +360,7 @@ export function isAgentEnabled(agentProvider: AgentProvider): boolean {
   if (agentProvider === "codex") return agents.codex.enabled;
   if (agentProvider === "kimi") return agents.kimi.enabled;
   if (agentProvider === "kiro") return agents.kiro.enabled;
+  if (agentProvider === "kilo") return agents.kilo.enabled;
   return agents.qwen.enabled;
 }
 
@@ -580,7 +590,7 @@ export function getChannelModel(channelId: string): string | null {
 
 export function getChannelAgentProvider(channelId: string): AgentProvider {
   const provider = getChannelDetails(channelId)?.agentProvider;
-  if (provider === "claudecode" || provider === "codex" || provider === "kimi" || provider === "kiro" || provider === "qwen") return provider;
+  if (provider === "claudecode" || provider === "codex" || provider === "kimi" || provider === "kiro" || provider === "kilo" || provider === "qwen") return provider;
   return "opencode";
 }
 

@@ -52,6 +52,15 @@
     </div>
 
     <div class="agent-row">
+      <strong>Kilo CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <span class="badge {$localSettingStore.cliCheckResult.kilo ? 'on' : 'off'}">
+          {$localSettingStore.cliCheckResult.kilo ? "Installed" : "Not found"}
+        </span>
+      {/if}
+    </div>
+
+    <div class="agent-row">
       <strong>Qwen CLI</strong>
       {#if $localSettingStore.cliCheckResult}
         <span class="badge {$localSettingStore.cliCheckResult.qwen ? 'on' : 'off'}">

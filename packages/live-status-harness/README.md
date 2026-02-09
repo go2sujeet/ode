@@ -18,7 +18,7 @@ bun run packages/live-status-harness/scripts/capture-stream.ts --provider openco
 
 Optional flags:
 
-- `--provider opencode|claudecode|codex|kimi|kiro|qwen`
+- `--provider opencode|claudecode|codex|kimi|kiro|kilo|qwen`
 - `--cwd <path>`
 - `--channel <id>`
 - `--thread <id>`
@@ -51,6 +51,7 @@ By default, it writes one report per provider:
 - `packages/live-status-harness/reports/codex.md`
 - `packages/live-status-harness/reports/kimi.md`
 - `packages/live-status-harness/reports/kiro.md`
+- `packages/live-status-harness/reports/kilo.md`
 - `packages/live-status-harness/reports/qwen.md`
 
 Use `--providers <list>` to run only specific providers.
@@ -59,7 +60,7 @@ For `opencode`, the report run forces model `openai/gpt-5.3-codex` so it does no
 
 Optional flags:
 
-- `--providers opencode,claudecode,codex,kimi,kiro,qwen`
+- `--providers opencode,claudecode,codex,kimi,kiro,kilo,qwen`
 - `--layout split|combined|both` (default: `split`)
 - `--output-dir <path>` for provider files (default: `packages/live-status-harness/reports`)
 - `--output <path>` for combined file (default: `packages/live-status-harness/reports/agent-live-status.md`)

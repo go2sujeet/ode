@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "runId": "kilo_fixture",
+    "provider": "kilo",
+    "prompt": "Test prompt",
+    "promptHash": "kilo_fixture_hash",
+    "cwd": "/tmp/repo",
+    "channelId": "C_TEST",
+    "threadId": "T_TEST",
+    "sessionId": "ses_fixture",
+    "startedAt": 1700000000000,
+    "eventCount": 2
+  },
+  "events": [
+    {
+      "runId": "kilo_fixture",
+      "sessionId": "ses_fixture",
+      "provider": "kilo",
+      "timestamp": 1700000000000,
+      "index": 0,
+      "event": {
+        "type": "session.status",
+        "properties": {
+          "status": {
+            "type": "busy"
+          }
+        }
+      }
+    },
+    {
+      "runId": "kilo_fixture",
+      "sessionId": "ses_fixture",
+      "provider": "kilo",
+      "timestamp": 1700000001000,
+      "index": 1,
+      "event": {
+        "type": "session.status",
+        "properties": {
+          "status": {
+            "type": "idle"
+          }
+        }
+      }
+    }
+  ]
+}

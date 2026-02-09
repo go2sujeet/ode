@@ -54,6 +54,7 @@ const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<ChannelAgentProvider>>([
   "codex",
   "kimi",
   "kiro",
+  "kilo",
   "qwen",
 ]);
 

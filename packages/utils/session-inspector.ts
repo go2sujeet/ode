@@ -6,6 +6,7 @@ import {
 import { applyCodexRecordToState, extractCodexRecord } from "@/agents/codex/session-state";
 import { applyKiroRecordToState, extractKiroRecord } from "@/agents/kiro/session-state";
 import { applyKimiRecordToState, extractKimiRecord } from "@/agents/kimi/session-state";
+import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session-state";
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
 
 export type SessionEvent = {
@@ -134,12 +135,14 @@ export function buildSessionMessageState(
   const claudeToolById = new Map<string, ClaudeInspectorToolState>();
   const codexToolById = new Map<string, SessionTool>();
   const kimiToolById = new Map<string, SessionTool>();
+  const kiloToolById = new Map<string, SessionTool>();
   const kiroTodoById = new Map<string, SessionTodo>();
 
   for (const existingTool of state.tools) {
     claudeToolById.set(existingTool.id, { ...existingTool });
     codexToolById.set(existingTool.id, { ...existingTool });
     kimiToolById.set(existingTool.id, { ...existingTool });
+    kiloToolById.set(existingTool.id, { ...existingTool });
   }
 
   for (const existingTodo of state.todos) {
@@ -178,6 +181,17 @@ export function buildSessionMessageState(
     const kimiRecord = extractKimiRecord(type, eventData, eventProps);
     if (kimiRecord) {
       applyKimiRecordToState(state, kimiRecord, kimiToolById);
+      continue;
+    }
+
+    const kiloRecord = extractKiloRecord(type, eventData, eventProps);
+    if (kiloRecord) {
+      applyKiloRecordToState(state, kiloRecord, {
+        textByIndex: claudeTextByIndex,
+        thinkingByIndex: claudeThinkingByIndex,
+        toolByIndex: claudeToolByIndex,
+        toolById: kiloToolById,
+      });
       continue;
     }
 

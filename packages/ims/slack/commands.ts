@@ -53,11 +53,11 @@ const GENERAL_STATUS_MESSAGE_FORMAT_ACTION = "general_status_message_format_sele
 const GENERAL_GIT_STRATEGY_BLOCK = "general_git_strategy";
 const GENERAL_GIT_STRATEGY_ACTION = "general_git_strategy_select";
 
-type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen";
+type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
 
-const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "qwen"];
+const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"];
 
 const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
   opencode: "OpenCode",
@@ -65,6 +65,7 @@ const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
   codex: "Codex",
   kimi: "Kimi",
   kiro: "Kiro",
+  kilo: "Kilo",
   qwen: "Qwen Code",
 };
 
@@ -102,7 +103,7 @@ function getSelectableProviders(): AgentProvider[] {
   return AGENT_PROVIDERS;
 }
 
-function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen"): AgentProvider {
+function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen"): AgentProvider {
   return parseAgentProvider(provider);
 }
 
@@ -613,7 +614,7 @@ export function setupInteractiveHandlers(): void {
           setChannelModel(channelId, "");
         }
       }
-      if (selectedProvider === "claudecode" || selectedProvider === "kimi" || selectedProvider === "kiro" || selectedProvider === "qwen") {
+      if (selectedProvider === "claudecode" || selectedProvider === "kimi" || selectedProvider === "kiro" || selectedProvider === "kilo" || selectedProvider === "qwen") {
         setChannelModel(channelId, "");
       }
 

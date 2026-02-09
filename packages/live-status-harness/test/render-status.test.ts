@@ -44,4 +44,16 @@ describe("live status harness renderer", () => {
     expect(joined).toContain("Working");
     expect(joined).toContain("Waiting");
   });
+
+  it("renders kilo live status from fixture", async () => {
+    const fixtureFile = Bun.file(`${import.meta.dir}/fixtures/kilo-basic-run.json`);
+    const fixture = JSON.parse(await fixtureFile.text()) as FixtureShape;
+
+    const statuses = renderStatusesFromRun(fixture.meta, fixture.events);
+    const joined = statuses.map((status) => status.text).join("\n\n");
+
+    expect(statuses.length).toBeGreaterThanOrEqual(2);
+    expect(joined).toContain("Working");
+    expect(joined).toContain("Waiting");
+  });
 });

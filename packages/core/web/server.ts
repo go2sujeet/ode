@@ -462,6 +462,7 @@ async function handleRequest(request: Request): Promise<Response> {
         codex: Boolean(Bun.which("codex")),
         kimi: Boolean(Bun.which("kimi")),
         kiro: Boolean(Bun.which("kiro-cli") || Bun.which("kiro")),
+        kilo: Boolean(Bun.which("kilo")),
         qwen: Boolean(Bun.which("qwen") || Bun.which("qwen-code")),
         opencodeModels,
         opencodeModelError,

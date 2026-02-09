@@ -5,7 +5,7 @@
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath, slugify } from "$lib/local-setting/workspaces";
 
-  type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "qwen";
+  type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
 
   const providerLabels: Record<AgentProvider, string> = {
     opencode: "OpenCode",
@@ -13,6 +13,7 @@
     codex: "Codex",
     kimi: "Kimi",
     kiro: "Kiro",
+    kilo: "Kilo",
     qwen: "Qwen Code",
   };
 
@@ -30,6 +31,7 @@
     if (provider === "codex") return $localSettingStore.config.agents.codex.enabled;
     if (provider === "kimi") return $localSettingStore.config.agents.kimi.enabled;
     if (provider === "kiro") return $localSettingStore.config.agents.kiro.enabled;
+    if (provider === "kilo") return $localSettingStore.config.agents.kilo.enabled;
     return $localSettingStore.config.agents.qwen.enabled;
   }
 

@@ -5,6 +5,7 @@ import { buildClaudeCommand, buildClaudeCommandArgs } from "../claude/client";
 import { buildCodexCommand, buildCodexCommandArgs } from "../codex/client";
 import { buildKimiCommand, buildKimiCommandArgs } from "../kimi/client";
 import { buildKiroCommand, buildKiroCommandArgs } from "../kiro/client";
+import { buildKiloCommand, buildKiloCommandArgs } from "../kilo/client";
 import { buildQwenCommand, buildQwenCommandArgs } from "../qwen/client";
 
 describe("agent cli command formatting", () => {
@@ -136,6 +137,22 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("--resume");
     expect(command).toContain("--agent plan");
     expect(command).toContain("'hello from kiro'");
+  });
+
+  it("builds the Kilo run command", () => {
+    const args = buildKiloCommandArgs({
+      sessionId: "session-7",
+      prompt: "hello from kilo",
+      agent: "plan",
+      model: { providerID: "openai", modelID: "gpt-4" },
+    });
+    const command = buildKiloCommand(args);
+
+    expect(command).toContain("kilo run --auto --format json");
+    expect(command).toContain("--session session-7");
+    expect(command).toContain("--agent plan");
+    expect(command).toContain("--model openai/gpt-4");
+    expect(command).toContain("'hello from kilo'");
   });
 
   it("builds the Qwen plan-mode command", () => {
