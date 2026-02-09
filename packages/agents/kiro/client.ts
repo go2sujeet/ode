@@ -5,6 +5,12 @@ import {
 } from "@/config/local/settings";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared";
+import {
+  CliAgentRuntime,
+  formatShellCommand,
+  normalizeSessionEnvironment,
+  type SessionEnvironment as RuntimeSessionEnvironment,
+} from "../runtime/base";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -12,53 +18,13 @@ import type {
   OpenCodeSessionInfo,
 } from "../types";
 
-export type SessionEnvironment = Record<string, string>;
+export type SessionEnvironment = RuntimeSessionEnvironment;
 
-const activeRequests = new Map<string, { controller: AbortController; process?: ChildProcess }>();
-const sessionLocks = new Map<string, Promise<unknown>>();
-const sessionEnvironments = new Map<string, SessionEnvironment>();
-const sessionSubscribers = new Map<string, Set<(event: unknown) => void>>();
+const runtime = new CliAgentRuntime("Kiro");
 const newSessions = new Set<string>();
 
 const TOOL_MARKER_PATTERN = /\(using tool:\s*([^\)]+)\)/i;
 const READ_OPERATION_PATTERN = /Reading file:\s*(.+?),\s*from line\s*(\d+)\s*to\s*(\d+)/i;
-
-function normalizeSessionEnvironment(env?: SessionEnvironment | null): string {
-  if (!env) return "";
-  return Object.keys(env)
-    .sort()
-    .map((key) => `${key}=${env[key]}`)
-    .join("\n");
-}
-
-async function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
-  const existing = sessionLocks.get(sessionKey);
-  if (existing) {
-    await existing.catch(() => {});
-  }
-
-  const promise = fn();
-  sessionLocks.set(sessionKey, promise);
-
-  try {
-    return await promise;
-  } finally {
-    sessionLocks.delete(sessionKey);
-  }
-}
-
-function formatShellCommand(args: string[]): string {
-  return args
-    .map((arg) => {
-      if (arg.length === 0) return "''";
-      if (/[^\w@%+=:,./-]/.test(arg)) {
-        const escaped = arg.replace(/'/g, `"'"'"`);
-        return `'${escaped}'`;
-      }
-      return arg;
-    })
-    .join(" ");
-}
 
 function resolveKiroBinary(): string {
   if (typeof Bun !== "undefined") {
@@ -93,18 +59,7 @@ export function buildKiroCommand(binary: string, args: string[]): string {
 }
 
 function publishSessionEvent(sessionId: string, event: unknown): void {
-  const handlers = sessionSubscribers.get(sessionId);
-  if (!handlers || handlers.size === 0) return;
-  for (const handler of handlers) {
-    try {
-      handler(event);
-    } catch (err) {
-      log.warn("Kiro session subscriber failed", {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  runtime.publishSessionEvent(sessionId, event);
 }
 
 function publishKiroTextUpdate(sessionId: string, text: string): void {
@@ -384,7 +339,7 @@ function parseKiroResponse(output: string): string {
 
 export async function createSession(workingPath: string, env?: SessionEnvironment): Promise<string> {
   const sessionId = crypto.randomUUID();
-  sessionEnvironments.set(sessionId, env ?? {});
+  runtime.setSessionEnvironment(sessionId, env ?? {});
   newSessions.add(sessionId);
   log.info("Created Kiro session", { sessionId, workingPath });
   return sessionId;
@@ -398,7 +353,7 @@ export async function getOrCreateSession(
 ): Promise<OpenCodeSessionInfo> {
   const existingSession = getThreadSessionId(channelId, threadId);
   if (existingSession) {
-    const existingEnv = normalizeSessionEnvironment(sessionEnvironments.get(existingSession));
+    const existingEnv = normalizeSessionEnvironment(runtime.getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
     if (existingEnv !== desiredEnv) {
       log.info("Kiro session environment changed; creating new session", {
@@ -411,9 +366,7 @@ export async function getOrCreateSession(
       return { sessionId, created: true };
     }
 
-    if (!sessionEnvironments.has(existingSession)) {
-      sessionEnvironments.set(existingSession, env);
-    }
+    runtime.setSessionEnvironment(existingSession, env);
 
     return { sessionId: existingSession, created: false };
   }
@@ -433,23 +386,16 @@ export async function sendMessage(
   context?: OpenCodeMessageContext
 ): Promise<OpenCodeMessage[]> {
   const sessionKey = `${channelId}:${sessionId}`;
-  const existingEntry = activeRequests.get(sessionKey);
-  if (existingEntry) {
-    existingEntry.controller.abort();
-    existingEntry.process?.kill("SIGTERM");
-  }
-
-  const entry = { controller: new AbortController() };
-  activeRequests.set(sessionKey, entry);
+  const entry = runtime.beginRequest(sessionKey) as { controller: AbortController; process?: ChildProcess };
 
   try {
-    return await withSessionLock(sessionKey, async () => {
+    return await runtime.withSessionLock(sessionKey, async () => {
       const parts = buildPromptParts(channelId, message, options, context);
       const prompt = buildPromptText(parts);
       const systemPrompt = buildSystemPrompt(context?.slack);
       const kiroPrompt = `<system-prompt>\n${systemPrompt}\n</system-prompt>\n\n${prompt}`;
 
-      const envOverrides = sessionEnvironments.get(sessionId) ?? {};
+      const envOverrides = runtime.getSessionEnvironment(sessionId);
       const binary = resolveKiroBinary();
       const args = buildKiroCommandArgs({
         isNewSession: newSessions.has(sessionId),
@@ -491,39 +437,20 @@ export async function sendMessage(
       return [{ text, messageType: "assistant" }];
     });
   } finally {
-    activeRequests.delete(sessionKey);
+    runtime.endRequest(sessionKey);
   }
 }
 
 export async function ensureSession(sessionId: string): Promise<void> {
-  if (!sessionEnvironments.has(sessionId)) {
-    sessionEnvironments.set(sessionId, {});
-  }
+  await runtime.ensureSession(sessionId);
 }
 
 export function subscribeToSession(sessionId: string, handler: (event: unknown) => void): () => void {
-  const handlers = sessionSubscribers.get(sessionId) ?? new Set<(event: unknown) => void>();
-  handlers.add(handler);
-  sessionSubscribers.set(sessionId, handlers);
-
-  return () => {
-    const activeHandlers = sessionSubscribers.get(sessionId);
-    if (!activeHandlers) return;
-    activeHandlers.delete(handler);
-    if (activeHandlers.size === 0) {
-      sessionSubscribers.delete(sessionId);
-    }
-  };
+  return runtime.subscribeToSession(sessionId, handler);
 }
 
 export async function abortSession(sessionId: string, _directory?: string): Promise<void> {
-  for (const [sessionKey, entry] of activeRequests) {
-    if (sessionKey.endsWith(`:${sessionId}`)) {
-      entry.controller.abort();
-      entry.process?.kill("SIGTERM");
-      activeRequests.delete(sessionKey);
-    }
-  }
+  await runtime.abortSession(sessionId);
 }
 
 export async function cancelActiveRequest(
@@ -531,23 +458,11 @@ export async function cancelActiveRequest(
   sessionId: string,
   _directory?: string
 ): Promise<boolean> {
-  const sessionKey = `${channelId}:${sessionId}`;
-  const entry = activeRequests.get(sessionKey);
-  if (!entry) return false;
-
-  entry.controller.abort();
-  entry.process?.kill("SIGTERM");
-  activeRequests.delete(sessionKey);
-  return true;
+  return runtime.cancelActiveRequest(channelId, sessionId);
 }
 
 export function stopServer(): void {
-  for (const entry of activeRequests.values()) {
-    entry.controller.abort();
-    entry.process?.kill("SIGTERM");
-  }
-  activeRequests.clear();
-  sessionSubscribers.clear();
+  runtime.stopServer();
 }
 
 export async function startServer(): Promise<void> {

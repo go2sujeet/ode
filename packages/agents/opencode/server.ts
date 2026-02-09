@@ -20,18 +20,23 @@ interface SessionInstance {
   baseUrl: string;
 }
 
-const sessionInstances = new Map<string, SessionInstance>();
-const sessionStartPromises = new Map<string, Promise<SessionInstance>>();
-const sessionEnvironments = new Map<string, SessionEnvironment>();
-const clientByBaseUrl = new Map<string, OpencodeClient>();
-let managedServerProcess: ChildProcess | null = null;
-let serverStartPromise: Promise<void> | null = null;
-let managedServerUrl: string | null = null;
+class OpenCodeServerRuntimeState {
+  readonly sessionInstances = new Map<string, SessionInstance>();
+  readonly sessionStartPromises = new Map<string, Promise<SessionInstance>>();
+  readonly sessionEnvironments = new Map<string, SessionEnvironment>();
+  readonly clientByBaseUrl = new Map<string, OpencodeClient>();
+  managedServerProcess: ChildProcess | null = null;
+  serverStartPromise: Promise<void> | null = null;
+  managedServerUrl: string | null = null;
+  cleanupInterval: ReturnType<typeof setInterval> | null = null;
+}
+
+const runtimeState = new OpenCodeServerRuntimeState();
 
 const LISTENING_URL_REGEX = /opencode server listening on\s+(https?:\/\/\S+)/i;
 
 function resolveServerUrl(): string {
-  return managedServerUrl ?? "http://127.0.0.1:4096";
+  return runtimeState.managedServerUrl ?? "http://127.0.0.1:4096";
 }
 
 function resolveServerUrlForEnv(env?: SessionEnvironment): string {
@@ -40,10 +45,10 @@ function resolveServerUrlForEnv(env?: SessionEnvironment): string {
 }
 
 function getClientForBaseUrl(baseUrl: string): OpencodeClient {
-  const existing = clientByBaseUrl.get(baseUrl);
+  const existing = runtimeState.clientByBaseUrl.get(baseUrl);
   if (existing) return existing;
   const client = createOpencodeClient({ baseUrl });
-  clientByBaseUrl.set(baseUrl, client);
+  runtimeState.clientByBaseUrl.set(baseUrl, client);
   log.debug("Using OpenCode server", { baseUrl });
   return client;
 }
@@ -165,22 +170,22 @@ async function syncModelsFromServer(baseUrl: string): Promise<void> {
 }
 
 async function ensureServerStarted(): Promise<void> {
-  if (managedServerProcess && managedServerProcess.exitCode === null) {
+  if (runtimeState.managedServerProcess && runtimeState.managedServerProcess.exitCode === null) {
     return;
   }
-  if (serverStartPromise) {
-    await serverStartPromise;
+  if (runtimeState.serverStartPromise) {
+    await runtimeState.serverStartPromise;
     return;
   }
 
   const { command, args } = getServerCommand();
-  serverStartPromise = (async () => {
+  runtimeState.serverStartPromise = (async () => {
     log.debug("Starting managed OpenCode server", { command: [command, ...args].join(" ") });
     const processHandle = spawn(command, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env },
     });
-    managedServerProcess = processHandle;
+    runtimeState.managedServerProcess = processHandle;
 
     const discoveredUrl = new Promise<string>((resolve, reject) => {
       const onData = (chunk: Buffer) => {
@@ -205,38 +210,36 @@ async function ensureServerStarted(): Promise<void> {
     });
     processHandle.on("exit", (code, signal) => {
       log.warn("Managed OpenCode server exited", { code, signal });
-      if (managedServerProcess === processHandle) {
-        managedServerProcess = null;
+      if (runtimeState.managedServerProcess === processHandle) {
+        runtimeState.managedServerProcess = null;
       }
     });
 
     const discoveredBaseUrl = await discoveredUrl;
-    managedServerUrl = discoveredBaseUrl;
+    runtimeState.managedServerUrl = discoveredBaseUrl;
     await waitForServerReady(discoveredBaseUrl);
     await syncModelsFromServer(discoveredBaseUrl);
     log.debug("Managed OpenCode server ready", { baseUrl: discoveredBaseUrl });
   })();
 
   try {
-    await serverStartPromise;
+    await runtimeState.serverStartPromise;
   } finally {
-    serverStartPromise = null;
+    runtimeState.serverStartPromise = null;
   }
 }
 
 // Cleanup inactive sessions after 10 minutes
 const INACTIVE_TIMEOUT_MS = 10 * 60 * 1000;
-let cleanupInterval: ReturnType<typeof setInterval> | null = null;
-
 export type EventHandler = (event: unknown) => void;
 
 // Start cleanup interval
 function ensureCleanupInterval(): void {
-  if (cleanupInterval) return;
+  if (runtimeState.cleanupInterval) return;
 
-  cleanupInterval = setInterval(() => {
+  runtimeState.cleanupInterval = setInterval(() => {
     const now = Date.now();
-    for (const [sessionId, session] of sessionInstances) {
+    for (const [sessionId, session] of runtimeState.sessionInstances) {
       if (now - session.lastActive > INACTIVE_TIMEOUT_MS) {
         log.debug("Cleaning up inactive session", { sessionId });
         stopSessionInstance(sessionId);
@@ -251,21 +254,21 @@ async function getOrCreateSessionInstance(
   envOverrides?: SessionEnvironment
 ): Promise<SessionInstance> {
   // Return existing instance
-  const existing = sessionInstances.get(sessionId);
+  const existing = runtimeState.sessionInstances.get(sessionId);
   if (existing) {
     existing.lastActive = Date.now();
     return existing;
   }
 
   // Wait for in-flight creation
-  const pending = sessionStartPromises.get(sessionId);
+  const pending = runtimeState.sessionStartPromises.get(sessionId);
   if (pending) {
     return pending;
   }
 
-  const env = envOverrides ?? sessionEnvironments.get(sessionId) ?? {};
+  const env = envOverrides ?? runtimeState.sessionEnvironments.get(sessionId) ?? {};
   if (envOverrides) {
-    sessionEnvironments.set(sessionId, env);
+    runtimeState.sessionEnvironments.set(sessionId, env);
   }
 
   // Create new instance
@@ -285,8 +288,8 @@ async function getOrCreateSessionInstance(
         baseUrl,
       };
 
-      sessionInstances.set(sessionId, sessionInstance);
-      sessionStartPromises.delete(sessionId);
+      runtimeState.sessionInstances.set(sessionId, sessionInstance);
+      runtimeState.sessionStartPromises.delete(sessionId);
 
       // Start event loop for this session
       startSessionEventLoop(sessionId, sessionInstance);
@@ -295,23 +298,23 @@ async function getOrCreateSessionInstance(
 
       return sessionInstance;
     } catch (err) {
-      sessionStartPromises.delete(sessionId);
+      runtimeState.sessionStartPromises.delete(sessionId);
       throw err;
     }
   })();
 
-  sessionStartPromises.set(sessionId, promise);
+  runtimeState.sessionStartPromises.set(sessionId, promise);
   return promise;
 }
 
 // Stop and cleanup a session instance
 function stopSessionInstance(sessionId: string): void {
-  const session = sessionInstances.get(sessionId);
+  const session = runtimeState.sessionInstances.get(sessionId);
   if (!session) return;
 
   session.eventLoopRunning = false;
   session.handlers.clear();
-  sessionInstances.delete(sessionId);
+  runtimeState.sessionInstances.delete(sessionId);
   log.debug("Stopped OpenCode session state", { sessionId });
 }
 
@@ -405,8 +408,8 @@ export async function createSessionInstance(envOverrides?: SessionEnvironment): 
         baseUrl: normalizedBaseUrl,
       };
 
-      sessionInstances.set(sessionId, sessionInstance);
-      sessionEnvironments.set(sessionId, normalizedEnv);
+      runtimeState.sessionInstances.set(sessionId, sessionInstance);
+      runtimeState.sessionEnvironments.set(sessionId, normalizedEnv);
       startSessionEventLoop(sessionId, sessionInstance);
       ensureCleanupInterval();
 
@@ -422,11 +425,11 @@ export async function getSessionClient(sessionId: string): Promise<OpencodeClien
 }
 
 export function getSessionEnvironment(sessionId: string): SessionEnvironment | null {
-  return sessionEnvironments.get(sessionId) ?? null;
+  return runtimeState.sessionEnvironments.get(sessionId) ?? null;
 }
 
 export function getSessionServerUrl(sessionId: string): string | null {
-  const session = sessionInstances.get(sessionId);
+  const session = runtimeState.sessionInstances.get(sessionId);
   return session?.baseUrl ?? null;
 }
 
@@ -436,7 +439,7 @@ export function subscribeToSession(
   handler: EventHandler
 ): () => void {
   // If instance already exists, add handler synchronously
-  const existing = sessionInstances.get(sessionId);
+  const existing = runtimeState.sessionInstances.get(sessionId);
   if (existing) {
     existing.handlers.add(handler);
     log.debug("Subscribed to session events (sync)", { sessionId, handlerCount: existing.handlers.size });
@@ -450,7 +453,7 @@ export function subscribeToSession(
   }
 
   return () => {
-    const session = sessionInstances.get(sessionId);
+    const session = runtimeState.sessionInstances.get(sessionId);
     if (session) {
       session.handlers.delete(handler);
       log.debug("Unsubscribed from session events", { sessionId, handlerCount: session.handlers.size });
@@ -491,57 +494,34 @@ export async function ensureValidSession(
   session.validSessionIds.add(newSessionId);
 
   // Update the instance mapping to use the new sessionId
-  sessionInstances.delete(sessionId);
-  sessionInstances.set(newSessionId, session);
+  runtimeState.sessionInstances.delete(sessionId);
+  runtimeState.sessionInstances.set(newSessionId, session);
 
   log.debug("Created new session on server", { oldSessionId: sessionId, newSessionId });
 
   return newSessionId;
 }
 
-// Mark session as active (resets cleanup timer)
-export function touchSession(sessionId: string): void {
-  const session = sessionInstances.get(sessionId);
-  if (session) {
-    session.lastActive = Date.now();
-  }
-}
-
 // Stop all instances (for shutdown)
 export function stopAllSessions(): void {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
+  if (runtimeState.cleanupInterval) {
+    clearInterval(runtimeState.cleanupInterval);
+    runtimeState.cleanupInterval = null;
   }
 
   // Stop tracked instances
-  for (const sessionId of sessionInstances.keys()) {
+  for (const sessionId of runtimeState.sessionInstances.keys()) {
     stopSessionInstance(sessionId);
   }
 
-  clientByBaseUrl.clear();
+  runtimeState.clientByBaseUrl.clear();
 
   log.info("All OpenCode sessions stopped");
-}
-
-// Get any available client (for operations that don't need a specific session)
-export async function getAnyClient(): Promise<OpencodeClient> {
-  await ensureServerStarted();
-  return getClientForBaseUrl(resolveServerUrl());
 }
 
 // Get URL from any available instance
 export async function getAnyServerUrl(): Promise<string> {
   return resolveServerUrl();
-}
-
-// Legacy compatibility
-export function getClient(): OpencodeClient {
-  throw new Error("getClient() is deprecated - use getSessionClient(sessionId) or getAnyClient()");
-}
-
-export function getServerUrl(): string {
-  throw new Error("getServerUrl() is deprecated - use getAnyServerUrl() instead");
 }
 
 export async function startServer(): Promise<void> {
@@ -550,14 +530,14 @@ export async function startServer(): Promise<void> {
 
 export async function stopServer(): Promise<void> {
   stopAllSessions();
-  if (managedServerProcess && managedServerProcess.exitCode === null) {
-    managedServerProcess.kill("SIGTERM");
+  if (runtimeState.managedServerProcess && runtimeState.managedServerProcess.exitCode === null) {
+    runtimeState.managedServerProcess.kill("SIGTERM");
   }
-  managedServerProcess = null;
-  serverStartPromise = null;
-  managedServerUrl = null;
+  runtimeState.managedServerProcess = null;
+  runtimeState.serverStartPromise = null;
+  runtimeState.managedServerUrl = null;
 }
 
 export function isServerReady(): boolean {
-  return Boolean(managedServerProcess && managedServerProcess.exitCode === null);
+  return Boolean(runtimeState.managedServerProcess && runtimeState.managedServerProcess.exitCode === null);
 }

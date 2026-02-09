@@ -13,6 +13,7 @@ import {
 import { getChannelModel, isLocalMode } from "@/config";
 import { log } from "@/utils";
 import { buildPromptParts, buildSystemPrompt } from "../shared";
+import { ServerAgentRuntime, formatShellCommand, normalizeSessionEnvironment } from "../runtime/base";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -20,21 +21,7 @@ import type {
   OpenCodeSessionInfo,
 } from "../types";
 
-const activeRequests = new Map<string, AbortController>();
-const sessionLocks = new Map<string, Promise<unknown>>();
-
-function formatShellCommand(args: string[]): string {
-  return args
-    .map((arg) => {
-      if (arg.length === 0) return "''";
-      if (/[^\w@%+=:,./-]/.test(arg)) {
-        const escaped = arg.replace(/'/g, `"'"'"`);
-        return `'${escaped}'`;
-      }
-      return arg;
-    })
-    .join(" ");
-}
+const runtime = new ServerAgentRuntime();
 
 export function buildOpenCodeCommand(
   url: string,
@@ -53,25 +40,6 @@ export function buildOpenCodeCommand(
     JSON.stringify(payload),
   ];
   return formatShellCommand(args);
-}
-
-async function withSessionLock<T>(
-  sessionKey: string,
-  fn: () => Promise<T>
-): Promise<T> {
-  const existing = sessionLocks.get(sessionKey);
-  if (existing) {
-    await existing.catch(() => { });
-  }
-
-  const promise = fn();
-  sessionLocks.set(sessionKey, promise);
-
-  try {
-    return await promise;
-  } finally {
-    sessionLocks.delete(sessionKey);
-  }
 }
 
 export async function createSession(
@@ -100,14 +68,6 @@ export async function createSession(
   register(sessionId, env ?? {});
 
   return sessionId;
-}
-
-function normalizeSessionEnvironment(env?: SessionEnvironment | null): string {
-  if (!env) return "";
-  return Object.keys(env)
-    .sort()
-    .map((key) => `${key}=${env[key]}`)
-    .join("\n");
 }
 
 export async function getOrCreateSession(
@@ -160,17 +120,10 @@ export async function sendMessage(
 
   const activeSessionId = validSessionId;
   const sessionKey = `${channelId}:${activeSessionId}`;
-
-  const existingController = activeRequests.get(sessionKey);
-  if (existingController) {
-    existingController.abort();
-  }
-
-  const controller = new AbortController();
-  activeRequests.set(sessionKey, controller);
+  runtime.beginRequest(sessionKey);
 
   try {
-    return await withSessionLock(sessionKey, async () => {
+    return await runtime.withSessionLock(sessionKey, async () => {
       const client = await getSessionClient(activeSessionId);
 
       const agent = options?.agent;
@@ -242,7 +195,7 @@ export async function sendMessage(
       return messages;
     });
   } finally {
-    activeRequests.delete(sessionKey);
+    runtime.endRequest(sessionKey);
   }
 }
 
@@ -482,11 +435,8 @@ export async function cancelActiveRequest(
   sessionId: string,
   directory?: string
 ): Promise<boolean> {
-  const sessionKey = `${channelId}:${sessionId}`;
-  const controller = activeRequests.get(sessionKey);
-  if (controller) {
-    controller.abort();
-    activeRequests.delete(sessionKey);
+  const cancelled = await runtime.cancelActiveRequest(channelId, sessionId);
+  if (cancelled) {
     await abortSession(sessionId, directory);
     return true;
   }

@@ -6,6 +6,12 @@ import {
 } from "@/config/local/settings";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared";
+import {
+  CliAgentRuntime,
+  formatShellCommand,
+  normalizeSessionEnvironment,
+  type SessionEnvironment as RuntimeSessionEnvironment,
+} from "../runtime/base";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -13,7 +19,9 @@ import type {
   OpenCodeSessionInfo,
 } from "../types";
 
-export type SessionEnvironment = Record<string, string>;
+const runtime = new CliAgentRuntime("Codex");
+
+export type SessionEnvironment = RuntimeSessionEnvironment;
 
 type CodexJsonEvent = {
   type?: string;
@@ -27,48 +35,6 @@ type CodexJsonEvent = {
     message?: string;
   };
 };
-
-const activeRequests = new Map<string, { controller: AbortController; process?: ChildProcess }>();
-const sessionLocks = new Map<string, Promise<unknown>>();
-const sessionEnvironments = new Map<string, SessionEnvironment>();
-const sessionSubscribers = new Map<string, Set<(event: unknown) => void>>();
-
-function normalizeSessionEnvironment(env?: SessionEnvironment | null): string {
-  if (!env) return "";
-  return Object.keys(env)
-    .sort()
-    .map((key) => `${key}=${env[key]}`)
-    .join("\n");
-}
-
-async function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
-  const existing = sessionLocks.get(sessionKey);
-  if (existing) {
-    await existing.catch(() => {});
-  }
-
-  const promise = fn();
-  sessionLocks.set(sessionKey, promise);
-
-  try {
-    return await promise;
-  } finally {
-    sessionLocks.delete(sessionKey);
-  }
-}
-
-function formatShellCommand(args: string[]): string {
-  return args
-    .map((arg) => {
-      if (arg.length === 0) return "''";
-      if (/[^\w@%+=:,./-]/.test(arg)) {
-        const escaped = arg.replace(/'/g, `"'"'"`);
-        return `'${escaped}'`;
-      }
-      return arg;
-    })
-    .join(" ");
-}
 
 function buildCodexPrompt(systemPrompt: string, prompt: string): string {
   return `<system-prompt>\n${systemPrompt}\n</system-prompt>\n\n${prompt}`;
@@ -138,18 +104,7 @@ export function buildCodexCommand(args: string[]): string {
 }
 
 function publishSessionEvent(sessionId: string, event: unknown): void {
-  const handlers = sessionSubscribers.get(sessionId);
-  if (!handlers || handlers.size === 0) return;
-  for (const handler of handlers) {
-    try {
-      handler(event);
-    } catch (err) {
-      log.warn("Codex session subscriber failed", {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  runtime.publishSessionEvent(sessionId, event);
 }
 
 function publishCodexEvent(sessionId: string, event: CodexJsonEvent): void {
@@ -296,7 +251,7 @@ function parseCodexResponse(output: string): {
 
 export async function createSession(workingPath: string, env?: SessionEnvironment): Promise<string> {
   const sessionId = crypto.randomUUID();
-  sessionEnvironments.set(sessionId, env ?? {});
+  runtime.setSessionEnvironment(sessionId, env ?? {});
   log.info("Created Codex session", { sessionId, workingPath });
   return sessionId;
 }
@@ -309,7 +264,7 @@ export async function getOrCreateSession(
 ): Promise<OpenCodeSessionInfo> {
   const existingSession = getThreadSessionId(channelId, threadId);
   if (existingSession) {
-    const existingEnv = normalizeSessionEnvironment(sessionEnvironments.get(existingSession));
+    const existingEnv = normalizeSessionEnvironment(runtime.getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
     if (existingEnv !== desiredEnv) {
       log.info("Codex session environment changed; creating new session", {
@@ -322,9 +277,7 @@ export async function getOrCreateSession(
       return { sessionId, created: true };
     }
 
-    if (!sessionEnvironments.has(existingSession)) {
-      sessionEnvironments.set(existingSession, env);
-    }
+    runtime.setSessionEnvironment(existingSession, env);
 
     return { sessionId: existingSession, created: false };
   }
@@ -344,18 +297,11 @@ export async function sendMessage(
   context?: OpenCodeMessageContext
 ): Promise<OpenCodeMessage[]> {
   const sessionKey = `${channelId}:${sessionId}`;
-  const existingEntry = activeRequests.get(sessionKey);
-  if (existingEntry) {
-    existingEntry.controller.abort();
-    existingEntry.process?.kill("SIGTERM");
-  }
-
-  const entry = { controller: new AbortController() };
-  activeRequests.set(sessionKey, entry);
+  const entry = runtime.beginRequest(sessionKey) as { controller: AbortController; process?: ChildProcess };
 
   try {
     await syncCodexModelsFromCache();
-    return await withSessionLock(sessionKey, async () => {
+    return await runtime.withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
       const planMode = agent?.trim().toLowerCase() === "plan";
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
@@ -372,7 +318,7 @@ export async function sendMessage(
       });
 
       const command = buildCodexCommand(args);
-      const envOverrides = sessionEnvironments.get(sessionId) ?? {};
+      const envOverrides = runtime.getSessionEnvironment(sessionId);
 
       log.info("Running Codex CLI", {
         cwd: workingPath,
@@ -394,46 +340,27 @@ export async function sendMessage(
       const parsed = parseCodexResponse(output);
       const responseSessionId = parsed.threadId || latestSessionId;
       if (responseSessionId && responseSessionId !== sessionId && context?.slack?.threadId) {
-        sessionEnvironments.set(responseSessionId, envOverrides);
+        runtime.setSessionEnvironment(responseSessionId, envOverrides);
         setThreadSessionId(channelId, context.slack.threadId, responseSessionId);
       }
 
       return [{ text: parsed.text, messageType: "assistant" }];
     });
   } finally {
-    activeRequests.delete(sessionKey);
+    runtime.endRequest(sessionKey);
   }
 }
 
 export async function ensureSession(sessionId: string): Promise<void> {
-  if (!sessionEnvironments.has(sessionId)) {
-    sessionEnvironments.set(sessionId, {});
-  }
+  await runtime.ensureSession(sessionId);
 }
 
 export function subscribeToSession(sessionId: string, handler: (event: unknown) => void): () => void {
-  const handlers = sessionSubscribers.get(sessionId) ?? new Set<(event: unknown) => void>();
-  handlers.add(handler);
-  sessionSubscribers.set(sessionId, handlers);
-
-  return () => {
-    const activeHandlers = sessionSubscribers.get(sessionId);
-    if (!activeHandlers) return;
-    activeHandlers.delete(handler);
-    if (activeHandlers.size === 0) {
-      sessionSubscribers.delete(sessionId);
-    }
-  };
+  return runtime.subscribeToSession(sessionId, handler);
 }
 
 export async function abortSession(sessionId: string, _directory?: string): Promise<void> {
-  for (const [sessionKey, entry] of activeRequests) {
-    if (sessionKey.endsWith(`:${sessionId}`)) {
-      entry.controller.abort();
-      entry.process?.kill("SIGTERM");
-      activeRequests.delete(sessionKey);
-    }
-  }
+  await runtime.abortSession(sessionId);
 }
 
 export async function cancelActiveRequest(
@@ -441,23 +368,11 @@ export async function cancelActiveRequest(
   sessionId: string,
   _directory?: string
 ): Promise<boolean> {
-  const sessionKey = `${channelId}:${sessionId}`;
-  const entry = activeRequests.get(sessionKey);
-  if (!entry) return false;
-
-  entry.controller.abort();
-  entry.process?.kill("SIGTERM");
-  activeRequests.delete(sessionKey);
-  return true;
+  return runtime.cancelActiveRequest(channelId, sessionId);
 }
 
 export function stopServer(): void {
-  for (const entry of activeRequests.values()) {
-    entry.controller.abort();
-    entry.process?.kill("SIGTERM");
-  }
-  activeRequests.clear();
-  sessionSubscribers.clear();
+  runtime.stopServer();
 }
 
 export async function startServer(): Promise<void> {

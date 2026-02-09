@@ -5,6 +5,11 @@ import {
 } from "@/config/local/settings";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt } from "../shared";
+import {
+  CliAgentRuntime,
+  normalizeSessionEnvironment,
+  type SessionEnvironment as RuntimeSessionEnvironment,
+} from "../runtime/base";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -12,12 +17,9 @@ import type {
   OpenCodeSessionInfo,
 } from "../types";
 
-export type SessionEnvironment = Record<string, string>;
+export type SessionEnvironment = RuntimeSessionEnvironment;
 
-const activeRequests = new Map<string, { controller: AbortController; process?: ChildProcess }>();
-const sessionLocks = new Map<string, Promise<unknown>>();
-const sessionEnvironments = new Map<string, SessionEnvironment>();
-const sessionSubscribers = new Map<string, Set<(event: unknown) => void>>();
+const runtime = new CliAgentRuntime("Claude");
 const newSessions = new Set<string>();
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -45,37 +47,13 @@ function deriveSessionTitleFromPrompt(message: string): string | undefined {
   return `${normalized.slice(0, 80).trim()}...`;
 }
 
-async function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
-  const existing = sessionLocks.get(sessionKey);
-  if (existing) {
-    await existing.catch(() => {});
-  }
-
-  const promise = fn();
-  sessionLocks.set(sessionKey, promise);
-
-  try {
-    return await promise;
-  } finally {
-    sessionLocks.delete(sessionKey);
-  }
-}
-
-function normalizeSessionEnvironment(env?: SessionEnvironment | null): string {
-  if (!env) return "";
-  return Object.keys(env)
-    .sort()
-    .map((key) => `${key}=${env[key]}`)
-    .join("\n");
-}
-
 function isValidUuid(value: string): boolean {
   return uuidRegex.test(value);
 }
 
 export async function createSession(workingPath: string, env?: SessionEnvironment): Promise<string> {
   const sessionId = crypto.randomUUID();
-  sessionEnvironments.set(sessionId, env ?? {});
+  runtime.setSessionEnvironment(sessionId, env ?? {});
   newSessions.add(sessionId);
   log.info("Created Claude session", { sessionId, workingPath });
   return sessionId;
@@ -101,7 +79,7 @@ export async function getOrCreateSession(
       return { sessionId, created: true };
     }
 
-    const existingEnv = normalizeSessionEnvironment(sessionEnvironments.get(existingSession));
+    const existingEnv = normalizeSessionEnvironment(runtime.getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
     if (existingEnv !== desiredEnv) {
       log.info("Claude session environment changed; creating new session", {
@@ -114,9 +92,7 @@ export async function getOrCreateSession(
       return { sessionId, created: true };
     }
 
-    if (!sessionEnvironments.has(existingSession)) {
-      sessionEnvironments.set(existingSession, env);
-    }
+    runtime.setSessionEnvironment(existingSession, env);
 
     return { sessionId: existingSession, created: false };
   }
@@ -217,18 +193,7 @@ function getRecordSessionId(record: ClaudeJsonRecord, fallbackSessionId: string)
 }
 
 function publishSessionEvent(sessionId: string, event: unknown): void {
-  const handlers = sessionSubscribers.get(sessionId);
-  if (!handlers || handlers.size === 0) return;
-  for (const handler of handlers) {
-    try {
-      handler(event);
-    } catch (err) {
-      log.warn("Claude session subscriber failed", {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  runtime.publishSessionEvent(sessionId, event);
 }
 
 function publishClaudeRecordAsSessionEvents(
@@ -447,18 +412,10 @@ export async function sendMessage(
   context?: OpenCodeMessageContext
 ): Promise<OpenCodeMessage[]> {
   const sessionKey = `${channelId}:${sessionId}`;
-
-  const existingEntry = activeRequests.get(sessionKey);
-  if (existingEntry) {
-    existingEntry.controller.abort();
-    existingEntry.process?.kill("SIGTERM");
-  }
-
-  const entry = { controller: new AbortController() };
-  activeRequests.set(sessionKey, entry);
+  const entry = runtime.beginRequest(sessionKey) as { controller: AbortController; process?: ChildProcess };
 
   try {
-    return await withSessionLock(sessionKey, async () => {
+    return await runtime.withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
       const forcedPermissionMode = resolveClaudePermissionMode(agent);
 
@@ -489,7 +446,7 @@ export async function sendMessage(
         prompt,
       });
 
-      const envOverrides = sessionEnvironments.get(sessionId) ?? {};
+      const envOverrides = runtime.getSessionEnvironment(sessionId);
       const { output, permissionMode, command } = await runClaudeWithFallback(
         args,
         workingPath,
@@ -518,7 +475,7 @@ export async function sendMessage(
 
       const responseSessionId = parsed?.session_id;
       if (responseSessionId && responseSessionId !== sessionId && context?.slack?.threadId) {
-        sessionEnvironments.set(responseSessionId, envOverrides);
+        runtime.setSessionEnvironment(responseSessionId, envOverrides);
         setThreadSessionId(channelId, context.slack.threadId, responseSessionId);
       }
 
@@ -535,39 +492,20 @@ export async function sendMessage(
       return [{ text, messageType: "assistant" }];
     });
   } finally {
-    activeRequests.delete(sessionKey);
+    runtime.endRequest(sessionKey);
   }
 }
 
 export async function ensureSession(sessionId: string): Promise<void> {
-  if (!sessionEnvironments.has(sessionId)) {
-    sessionEnvironments.set(sessionId, {});
-  }
+  await runtime.ensureSession(sessionId);
 }
 
 export function subscribeToSession(sessionId: string, handler: (event: unknown) => void): () => void {
-  const handlers = sessionSubscribers.get(sessionId) ?? new Set<(event: unknown) => void>();
-  handlers.add(handler);
-  sessionSubscribers.set(sessionId, handlers);
-
-  return () => {
-    const activeHandlers = sessionSubscribers.get(sessionId);
-    if (!activeHandlers) return;
-    activeHandlers.delete(handler);
-    if (activeHandlers.size === 0) {
-      sessionSubscribers.delete(sessionId);
-    }
-  };
+  return runtime.subscribeToSession(sessionId, handler);
 }
 
 export async function abortSession(sessionId: string, _directory?: string): Promise<void> {
-  for (const [sessionKey, entry] of activeRequests) {
-    if (sessionKey.endsWith(`:${sessionId}`)) {
-      entry.controller.abort();
-      entry.process?.kill("SIGTERM");
-      activeRequests.delete(sessionKey);
-    }
-  }
+  await runtime.abortSession(sessionId);
 }
 
 export async function cancelActiveRequest(
@@ -575,23 +513,11 @@ export async function cancelActiveRequest(
   sessionId: string,
   _directory?: string
 ): Promise<boolean> {
-  const sessionKey = `${channelId}:${sessionId}`;
-  const entry = activeRequests.get(sessionKey);
-  if (!entry) return false;
-
-  entry.controller.abort();
-  entry.process?.kill("SIGTERM");
-  activeRequests.delete(sessionKey);
-  return true;
+  return runtime.cancelActiveRequest(channelId, sessionId);
 }
 
 export function stopServer(): void {
-  for (const entry of activeRequests.values()) {
-    entry.controller.abort();
-    entry.process?.kill("SIGTERM");
-  }
-  activeRequests.clear();
-  sessionSubscribers.clear();
+  runtime.stopServer();
 }
 
 export async function startServer(): Promise<void> {
