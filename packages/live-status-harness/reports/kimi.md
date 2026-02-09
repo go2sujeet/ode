@@ -1,64 +1,88 @@
 # Live Status Harness Report - kimi
 
-Generated: 2026-02-07T08:18:34.676Z
+Generated: 2026-02-09T04:15:42.863Z
 Provider: kimi
-Working directory: /home/ode/ode/.worktree/ode_1770449813.006509
+Working directory: /root/ode-new/.worktree/ode_1770598921.253029
 
-- Run ID: kimi_1770452278985_e29e2a0e
-- Events captured: 28
-- Status updates rendered: 28
+- Run ID: kimi_1770610141642_da8782ca
+- Events captured: 32
+- Status updates rendered: 32
 
 ## Final Live Status Message
 
 ```text
-_35s_
+*Kimi Working...* (2m 13s)
 _Drafting response_
 
-*Tool execution (Last 6 items in 20)*
+*Tool execution (Last 6 items in 22)*
+- `Read` packages/agents/opencode/client.ts
 - `Read` packages/agents/adapter.ts
-- `Bash` find . -name "*.test.ts" -o -name "*.spec.ts" | head -20
-- `Read` packages/core/test/adapter-contracts.test.ts
-- `Bash` wc -l packages/core/test/*.ts packages/agents/test/*.ts packages/live-status-harness/test/*.ts 2>/de...
-- `Read` packages/config/local/sessions.ts
-- `Read` packages/core/state-machine.ts
+- `Read` packages/agents/registry.ts
+- `Bash` ls -la packages/agents/*/index.ts
+- `Read` packages/agents/claude/client.ts
+- `Read` packages/core/types.ts
 ```
 
 ## Result Message
 
 ```text
-After exploring the codebase, I've identified **one critical issue** that needs fixing:
+Based on my review of this codebase, here's my assessment:
 
----
+## Most Important Issue: Inconsistent Error Handling & Silent Failures
 
-## The Problem: No Timeout for Agent Requests
+Throughout the codebase, errors are caught and either:
+- **Swallowed entirely** (e.g., `deleteMessage` in `slack/client.ts` - line 526)
+- **Only logged** without user notification (e.g., `abortSession` in `opencode/client.ts` - line 428-430)
+- **Handled inconsistently** across the 7 different agent providers
 
-The `runTrackedRequest` function in `packages/core/runtime/request-runner.ts` has **no timeout mechanism**. If an AI agent (OpenCode, Claude, etc.) hangs or becomes unresponsive, the request stays stuck in "processing" state forever.
-
-**Impact:**
-- Users see "_Working..._" status indefinitely
-- Thread is blocked (queue prevents concurrent requests)
-- Requires manual bot restart or session cleanup
+This is critical because users don't know when operations fail, making debugging difficult and creating a poor user experience.
 
 ---
 
 ## Plan to Fix It
 
-### 1. Add Timeout Configuration
-- Add `ODE_REQUEST_TIMEOUT_MS` env var with 10 min default
-- Store in config module
+### Phase 1: Audit & Standardize (1-2 days)
+1. **Audit all catch blocks** in `packages/` to identify swallowed errors
+2. **Define error severity levels**: `user-facing` (show in Slack), `internal` (log only), `retryable`
+3. **Create a standardized error wrapper** in `packages/core/errors.ts` with:
+   - Original error
+   - User-friendly message
+   - Suggestion for resolution
+   - Context (channel, thread, operation)
+   - Retryable flag
 
-### 2. Implement Timeout in Request Runner
-- Race `sendPrompt()` against a timeout promise
-- On timeout: transition state to "failed", update status message
+### Phase 2: Core Error Infrastructure (2 days)
+1. **Add `packages/core/errors.ts`**:
+   - `OdeError` base class with context
+   - `AgentError`, `SlackError`, `ConfigError` subclasses
+   - Error categorization helper (extends existing `categorizeRuntimeError`)
 
-### 3. Update Error Categorization
-- Ensure `categorizeRuntimeError` properly handles timeout errors
+2. **Update `AgentAdapter` interface** (`packages/core/types.ts`):
+   - Standardize error return types
+   - Add error context preservation
 
-### 4. Add Recovery for Stuck Requests
-- On startup, detect and fail requests exceeding timeout threshold
+### Phase 3: Fix Agent Error Handling (2-3 days)
+1. **Update all 7 agent clients** (claude, codex, kimi, kiro, kilo, qwen, opencode):
+   - Replace silent catches with proper error propagation
+   - Add agent-specific error categorization
+   - Ensure CLI parse errors include the raw output for debugging
 
-### 5. Expose in Settings UI
-- Add timeout config to local settings page
+2. **Fix Slack layer** (`packages/ims/slack/client.ts`):
+   - Don't swallow delete message failures
+   - Add user notification for critical failures
 
-This is a reliability fix that prevents silent failures and improves user experience significantly.
+### Phase 4: User-Facing Error Improvements (1-2 days)
+1. **Update `runTrackedRequest`** (`packages/core/runtime/request-runner.ts`):
+   - Include operation context in error messages
+   - Show "retry" suggestions for transient errors
+
+2. **Add error formatting** for Slack display (truncate long errors, format with emoji indicators)
+
+### Phase 5: Tests (1-2 days)
+1. Add error scenario tests for each agent
+2. Test error propagation from agent → runtime → Slack
+
+---
+
+**Estimated effort:** ~1 week for a single developer, minimal breaking changes, mostly internal refactoring with better user-facing error messages.
 ```

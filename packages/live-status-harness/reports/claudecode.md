@@ -1,119 +1,64 @@
 # Live Status Harness Report - claudecode
 
-Generated: 2026-02-07T08:18:34.676Z
+Generated: 2026-02-09T04:15:42.863Z
 Provider: claudecode
-Working directory: /home/ode/ode/.worktree/ode_1770449813.006509
+Working directory: /root/ode-new/.worktree/ode_1770598921.253029
 
-- Run ID: claudecode_1770452010450_4cd8fee6
-- Events captured: 1620
-- Status updates rendered: 1516
+- Run ID: claudecode_1770609963657_27f03d4c
+- Events captured: 579
+- Status updates rendered: 130
 
 ## Final Live Status Message
 
 ```text
-*I want you to 1. Read this repo. 2. Give 1 thing you think is most important to...* (4m 28s)
+*I want you to 1. Read this repo. 2. Give 1 thing you think is most important to...* (1m 48s)
 _Finalizing response_
 
-*Latest actions (Last 6 in 88)*
-- `Bash` grep -l '"state": "processing"' ~/.config/ode/sessions/*.json 2>/dev/null | wc -l
-- `Edit` packages/core/test/error-handlers.test.ts
-- `Bash` bun test packages/core/test/error-handlers.test.ts 2>&1
-- `Bash` grep -l '"state": "processing"' ~/.config/ode/sessions/*.json 2>/dev/null | wc -l
-- `Bash` grep -l '"state": "failed"' ~/.config/ode/sessions/*.json 2>/dev/null | wc -l
-- `TodoWrite`
-
-*Current response*
-Excellent! All tasks are complete. Let me create a summary of the changes:
-
-## Summary
-
-I've identified and fixed the **most critical issue** in this codebase:
-
-### The Problem
-The Ode bot had **no global error handlers** for `unhandledRejection` and `uncaughtException`. This meant:
-- Any unhandled async error or exception would crash the process immediately
-- Active user sessions would be left in "processing" state forever
-- No graceful cleanup or logging of the crash
-- Users would lose their work with no error message
-
-### The Fix
-
-**1. Added global error handlers** (`packages/core/index.ts:284-301`)
-- `unhandledRejection` handler for unhandled promise rejections
-- `uncaughtException` handler for synchronous errors
-- Both log error details and trigger graceful shutdown
-
-**2. Enhanced shutdown logic** (`packages/core/index.ts:250-279`)
-- Fails all active requests before shutdown
-- Prevents stale "processing" state in sessions
-- Logs count of failed requests for observability
-
-**3. Added session cleanup function** (`packages/config/local/sessions.ts:296-312`)
-- `failAllActiveRequests()` function to fail all processing requests
-- Marks sessions as "failed" with clear error message
-- Returns count of failed requests for logging
-
-**4. Added tests** (`packages/core/test/error-handlers.test.ts`)
-- Verifies function doesn't crash
-- Tests idempotency (can call multiple times safely)
-
-### Files Modified
-- `packages/core/index.ts` - Added error handlers and shutdown cleanup
-- `packages/config/local/sessions.ts` - Added `failAllActiveRequests()` function
-- `packages/core/test/error-handlers.test.ts` - New test file
-
-### Impact
-- **Reliability**: Process crashes are now handled gracefully
-- **User Experience**: Users get clear error messages instead of silent failures
-- **Observability**: All crashes are logged with stack traces
-- **Data Integrity**: No more stale "processing" states after crashes
+*Tool execution (Last 6 items in 40)*
+- `Read` packages/core/state-machine.ts
+- `Read` packages/core/runtime.ts
+- `Grep` catch\s*\([^)]*\)\s*\{[^}]*\} in .
+- `Bash` find /root/ode-new/.worktree/ode_1770598921.253029/packages -name "*.test.ts" -o -name "*.spec.ts" |...
+- `Grep` catch\s*\([^)]*\)\s*\{\s*\} in .
+- `Read` packages/core/runtime/request-runner.ts
 ```
 
 ## Result Message
 
 ```text
-Excellent! All tasks are complete. Let me create a summary of the changes:
+Based on my exploration of the codebase, I can now provide you with my analysis.
 
-## Summary
+---
 
-I've identified and fixed the **most critical issue** in this codebase:
+## The Most Important Thing to Change
 
-### The Problem
-The Ode bot had **no global error handlers** for `unhandledRejection` and `uncaughtException`. This meant:
-- Any unhandled async error or exception would crash the process immediately
-- Active user sessions would be left in "processing" state forever
-- No graceful cleanup or logging of the crash
-- Users would lose their work with no error message
+**Fix the state machine state leak in `packages/core/runtime.ts`**
 
-### The Fix
+The `stateMachines: Map<string, CoreStateMachine>` in `RuntimeState` is never cleaned up. When a thread completes, fails, or stops, its state machine remains in the map forever. This is a memory leak that will grow indefinitely over time, especially for active Slack workspaces with many threads.
 
-**1. Added global error handlers** (`packages/core/index.ts:284-301`)
-- `unhandledRejection` handler for unhandled promise rejections
-- `uncaughtException` handler for synchronous errors
-- Both log error details and trigger graceful shutdown
+Looking at `runtime.ts:35-36`, the state machines map accumulates entries but there's no cleanup logic - no deletion on completion, no TTL, no bounds checking.
 
-**2. Enhanced shutdown logic** (`packages/core/index.ts:250-279`)
-- Fails all active requests before shutdown
-- Prevents stale "processing" state in sessions
-- Logs count of failed requests for observability
+---
 
-**3. Added session cleanup function** (`packages/config/local/sessions.ts:296-312`)
-- `failAllActiveRequests()` function to fail all processing requests
-- Marks sessions as "failed" with clear error message
-- Returns count of failed requests for logging
+## Plan to Fix It
 
-**4. Added tests** (`packages/core/test/error-handlers.test.ts`)
-- Verifies function doesn't crash
-- Tests idempotency (can call multiple times safely)
+1. **Add state machine cleanup on terminal transitions**
+   - Modify `runtime.ts` to delete state machines when they reach terminal states (`completed`, `failed`, `stopped`)
+   - Add cleanup after `publishFinalText()` calls in `handleUserMessageInternal`
 
-### Files Modified
-- `packages/core/index.ts` - Added error handlers and shutdown cleanup
-- `packages/config/local/sessions.ts` - Added `failAllActiveRequests()` function
-- `packages/core/test/error-handlers.test.ts` - New test file
+2. **Add cleanup in the stop command handler**
+   - Delete state machine when `handleStopCommand` succeeds
 
-### Impact
-- **Reliability**: Process crashes are now handled gracefully
-- **User Experience**: Users get clear error messages instead of silent failures
-- **Observability**: All crashes are logged with stack traces
-- **Data Integrity**: No more stale "processing" states after crashes
+3. **Add cleanup in recovery scenarios**
+   - Clean up orphaned state machines during `recoverPendingRequests`
+
+4. **Add a safeguard bounds check**
+   - Add a max size check (e.g., 1000 entries) with LRU eviction
+   - Log warnings when approaching the limit
+
+5. **Add test coverage**
+   - Add tests verifying state machines are cleaned up after terminal states
+   - Add tests for the bounds check eviction logic
+
+Would you like me to implement this fix?
 ```

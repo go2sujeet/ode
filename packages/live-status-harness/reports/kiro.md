@@ -1,53 +1,59 @@
 # Live Status Harness Report - kiro
 
-Generated: 2026-02-08T11:48:43.333Z
+Generated: 2026-02-09T04:15:42.863Z
 Provider: kiro
-Working directory: /home/ode/ode/.worktree/ode_1770547614.554279
+Working directory: /root/ode-new/.worktree/ode_1770598921.253029
 
-- Run ID: kiro_1770551274143_7502a349
-- Events captured: 29
-- Status updates rendered: 26
+- Run ID: kiro_1770610275710_7ffb4b87
+- Events captured: 20
+- Status updates rendered: 17
 
 ## Final Live Status Message
 
 ```text
-_49s_
+*Kiro Working...* (43s)
 _Waiting_
 
-*Tool execution (Last 6 items in 13)*
-- `Read` packages/core/runtime.ts (offset 0, limit 80)
-- `Grep` error handling|catch|throw (*.ts) in .
+*Tasks*
+`completed` Generate codebase overview
+`completed` Looking up symbols: ["runTrackedRequest", "handleIncomingMessage", "processQueue", "ThreadMessageQueue"]
+
+*Tool execution*
 - `Read`
 - `Read`
-- `Grep` test\(|describe\( in packages/core (*.ts) in .
+- `Read` packages/core/runtime.ts (offset 149, limit 31)
+- `Grep` error handling|catch.*err|try.*catch in /root/ode-new/.worktree/ode_1770598921.253029/packages (*.ts...
 - `Read`
+- `Grep` log\.(error|warn|debug) in /root/ode-new/.worktree/ode_1770598921.253029/packages/core (*.ts) in .
 ```
 
 ## Result Message
 
 ```text
-Based on my review of the codebase, here's what I found:
-## Most Important Issue
-No structured error recovery or retry logic
-The system has error categorization (categorizeRuntimeError) but no automatic retry mechanism for transient failures. When requests fail due to timeouts, rate limits, or network issues, users must manually restart - the error just gets logged and displayed.
-## Why This Matters
-1. User experience: Transient failures (network blips, rate limits) require manual intervention
-2. Reliability: No exponential backoff for rate limits means users hit the same wall repeatedly
-3. Lost context: Failed requests lose all progress - no partial recovery or resume capability
-4. Scale: As usage grows, rate limit handling becomes critical
-## Fix Plan
-✅ Phase 1: Add retry infrastructure
-- Create packages/core/runtime/retry.ts with exponential backoff logic
-- Support configurable retry policies per error type
-- Add retry state to ActiveRequest type
-✅ Phase 2: Integrate into request runner
-- Wrap sendPrompt() in runTrackedRequest with retry logic
-- Handle rate limits (429) with backoff
-- Handle timeouts with progressive timeout extension
-- Skip retries for non-transient errors (auth, validation)
-✅ Phase 3: User visibility
-- Update status messages to show "Retrying (attempt 2/3)..."
-- Add retry count to request state
-- Log retry attempts for debugging
-This is minimal, high-impact, and addresses a real pain point without requiring architectural changes.
+✅ Codebase analyzed
+♻️ Identifying critical issue
+✅ Issue identified
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Most important issue: Inconsistent error handling and silent failures
+The codebase has error handling scattered everywhere, but many critical failures are only logged without user notification. For example:
+• thread-queue.ts catches errors but only logs them - users never see that their message failed
+• message-updates.ts silently fails Slack message updates with just a debug log
+• request-runner.ts has proper error handling, but other parts of the pipeline don't
+This means users can send messages that appear to be queued but actually fail silently, leading to confusion.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Plan to fix:
+1. Create centralized error handler (packages/core/runtime/error-handler.ts)
+   - Categorize errors (user-facing vs system)
+   - Return structured error responses
+   - Include retry logic for transient failures
+2. Update ThreadMessageQueue (packages/core/runtime/thread-queue.ts)
+   - Propagate errors to IM adapter instead of just logging
+   - Send user-visible error messages to Slack thread
+3. Update message updater (packages/ims/slack/message-updates.ts)
+   - Retry failed updates with exponential backoff
+   - Log persistent failures as warnings, not debug
+4. Add error boundary in runtime (packages/core/runtime.ts)
+   - Wrap handleIncomingMessage with try-catch
+   - Ensure all user messages get a response (success or error)
+This keeps the fix minimal - one new file, three small edits to existing files.
 ```
