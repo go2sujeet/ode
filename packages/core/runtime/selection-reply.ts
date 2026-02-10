@@ -71,11 +71,11 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
     return;
   }
 
-  if (isMessageProcessed(messageTs)) {
+  if (isMessageProcessed(channelId, threadId, messageTs)) {
     log.debug("Skipping duplicate button selection", { messageTs });
     return;
   }
-  markMessageProcessed(messageTs);
+  markMessageProcessed(channelId, threadId, messageTs);
 
   const statusTs = await deps.im.sendMessage(channelId, threadId, "_Processing..._", false);
   if (!statusTs) {

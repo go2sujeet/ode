@@ -274,12 +274,16 @@ export function getSessionsWithPendingRequests(): PersistedSession[] {
 }
 
 // Deduplication
-export function isMessageProcessed(messageTs: string): boolean {
-  return processedMessages.has(messageTs);
+function buildMessageDedupKey(channelId: string, threadId: string, messageTs: string): string {
+  return `${channelId}:${threadId}:${messageTs}`;
 }
 
-export function markMessageProcessed(messageTs: string): void {
-  processedMessages.add(messageTs);
+export function isMessageProcessed(channelId: string, threadId: string, messageTs: string): boolean {
+  return processedMessages.has(buildMessageDedupKey(channelId, threadId, messageTs));
+}
+
+export function markMessageProcessed(channelId: string, threadId: string, messageTs: string): void {
+  processedMessages.add(buildMessageDedupKey(channelId, threadId, messageTs));
 
   // Keep only last 1000 messages
   if (processedMessages.size > 1000) {

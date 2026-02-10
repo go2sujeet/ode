@@ -155,7 +155,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
   }
 
   async function handleIncomingMessage(context: CoreMessageContext, text: string): Promise<void> {
-    if (isMessageProcessed(context.messageId)) {
+    if (isMessageProcessed(context.channelId, context.threadId, context.messageId)) {
       log.debug("Skipping duplicate message", { messageId: context.messageId });
       return;
     }
@@ -173,7 +173,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       }
     }
 
-    markMessageProcessed(context.messageId);
+    markMessageProcessed(context.channelId, context.threadId, context.messageId);
     threadQueue.enqueue(context, text);
   }
 

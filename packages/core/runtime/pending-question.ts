@@ -20,7 +20,7 @@ export async function handlePendingQuestionReply(params: {
 }): Promise<boolean> {
   const { deps, pendingQuestion, context, text } = params;
 
-  if (isMessageProcessed(context.messageId)) {
+  if (isMessageProcessed(context.channelId, context.threadId, context.messageId)) {
     log.debug("Skipping duplicate question reply", { messageId: context.messageId });
     return true;
   }
@@ -37,7 +37,7 @@ export async function handlePendingQuestionReply(params: {
     return true;
   }
 
-  markMessageProcessed(context.messageId);
+  markMessageProcessed(context.channelId, context.threadId, context.messageId);
 
   try {
     const answers = buildQuestionAnswers(pendingQuestion.questions, trimmed);
