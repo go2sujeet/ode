@@ -24,7 +24,7 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 
 - Configured OpenCode / Claude Code / Codex / Kimi Code... at least 1 coding cli.
 - Register a Slack Bot with Socket Mode enabled, have its APP TOKEN (xapp...) and BOT TOKEN (xbot..)
-  - Configuration and auth scope can be a little bit complicated if not so familiar with slack bots. If not sure, can use /static/slack-app-manifest.json to generate from manifest file.
+  - Configuration and auth scope can be a little bit complicated if not so familiar with slack bots. If not sure, download [`slack-app-manifest.json`](https://raw.githubusercontent.com/odefun/ode/main/static/slack-app-manifest.json) and generate from the manifest file.
 
 ### Installation and Running
 
@@ -41,14 +41,17 @@ ode
 
 Settings UI can be accessible via http://127.0.0.1:9293 or use `/setting` command in slack like `@bot /setting`.
 
-## Cli Support
-[x] OpenCode
-[x] Codex
-[x] Claude Code
-[x] Kimi Code
-[x] Qwen Code
-[x] Kilo Code
-[x] Kiro Cli
+## Agent List
+
+| Agent | Logo | Project |
+| --- | --- | --- |
+| OpenCode | <img src="https://img.shields.io/badge/OpenCode-111111?style=for-the-badge&logo=opencollective&logoColor=white" alt="OpenCode logo" /> | [opencode.ai](https://opencode.ai/) |
+| Codex | <img src="https://img.shields.io/badge/Codex-111111?style=for-the-badge&logo=openai&logoColor=white" alt="Codex logo" /> | [github.com/openai/codex](https://github.com/openai/codex) |
+| Claude Code | <img src="https://img.shields.io/badge/Claude_Code-111111?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude Code logo" /> | [docs.anthropic.com/claude-code](https://docs.anthropic.com/en/docs/claude-code/overview) |
+| Kimi Code | <img src="https://img.shields.io/badge/Kimi_Code-111111?style=for-the-badge&logo=moonrepo&logoColor=white" alt="Kimi Code logo" /> | [moonshotai.github.io/kimi-cli](https://moonshotai.github.io/kimi-cli/) |
+| Qwen Code | <img src="https://img.shields.io/badge/Qwen_Code-111111?style=for-the-badge&logo=alibabacloud&logoColor=white" alt="Qwen Code logo" /> | [github.com/QwenLM/qwen-code](https://github.com/QwenLM/qwen-code) |
+| Kilo Code | <img src="https://img.shields.io/badge/Kilo_Code-111111?style=for-the-badge&logo=codeium&logoColor=white" alt="Kilo Code logo" /> | [kilo.ai/docs/code-with-ai/platforms/cli](https://kilo.ai/docs/code-with-ai/platforms/cli) |
+| Kiro CLI | <img src="https://img.shields.io/badge/Kiro_CLI-111111?style=for-the-badge&logo=amazonec2&logoColor=white" alt="Kiro CLI logo" /> | [kiro.dev/docs/cli/reference](https://kiro.dev/docs/cli/reference/cli-commands/) |
 
 ## Usage
 
