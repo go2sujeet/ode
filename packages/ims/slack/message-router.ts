@@ -199,7 +199,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
     const threadActive = deps.isThreadActive(channelId, threadId);
 
     if (shouldDropForThreadContext(isMention, threadActive)) {
-      log.info("[DROP] Not mentioned and thread inactive", { channelId, threadId });
+      log.debug("[DROP] Not mentioned and thread inactive", { channelId, threadId });
       return;
     }
 

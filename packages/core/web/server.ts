@@ -584,5 +584,5 @@ export function stopLocalWebServer(): void {
   if (!webServer) return;
   webServer.stop();
   webServer = null;
-  log.info("Web UI server stopped");
+  log.debug("Web UI server stopped");
 }

@@ -60,7 +60,7 @@ function setWorktreeGitIdentity(params: {
     ["user.name", gitIdentity.gitName],
     ["user.email", gitIdentity.gitEmail],
   ];
-  log.info("Setting git identity in worktree config", {
+  log.debug("Setting git identity in worktree config", {
     channelId,
     threadId,
     hasName: Boolean(gitIdentity.gitName),

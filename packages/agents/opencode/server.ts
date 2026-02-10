@@ -516,7 +516,7 @@ export function stopAllSessions(): void {
 
   runtimeState.clientByBaseUrl.clear();
 
-  log.info("All OpenCode sessions stopped");
+  log.debug("All OpenCode sessions stopped");
 }
 
 // Get URL from any available instance

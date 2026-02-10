@@ -68,7 +68,7 @@ async function stopSlackRuntime(reason: string): Promise<void> {
   slackApps = [];
   slackAppTokens = [];
   resetSlackState();
-  log.info("Slack connections stopped", { reason });
+  log.debug("Slack connections stopped", { reason });
 }
 
 async function startSlackRuntime(reason: string): Promise<void> {
@@ -263,7 +263,7 @@ async function main(): Promise<void> {
 
   // Handle shutdown gracefully
   const shutdown = async (signal: string) => {
-    log.info("Shutting down...", { signal });
+    log.debug("Shutting down...", { signal });
 
     try {
       stopOAuthServer();
@@ -278,7 +278,7 @@ async function main(): Promise<void> {
       }
       stopAutoUpgradeScheduler();
       await stopAllServers();
-      log.info("Cleanup complete");
+      log.debug("Cleanup complete");
       process.exit(0);
     } catch (err) {
       log.error("Error during cleanup", { error: String(err) });
@@ -299,8 +299,7 @@ async function main(): Promise<void> {
     log.debug("Bot is running in Socket Mode");
   }
 
-  log.info("Configure Ode settings at", { url: getLocalSettingsUrl() });
-  log.info("Ode is ready! Waiting for messages...");
+  console.log(`Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`);
 }
 
 main().catch((err) => {

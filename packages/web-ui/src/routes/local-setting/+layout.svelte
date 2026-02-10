@@ -11,6 +11,7 @@
   let activeSection: "general" | "agents" | "slack" = "general";
   let pendingSlackAppToken = "";
   let pendingSlackBotToken = "";
+  let isAddWorkspaceDialogOpen = false;
 
   $: pathname = $page.url.pathname;
   $: normalizedPathname = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
@@ -31,7 +32,16 @@
     if (!workspace) return;
     pendingSlackAppToken = "";
     pendingSlackBotToken = "";
+    isAddWorkspaceDialogOpen = false;
     await goto(getWorkspacePath(workspace));
+  }
+
+  function openAddWorkspaceDialog(): void {
+    isAddWorkspaceDialogOpen = true;
+  }
+
+  function closeAddWorkspaceDialog(): void {
+    isAddWorkspaceDialogOpen = false;
   }
 
   function onPendingSlackAppTokenInput(event: Event): void {
@@ -104,50 +114,22 @@
             <span class="empty-tip">No workspaces</span>
           {:else}
             {#each $localSettingStore.config.workspaces as workspace}
-              <div class="workspace-row">
-                <button
-                  class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'slack' ? 'active' : ''}"
-                  on:click={() => goto(getWorkspacePath(workspace))}
-                >
-                  {workspace.name || workspace.id}
-                </button>
-                <button
-                  class="workspace-remove"
-                  type="button"
-                  on:click={() => removeWorkspace(workspace.id)}
-                  disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
-                >
-                  Remove
-                </button>
-              </div>
+              <button
+                class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'slack' ? 'active' : ''}"
+                on:click={() => goto(getWorkspacePath(workspace))}
+              >
+                {workspace.name || workspace.id}
+              </button>
             {/each}
           {/if}
-
-          <label for="new-workspace-app-token">Slack App Token</label>
-          <input
-            id="new-workspace-app-token"
-            type="text"
-            value={pendingSlackAppToken}
-            on:input={onPendingSlackAppTokenInput}
-            placeholder="xapp-..."
-          />
-
-          <label for="new-workspace-bot-token">Slack Bot Token</label>
-          <input
-            id="new-workspace-bot-token"
-            type="text"
-            value={pendingSlackBotToken}
-            on:input={onPendingSlackBotTokenInput}
-            placeholder="xoxb-..."
-          />
 
           <button
             class="nav-item add-workspace"
             type="button"
-            on:click={() => void addWorkspace()}
+            on:click={openAddWorkspaceDialog}
             disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
           >
-            {$localSettingStore.isAddingWorkspace ? "Adding..." : "Add workspace"}
+            Add Workspace
           </button>
         </div>
       </aside>
@@ -156,6 +138,16 @@
         <slot />
 
         <footer class="actions">
+          {#if activeSection === "slack" && selectedWorkspace}
+            <button
+              class="danger-action"
+              type="button"
+              on:click={() => removeWorkspace(selectedWorkspace.id)}
+              disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
+            >
+              Remove Workspace
+            </button>
+          {/if}
           <button
             on:click={() => void localSettingStore.saveConfig()}
             disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
@@ -171,6 +163,43 @@
     </div>
   </div>
 </main>
+
+{#if isAddWorkspaceDialogOpen}
+  <div class="dialog-backdrop" role="presentation" on:click={closeAddWorkspaceDialog}>
+    <div class="dialog card" role="dialog" aria-modal="true" aria-labelledby="add-workspace-title" on:click|stopPropagation>
+      <h2 id="add-workspace-title">Add Workspace</h2>
+
+      <label for="new-workspace-app-token">Slack App Token</label>
+      <input
+        id="new-workspace-app-token"
+        type="text"
+        value={pendingSlackAppToken}
+        on:input={onPendingSlackAppTokenInput}
+        placeholder="xapp-..."
+      />
+
+      <label for="new-workspace-bot-token">Slack Bot Token</label>
+      <input
+        id="new-workspace-bot-token"
+        type="text"
+        value={pendingSlackBotToken}
+        on:input={onPendingSlackBotTokenInput}
+        placeholder="xoxb-..."
+      />
+
+      <div class="dialog-actions">
+        <button type="button" on:click={closeAddWorkspaceDialog}>Cancel</button>
+        <button
+          type="button"
+          on:click={() => void addWorkspace()}
+          disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
+        >
+          {$localSettingStore.isAddingWorkspace ? "Adding..." : "Add Workspace"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   :global(body) {
@@ -248,19 +277,6 @@
     color: var(--ink-soft);
   }
 
-  .workspace-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-  }
-
-  .workspace-remove {
-    border-color: var(--line);
-    color: var(--ink-soft);
-    background: var(--bg-soft);
-    padding: 9px 8px;
-  }
-
   .nav-item {
     width: 100%;
     text-align: left;
@@ -296,6 +312,32 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+  }
+
+  .danger-action {
+    border-color: #bf3a2b;
+    color: #bf3a2b;
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--ink) 24%, transparent);
+    display: grid;
+    place-items: center;
+    z-index: 50;
+    padding: 16px;
+  }
+
+  .dialog {
+    width: min(520px, 100%);
+    margin: 0;
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .message,
