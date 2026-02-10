@@ -16,4 +16,5 @@ export {
   getToolIcon,
   trimToolPath,
 } from "./status";
+export { extractEventSessionId } from "./session-id";
 export { ensureSessionWorktree, resolveRepoRoot } from "./worktree";
