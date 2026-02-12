@@ -12,7 +12,7 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 * 🖇️ **Map coding session 1 - 1 to slack thread**, and use worktree to get isolated, parallel coding is so easy.
 * 👬 Anyone in the channel can join coding without any extra setup, **pay one account for all team members**.
 * 📝 **Message live message updates**, you don't wait for response without any information, you can monitor from real-time text updates.
-* 🐙 **Per user git config**, who start the thread becomes corresponding git commit author.
+* 🐙 **Per user git config**, who start the thread becomes corresponding git commit author. (Run @bot /gh)
 
 ## Compare with OpenClaw
 
