@@ -18,11 +18,11 @@ Ode 是一个编程代理工具，可将你的编码Agent（OpenCode、Claude Co
 
 * Slack 支持**线程式**消息，天然适合映射编码代理中的会话。一个线程只聚焦一件事。
 * 支持消息编辑、类 Markdown 文本渲染，Slack 非常适合展示编码相关信息。
+* **基于频道的设置**，可在同一台机器和同一个 Slack 工作区中轻松配置多个工作目录。
 * 我们也希望后续支持尽可能多的聊天工具。
 
 ![Channel](static/channel-setting.png)
-
-* **基于频道的设置**，可在同一台机器和同一个 Slack 工作区中轻松配置多个工作目录。
+*Run `@bot /setting` to trigger setting dialog.*
 
 ## 安装与配置
 

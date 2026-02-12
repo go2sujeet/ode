@@ -18,11 +18,11 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 
 * Slack has **thread based** messaging, making it easy to port to sessions in coding agents. Just focus on one thing in one thread.
 * Support for message edit, markdown like text render make slack perfect to show coding related information.
+* **Channel based settings** lets you configure multiple work directories easily in one machine and one slack workspace.
 * Also want to support as much chatting tools as possible.
 
 ![Channel](static/channel-setting.png)
-
-* **Channel based settings** lets you configure multiple work directories easily in one machine and one slack workspace.
+*Run `@bot /setting` to trigger setting dialog.*
 
 ## Setup
 
