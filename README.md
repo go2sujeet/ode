@@ -1,22 +1,28 @@
 # Ode
 
+[简体中文文档](README.zh-CN.md)
+
 Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Codex and much more) to your favorite chat apps. Perfect for personal or team developers working on the go.
 
 ![Ode demo](static/ode-demo.png)
 
 ## Highlight features
 
-* Coding from anywhere, just chat and get response in slack.
-* Map coding session 1 - 1 to slack thread, and use worktree to get isolated, parallel coding is so easy.
-* Anyone in the channel can join coding without any extra setup, pay one account for all team members.
-* Message live message updates, you don't wait for response without any information, you can monitor from real-time text updates.
-* Per user git config, who start the thread becomes corresponding git commit author.
+* 🏖️ Coding from anywhere, just chat and get response in slack.
+* 🖇️ **Map coding session 1 - 1 to slack thread**, and use worktree to get isolated, parallel coding is so easy.
+* 👬 Anyone in the channel can join coding without any extra setup, **pay one account for all team members**.
+* 📝 **Message live message updates**, you don't wait for response without any information, you can monitor from real-time text updates.
+* 🐙 **Per user git config**, who start the thread becomes corresponding git commit author.
 
 ## Why Slack
 
-* Slack has thread based messaging, making it easy to port to sessions in coding agents. Just focus on one thing in one thread.
+* Slack has **thread based** messaging, making it easy to port to sessions in coding agents. Just focus on one thing in one thread.
 * Support for message edit, markdown like text render make slack perfect to show coding related information.
 * Also want to support as much chatting tools as possible.
+
+![Channel](static/channel-setting.png)
+
+* **Channel based settings** lets you configure multiple work directories easily in one machine and one slack workspace.
 
 ## Setup
 
