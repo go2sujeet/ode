@@ -14,12 +14,12 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 * 📝 **Message live message updates**, you don't wait for response without any information, you can monitor from real-time text updates.
 * 🐙 **Per user git config**, who start the thread becomes corresponding git commit author.
 
-## Why Slack
+## Compare with OpenClaw
 
-* Slack has **thread based** messaging, making it easy to port to sessions in coding agents. Just focus on one thing in one thread.
-* Support for message edit, markdown like text render make slack perfect to show coding related information.
+* OpenClaw is greate, but Ode utilize **thread based** messaging to organize things better, making it easy to port sessions in coding agents directly to chat apps. Just work on one thing in one thread.
+* Ode provide **live message updates**, you can monitor from real-time text updates for more confident.
 * **Channel based settings** lets you configure multiple work directories easily in one machine and one slack workspace.
-* Also want to support as much chatting tools as possible.
+* Ode also want to support as much chatting tools as possible, next is Discord and Lark.
 
 ![Channel](static/channel-setting.png)
 *Run `@bot /setting` to trigger setting dialog.*
