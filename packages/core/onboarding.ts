@@ -261,23 +261,28 @@ async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord"> {
   }
 }
 
+function printConnectedWorkspaces(workspaces: WorkspaceConfig[]): void {
+  if (workspaces.length === 0) {
+    console.log("No workspaces connected yet.");
+    return;
+  }
+
+  console.log("Connected workspaces:");
+  for (const workspace of workspaces) {
+    const label = workspace.name || workspace.id;
+    const domain = workspace.domain ? ` (${workspace.domain})` : "";
+    const typeLabel = workspace.type === "discord" ? "Discord" : "Slack";
+    const indicator = "\x1b[32m●\x1b[0m";
+    console.log(`${indicator} [${typeLabel}] ${label}${domain}`);
+  }
+}
+
 async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
   console.log("Step 1/2: Workspace setup.");
   console.log("");
   let nextConfig = config;
   const existingWorkspaces = nextConfig.workspaces;
-  if (existingWorkspaces.length > 0) {
-    console.log("Connected workspaces:");
-    for (const workspace of existingWorkspaces) {
-      const label = workspace.name || workspace.id;
-      const domain = workspace.domain ? ` (${workspace.domain})` : "";
-      const typeLabel = workspace.type === "discord" ? "Discord" : "Slack";
-      const indicator = "\x1b[32m●\x1b[0m";
-      console.log(`${indicator} [${typeLabel}] ${label}${domain}`);
-    }
-  } else {
-    console.log("No workspaces connected yet.");
-  }
+  printConnectedWorkspaces(existingWorkspaces);
 
   console.log("");
 
@@ -324,8 +329,13 @@ async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeCon
           workspaces: [...nextConfig.workspaces, workspace],
         };
         saveOdeConfig(nextConfig);
-         console.log(`Connected ${workspace.type} workspace: ${workspace.name || workspace.id}`);
-       }
+        const typeLabel = workspace.type === "discord" ? "Discord" : "Slack";
+        console.log(`Connected ${typeLabel} workspace: ${workspace.name || workspace.id}`);
+      }
+
+      console.log("");
+      printConnectedWorkspaces(nextConfig.workspaces);
+      console.log("");
 
       const addAnother = await askYesNo(rl, "Add another workspace?", false);
       if (!addAnother) break;
