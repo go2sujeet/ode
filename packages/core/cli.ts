@@ -1,29 +1,49 @@
 #!/usr/bin/env bun
 
+import { spawn } from "child_process";
+import { closeSync, openSync, readSync, statSync } from "fs";
 import packageJson from "../../package.json" with { type: "json" };
-import { isInstalledBinary, performUpgrade } from "./upgrade";
-import { runOnboarding } from "./onboarding";
+import { getWebHost, getWebPort } from "@/config";
+import { runDaemon } from "@/core/daemon/manager";
+import { getDaemonLogPath } from "@/core/daemon/paths";
+import { isProcessAlive, readDaemonState, type DaemonState } from "@/core/daemon/state";
+import { runOnboarding } from "@/core/onboarding";
+import { isInstalledBinary, performUpgrade } from "@/core/upgrade";
 
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
 const CURRENT_VERSION = packageJson.version ?? "0.0.0";
+const CLI_ENTRY = new URL(import.meta.url).pathname;
+const BUN_EXECUTABLE: string = process.argv[0] ?? process.execPath;
+const READY_WAIT_MS = 2 * 60 * 1000;
+const READY_POLL_MS = 500;
+const LOG_TAIL_BYTES = 200_000;
+const LOG_TAIL_LINES = 40;
+
+const foregroundRequested = rawArgs.includes("--foreground");
+const args = foregroundRequested
+  ? rawArgs.filter((arg) => arg !== "--foreground")
+  : rawArgs;
+const command = args[0];
 
 function printHelp(): void {
-  // Keep this minimal; runtime.ts runs local mode by default.
   console.log(
     [
       "ode - OpenCode Slack bot",
       "",
       "Usage:",
-      "  ode [--local]",
+      "  ode [--foreground]",
+      "  ode status",
+      "  ode restart",
       "  ode onboarding",
       "  ode upgrade",
       "  ode --version",
       "",
       "Examples:",
-      "  ode --local",
-      "  ode onboarding",
-      "  ode upgrade",
-    ].join("\n")
+      "  ode",
+      "  ode status",
+      "  ode restart",
+      "  ode --foreground",
+    ].join("\n"),
   );
 }
 
@@ -42,24 +62,195 @@ async function upgrade(): Promise<void> {
   console.log("ode upgraded.");
 }
 
+function getLocalSettingsUrl(): string {
+  const host = getWebHost();
+  const port = getWebPort();
+  return `http://${host}:${port}/local-setting`;
+}
+
+function fallbackReadyMessage(): string {
+  return `Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function daemonState(): DaemonState {
+  return readDaemonState();
+}
+
+function managerRunning(state: DaemonState = daemonState()): boolean {
+  return isProcessAlive(state.managerPid);
+}
+
+function runtimeRunning(state: DaemonState = daemonState()): boolean {
+  return isProcessAlive(state.runtimePid);
+}
+
+function ensureDaemonRunning(): void {
+  const state = daemonState();
+  if (managerRunning(state)) return;
+  const child = spawn(BUN_EXECUTABLE, [CLI_ENTRY, "daemon"], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+}
+
+async function waitForReadyMessage(timeoutMs: number): Promise<string | null> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = daemonState();
+    if (state.status === "ready" && typeof state.readyMessage === "string" && state.readyMessage.length > 0 && managerRunning(state)) {
+      return state.readyMessage;
+    }
+    if (!managerRunning(state)) {
+      ensureDaemonRunning();
+    }
+    await delay(READY_POLL_MS);
+  }
+  return null;
+}
+
+async function startBackground(): Promise<void> {
+  const state = daemonState();
+  if (state.status === "ready" && state.readyMessage && managerRunning(state)) {
+    console.log(state.readyMessage);
+    return;
+  }
+  ensureDaemonRunning();
+  const readyMessage = await waitForReadyMessage(READY_WAIT_MS);
+  if (readyMessage) {
+    console.log(readyMessage);
+    return;
+  }
+  console.log(`Ode daemon is still starting. Follow logs at ${getDaemonLogPath()}`);
+}
+
+function tailLogs(maxLines: number): string[] {
+  const logPath = getDaemonLogPath();
+  try {
+    const stats = statSync(logPath);
+    if (stats.size === 0) return [];
+    const bytes = Math.min(LOG_TAIL_BYTES, stats.size);
+    const buffer = Buffer.alloc(Number(bytes));
+    const fd = openSync(logPath, "r");
+    try {
+      readSync(fd, buffer, 0, Number(bytes), stats.size - bytes);
+    } finally {
+      closeSync(fd);
+    }
+    const content = buffer.toString("utf-8");
+    const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    return lines.slice(-maxLines);
+  } catch {
+    return [];
+  }
+}
+
+function formatTimestamp(value: number | null): string {
+  if (!value) return "n/a";
+  return new Date(value).toLocaleString();
+}
+
+async function showStatus(): Promise<void> {
+  const state = daemonState();
+  const daemonStatus = managerRunning(state) ? `running (pid ${state.managerPid})` : "stopped";
+  const runtimeStatus = runtimeRunning(state) ? `running (pid ${state.runtimePid})` : "stopped";
+  console.log(`Daemon: ${daemonStatus}`);
+  console.log(`Runtime: ${runtimeStatus}`);
+  console.log(`Last start: ${formatTimestamp(state.lastStartAt)}`);
+  console.log(`Last ready: ${formatTimestamp(state.lastReadyAt)}`);
+  if (state.pendingUpgradeRestart) {
+    console.log(
+      `Pending upgrade restart since ${formatTimestamp(state.pendingUpgradeRestart.scheduledAt)} (${state.pendingUpgradeRestart.reason})`,
+    );
+  }
+  const logs = tailLogs(LOG_TAIL_LINES);
+  if (logs.length === 0) {
+    console.log(`No logs yet. Log file: ${getDaemonLogPath()}`);
+    return;
+  }
+  console.log(`Recent logs (${getDaemonLogPath()}):`);
+  console.log(logs.join("\n"));
+}
+
+async function restartDaemonCommand(): Promise<void> {
+  const state = daemonState();
+  if (!managerRunning(state)) {
+    console.log("Daemon not running. Starting a new daemon instance...");
+    ensureDaemonRunning();
+    const ready = await waitForReadyMessage(READY_WAIT_MS);
+    console.log(ready ?? `Restart requested. Follow logs at ${getDaemonLogPath()}`);
+    return;
+  }
+
+  if (runtimeRunning(state) && state.runtimePid) {
+    try {
+      process.kill(state.runtimePid, "SIGTERM");
+      console.log(`Sent shutdown signal to runtime (pid ${state.runtimePid}).`);
+    } catch (error) {
+      console.warn(`Failed to signal runtime (pid ${state.runtimePid}): ${String(error)}`);
+    }
+  } else {
+    console.log("Runtime is not currently running; waiting for daemon to restart.");
+  }
+
+  const ready = await waitForReadyMessage(READY_WAIT_MS);
+  console.log(ready ?? `Restart requested. Follow logs at ${getDaemonLogPath()}`);
+}
+
 if (args.includes("--help") || args.includes("-h")) {
   printHelp();
   process.exit(0);
 }
 
-if (args.includes("--version") || args[0] === "version") {
+if (command === "__runtime") {
+  await import("./index");
+  process.exit(0);
+}
+
+if (command === "daemon") {
+  await runDaemon();
+  process.exit(0);
+}
+
+if (args.includes("--version") || command === "version") {
   console.log(CURRENT_VERSION);
   process.exit(0);
 }
 
-if (args[0] === "upgrade") {
+if (command === "upgrade") {
   await upgrade();
   process.exit(0);
 }
 
-if (args[0] === "onboarding") {
+if (command === "onboarding") {
   await runOnboarding({ force: true });
   process.exit(0);
 }
 
-await import("./index");
+if (command === "status") {
+  await showStatus();
+  process.exit(0);
+}
+
+if (command === "restart") {
+  await restartDaemonCommand();
+  process.exit(0);
+}
+
+if (command === "start") {
+  await startBackground();
+  process.exit(0);
+}
+
+if (foregroundRequested) {
+  await import("./index");
+  process.exit(0);
+}
+
+await startBackground();
