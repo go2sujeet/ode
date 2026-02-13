@@ -46,6 +46,17 @@ type SlackTeam = {
   domain?: string;
 };
 
+type DiscordGuild = {
+  id: string;
+  name: string;
+};
+
+type DiscordChannel = {
+  id: string;
+  type: number;
+  name?: string;
+};
+
 type ChannelAgentProvider = DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"];
 
 const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<ChannelAgentProvider>>([
@@ -82,6 +93,26 @@ const slackRequest = async <T>(token: string, path: string, params?: URLSearchPa
     throw new Error(message);
   }
   return data;
+};
+
+const discordRequest = async <T>(token: string, path: string) => {
+  const response = await fetch(`https://discord.com/api/v10${path}`, {
+    headers: {
+      authorization: `Bot ${token}`,
+      "content-type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    let detail = "Discord API error";
+    try {
+      const errorPayload = await response.json() as { message?: string };
+      if (errorPayload.message) detail = errorPayload.message;
+    } catch {
+      // noop
+    }
+    throw new Error(detail);
+  }
+  return response.json() as Promise<T>;
 };
 
 const fetchSlackChannels = async (token: string) => {
@@ -170,6 +201,7 @@ export const discoverSlackWorkspace = async (
 
   return {
     id: workspaceId,
+    type: "slack",
     name: workspaceName,
     domain: formatSlackDomain(snapshot.team.domain),
     status: "active",
@@ -182,6 +214,112 @@ export const discoverSlackWorkspace = async (
   };
 };
 
+const DISCORD_TEXT_CHANNEL_TYPES = new Set([0, 5, 15]);
+
+async function fetchDiscordWorkspaceSnapshot(botToken: string): Promise<{
+  guild: DiscordGuild;
+  channels: DiscordChannel[];
+}> {
+  const guilds = await discordRequest<Array<DiscordGuild>>(botToken, "/users/@me/guilds");
+  const guild = guilds[0];
+  if (!guild) {
+    throw new Error("Discord bot is not a member of any guild");
+  }
+  const channels = await discordRequest<Array<DiscordChannel>>(botToken, `/guilds/${guild.id}/channels`);
+  return {
+    guild,
+    channels: channels.filter((channel) => DISCORD_TEXT_CHANNEL_TYPES.has(channel.type)),
+  };
+}
+
+function buildDiscordChannelDetails(
+  channels: DiscordChannel[],
+  workspace: DashboardConfig["workspaces"][number] | null,
+  fallbackModel: string
+): DashboardConfig["workspaces"][number]["channelDetails"] {
+  return channels.map((channel) => {
+    const existing = workspace?.channelDetails.find((item) => item.id === channel.id);
+    const agentProvider = normalizeChannelAgentProvider(existing?.agentProvider);
+    return {
+      id: channel.id,
+      name: channel.name || channel.id,
+      agentProvider,
+      model: existing?.model ?? (agentProvider === "opencode" || agentProvider === "codex" ? fallbackModel : ""),
+      workingDirectory: existing?.workingDirectory ?? "",
+      baseBranch: existing?.baseBranch?.trim() ? existing.baseBranch.trim() : "main",
+      channelSystemMessage: existing?.channelSystemMessage ?? "",
+    };
+  });
+}
+
+export const discoverDiscordWorkspace = async (
+  discordBotToken: string
+): Promise<DashboardConfig["workspaces"][number]> => {
+  const botToken = discordBotToken.trim();
+  if (!botToken) {
+    throw new Error("Missing Discord bot token");
+  }
+
+  const config = await readLocalSettings();
+  const snapshot = await fetchDiscordWorkspaceSnapshot(botToken);
+  const fallbackModel = config.agents.opencode.models[0] ?? "";
+  const channelDetails = buildDiscordChannelDetails(snapshot.channels, null, fallbackModel);
+
+  return {
+    id: snapshot.guild.id,
+    type: "discord",
+    name: snapshot.guild.name,
+    domain: "discord.com",
+    status: "active",
+    channels: channelDetails.length,
+    members: 0,
+    lastSync: new Date().toISOString(),
+    discordBotToken: botToken,
+    channelDetails,
+  };
+};
+
+export const syncDiscordWorkspace = async (workspaceId: string): Promise<DashboardConfig["workspaces"][number]> => {
+  const config = await readLocalSettings();
+  const workspaceIndex = config.workspaces.findIndex((item) => item.id === workspaceId);
+  if (workspaceIndex === -1) {
+    throw new Error("Workspace not found");
+  }
+
+  const workspace = config.workspaces[workspaceIndex]!;
+  if (workspace.type !== "discord") {
+    throw new Error("Workspace is not Discord type");
+  }
+
+  const botToken = workspace.discordBotToken?.trim() ?? "";
+  if (!botToken) {
+    throw new Error("Missing Discord bot token");
+  }
+
+  const snapshot = await fetchDiscordWorkspaceSnapshot(botToken);
+  const fallbackModel = config.agents.opencode.models[0] ?? "";
+  const channelDetails = buildDiscordChannelDetails(snapshot.channels, workspace, fallbackModel);
+
+  const updatedWorkspace: DashboardConfig["workspaces"][number] = {
+    ...workspace,
+    type: "discord",
+    name: snapshot.guild.name || workspace.name,
+    channels: channelDetails.length,
+    lastSync: new Date().toISOString(),
+    channelDetails,
+  };
+
+  const nextConfig: DashboardConfig = {
+    ...config,
+    workspaces: config.workspaces.map((item, index) =>
+      index === workspaceIndex ? updatedWorkspace : item
+    ),
+  };
+
+  await writeLocalSettings(nextConfig);
+  return updatedWorkspace;
+};
+
 export const syncSlackWorkspace = async (workspaceId: string): Promise<DashboardConfig["workspaces"][number]> => {
   const config = await readLocalSettings();
   const workspaceIndex = config.workspaces.findIndex((item) => item.id === workspaceId);
@@ -190,6 +328,9 @@ export const syncSlackWorkspace = async (workspaceId: string): Promise<Dashboard
   }
 
   const workspace = config.workspaces[workspaceIndex]!;
+  if (workspace.type !== "slack") {
+    throw new Error("Workspace is not Slack type");
+  }
   const botToken = workspace.slackBotToken?.trim() ?? "";
   if (!botToken) {
     throw new Error("Missing Slack bot token");
@@ -201,6 +342,7 @@ export const syncSlackWorkspace = async (workspaceId: string): Promise<Dashboard
 
   const updatedWorkspace: DashboardConfig["workspaces"][number] = {
     ...workspace,
+    type: "slack",
     name: snapshot.team.name ?? workspace.name,
     domain: formatSlackDomain(snapshot.team.domain) || workspace.domain,
     channels: channelDetails.length,

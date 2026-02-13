@@ -83,7 +83,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
     return;
   }
 
-  const request = createActiveRequest(sessionId, channelId, threadId, statusTs, selection);
+  const request = createActiveRequest(sessionId, channelId, threadId, threadId, statusTs, selection);
 
   const session = loadSession(channelId, threadId);
   if (session) {
@@ -114,6 +114,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
   const agentContext = await deps.im.buildAgentContext({
     cwd,
     channelId,
+    replyThreadId: threadId,
     threadId,
     userId: threadOwnerUserId,
   });

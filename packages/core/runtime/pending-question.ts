@@ -33,7 +33,7 @@ export async function handlePendingQuestionReply(params: {
 
   const trimmed = text.trim();
   if (!trimmed) {
-    await deps.im.sendMessage(context.channelId, context.threadId, "Please reply with an answer.", false);
+    await deps.im.sendMessage(context.channelId, context.replyThreadId, "Please reply with an answer.", false);
     return true;
   }
 
@@ -53,7 +53,7 @@ export async function handlePendingQuestionReply(params: {
     log.error("Failed to answer OpenCode question", { error: String(err) });
     await deps.im.sendMessage(
       context.channelId,
-      context.threadId,
+      context.replyThreadId,
       "Failed to submit your answer. Please try again.",
       false
     );

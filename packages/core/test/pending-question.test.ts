@@ -47,6 +47,7 @@ describe("handlePendingQuestionReply", () => {
       pendingQuestion: pending,
       context: {
         channelId,
+        replyThreadId: threadId,
         threadId,
         userId,
         messageId: `m-${Date.now()}`,
@@ -95,6 +96,7 @@ describe("handlePendingQuestionReply", () => {
       pendingQuestion: pending,
       context: {
         channelId,
+        replyThreadId: threadId,
         threadId,
         userId: "U-NON-OWNER",
         messageId: `m-${Date.now()}-2`,

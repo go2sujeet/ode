@@ -9,6 +9,7 @@ import type { SessionMessageState } from "@/utils/session-inspector";
 
 export type CoreMessageContext = {
   channelId: string;
+  replyThreadId: string;
   threadId: string;
   userId: string;
   messageId: string;
@@ -18,6 +19,7 @@ export type CoreMessageContext = {
 export type AgentContextBuilderParams = {
   cwd: string;
   channelId: string;
+  replyThreadId: string;
   threadId: string;
   userId: string;
   threadHistory?: string | null;

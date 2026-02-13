@@ -7,6 +7,8 @@ import {
   initializeWorkspaceAuth,
   clearSlackAuthState,
   resetSlackState,
+  startDiscordRuntime,
+  stopDiscordRuntime,
 } from "@/ims";
 import { type ChildProcess } from "child_process";
 import { watchFile, unwatchFile } from "fs";
@@ -118,11 +120,15 @@ async function refreshSlackRuntime(reason: string): Promise<void> {
   const nextTokens = getLocalSlackAppTokens();
   if (nextTokens.length === 0) {
     await stopSlackRuntime("missing app token");
+    await stopDiscordRuntime("config change");
+    await startDiscordRuntime(reason);
     return;
   }
 
   if (slackApps.length === 0) {
     await startSlackRuntime(reason);
+    await stopDiscordRuntime("config change");
+    await startDiscordRuntime(reason);
     return;
   }
 
@@ -134,12 +140,17 @@ async function refreshSlackRuntime(reason: string): Promise<void> {
   if (changed) {
     await stopSlackRuntime("app token set changed");
     await startSlackRuntime(reason);
+    await stopDiscordRuntime("config change");
+    await startDiscordRuntime(reason);
     return;
   }
 
   clearSlackAuthState();
   await initializeWorkspaceAuth();
   log.debug("Slack auth refreshed", { reason, appCount: slackApps.length });
+
+  await stopDiscordRuntime("config change");
+  await startDiscordRuntime(reason);
 }
 
 async function runAutoUpgradeCheck(reason: string): Promise<void> {
@@ -254,6 +265,7 @@ async function main(): Promise<void> {
   }
 
   await startSlackRuntime("startup");
+  await startDiscordRuntime("startup");
 
   if (slackApps.length > 0) {
     log.debug("Slack app created");
@@ -268,6 +280,7 @@ async function main(): Promise<void> {
     try {
       stopOAuthServer();
       await stopSlackRuntime("shutdown");
+      await stopDiscordRuntime("shutdown");
       if (webDevServer) {
         webDevServer.kill();
         webDevServer = null;

@@ -32,6 +32,7 @@ export interface TrackedTodo {
 export interface ActiveRequest {
   sessionId: string;
   channelId: string;
+  replyThreadId: string;
   threadId: string;
   statusMessageTs: string;
   prompt: string;
@@ -107,6 +108,14 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
   try {
     const data = readFileSync(filePath, "utf-8");
     const session = JSON.parse(data) as PersistedSession;
+    if (session.activeRequest) {
+      const active = session.activeRequest as ActiveRequest & {
+        settingsChannelId?: string;
+        replyChannelId?: string;
+      };
+      active.channelId = active.settingsChannelId || active.channelId || session.channelId;
+      active.replyThreadId = active.replyThreadId || active.replyChannelId || session.threadId;
+    }
     activeSessions.set(sessionKey, session);
     return session;
   } catch (err) {
@@ -146,6 +155,7 @@ export function deleteSession(channelId: string, threadId: string): void {
 export function createActiveRequest(
   sessionId: string,
   channelId: string,
+  replyThreadId: string,
   threadId: string,
   statusMessageTs: string,
   prompt: string
@@ -153,6 +163,7 @@ export function createActiveRequest(
   return {
     sessionId,
     channelId,
+    replyThreadId,
     threadId,
     statusMessageTs,
     prompt,

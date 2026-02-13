@@ -98,6 +98,7 @@ const updateSchema = z.object({
 
 const workspaceSchema = z.object({
   id: z.string(),
+  type: z.enum(["slack", "discord"]).optional().default("slack"),
   name: z.string().optional().default(""),
   domain: z.string().optional().default(""),
   status: z.enum(["active", "paused"]).optional().default("active"),
@@ -106,6 +107,7 @@ const workspaceSchema = z.object({
   lastSync: z.string().optional().default(""),
   slackAppToken: z.string().optional().default(""),
   slackBotToken: z.string().optional().default(""),
+  discordBotToken: z.string().optional().default(""),
   channelDetails: z.array(channelDetailSchema).optional().default([]),
 });
 
@@ -216,6 +218,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
   const completeOnboarding = config.completeOnboarding === true;
   const workspaces = config.workspaces.map((workspace) => ({
     ...workspace,
+    type: workspace.type === "discord" ? "discord" as const : "slack" as const,
     channelDetails: workspace.channelDetails.map((channel) => ({
       ...channel,
       baseBranch: normalizeBaseBranch(channel.baseBranch),
@@ -428,8 +431,8 @@ export function getUpdateConfig(): UpdateConfig {
 }
 
 export function getSlackAppTokens(): Array<{ token: string; workspaceId: string; workspaceName?: string }> {
-  const active = getWorkspaces().filter((workspace) => workspace.status === "active");
-  const candidates = active.length > 0 ? active : getWorkspaces();
+  const active = getWorkspaces().filter((workspace) => workspace.type === "slack" && workspace.status === "active");
+  const candidates = active.length > 0 ? active : getWorkspaces().filter((workspace) => workspace.type === "slack");
   return candidates
     .map((workspace) => ({
       token: workspace.slackAppToken,
@@ -445,8 +448,8 @@ export function getSlackBotTokens(): Array<{
   workspaceId: string;
   workspaceName?: string;
 }> {
-  const active = getWorkspaces().filter((workspace) => workspace.status === "active");
-  const candidates = active.length > 0 ? active : getWorkspaces();
+  const active = getWorkspaces().filter((workspace) => workspace.type === "slack" && workspace.status === "active");
+  const candidates = active.length > 0 ? active : getWorkspaces().filter((workspace) => workspace.type === "slack");
   return candidates.map((workspace) => ({
     token: workspace.slackBotToken,
     appToken: workspace.slackAppToken,
@@ -456,7 +459,29 @@ export function getSlackBotTokens(): Array<{
 }
 
 export function getSlackTargetChannels(): string[] | null {
-  const channels = getWorkspaces().flatMap((workspace) => workspace.channelDetails);
+  const channels = getWorkspaces()
+    .filter((workspace) => workspace.type === "slack")
+    .flatMap((workspace) => workspace.channelDetails);
+  const ids = channels.map((channel) => channel.id).filter(Boolean);
+  return ids.length > 0 ? ids : null;
+}
+
+export function getDiscordBotTokens(): Array<{ token: string; workspaceId: string; workspaceName?: string }> {
+  const active = getWorkspaces().filter((workspace) => workspace.type === "discord" && workspace.status === "active");
+  const candidates = active.length > 0 ? active : getWorkspaces().filter((workspace) => workspace.type === "discord");
+  return candidates
+    .map((workspace) => ({
+      token: workspace.discordBotToken,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+    }))
+    .filter((entry) => entry.token && entry.token.trim().length > 0);
+}
+
+export function getDiscordTargetChannels(): string[] | null {
+  const channels = getWorkspaces()
+    .filter((workspace) => workspace.type === "discord")
+    .flatMap((workspace) => workspace.channelDetails);
   const ids = channels.map((channel) => channel.id).filter(Boolean);
   return ids.length > 0 ? ids : null;
 }

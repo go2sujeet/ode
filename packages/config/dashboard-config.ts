@@ -37,6 +37,7 @@ export type DashboardConfig = {
   };
   workspaces: {
     id: string;
+    type: "slack" | "discord";
     name: string;
     domain: string;
     status: "active" | "paused";
@@ -45,6 +46,7 @@ export type DashboardConfig = {
     lastSync: string;
     slackAppToken?: string;
     slackBotToken?: string;
+    discordBotToken?: string;
     channelDetails: {
       id: string;
       name: string;
@@ -59,6 +61,7 @@ export type DashboardConfig = {
 
 const defaultWorkspace: DashboardConfig["workspaces"][number] = {
   id: "workspace-1",
+  type: "slack",
   name: "Workspace 1",
   domain: "",
   status: "active",
@@ -177,9 +180,12 @@ const sanitizeWorkspace = (
     : [];
   const slackAppToken = asString(workspace.slackAppToken, "");
   const slackBotToken = asString(workspace.slackBotToken, "");
+  const discordBotToken = asString(workspace.discordBotToken, "");
+  const type = workspace.type === "discord" ? "discord" : "slack";
 
   return {
     id: asString(workspace.id) || fallbackId,
+    type,
     name: asString(workspace.name) || fallbackName,
     domain: asString(workspace.domain),
     status: asStatus(workspace.status),
@@ -188,6 +194,7 @@ const sanitizeWorkspace = (
     lastSync: asString(workspace.lastSync),
     slackAppToken: slackAppToken || undefined,
     slackBotToken: slackBotToken || undefined,
+    discordBotToken: discordBotToken || undefined,
     channelDetails,
   };
 };

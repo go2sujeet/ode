@@ -6,6 +6,8 @@ import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext 
 import { getSlackActionApiUrl } from "@/config";
 
 export function buildSystemPrompt(slack?: SlackContext): string {
+  const platform = slack?.platform === "discord" ? "discord" : "slack";
+  const platformLabel = platform === "discord" ? "Discord" : "Slack";
   const lines = [
     "COMMUNICATION STYLE:",
     "- Be concise and conversational - this is chat, not documentation",
@@ -29,7 +31,7 @@ export function buildSystemPrompt(slack?: SlackContext): string {
   ];
 
   if (slack) {
-    lines.push("SLACK CONTEXT:");
+    lines.push(`${platformLabel.toUpperCase()} CONTEXT:`);
     lines.push(`- Channel: ${slack.channelId}`);
     lines.push(`- Thread: ${slack.threadId}`);
     lines.push(`- User: <@${slack.userId}>`);
@@ -38,26 +40,44 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     }
 
     lines.push("");
-    lines.push("SLACK ACTIONS:");
-    if (slack.hasCustomSlackTool) {
+    lines.push(`${platformLabel.toUpperCase()} ACTIONS:`);
+    const baseUrl = slack.odeSlackApiUrl ?? getSlackActionApiUrl();
+    if (platform === "slack" && slack.hasCustomSlackTool) {
       lines.push("- Use `ode_action` tool for Slack actions (messages, reactions, thread history, questions, uploads).");
     } else {
-      const baseUrl = slack.odeSlackApiUrl ?? getSlackActionApiUrl();
-      lines.push("- Use bash + curl to call the Ode Slack API.");
+      lines.push("- Use bash + curl to call the Ode action API.");
       lines.push(`- Endpoint: ${baseUrl}/action`);
-      lines.push("- Payload: {\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}");
+      lines.push(
+        platform === "discord"
+          ? "- Payload: {\"platform\":\"discord\",\"action\":\"post_message\",\"channelId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
+          : "- Payload: {\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
+      );
     }
-    lines.push("- Supported actions: post_message, add_reaction, get_thread_messages, ask_user, get_user_info, upload_file.");
-    lines.push("- Required fields: channelId; threadId for thread actions; messageId + emoji for reactions; userId for get_user_info.");
-    lines.push("- add_reaction schema: { action: \"add_reaction\", channelId: string, messageId: string, emoji: \"thumbsup\" | \"eyes\" | \"ok_hand\" }");
+    if (platform === "discord") {
+      lines.push("- Supported actions: get_guilds, get_channels, post_message, update_message, create_thread_from_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
+      lines.push("- Required fields: channelId for message/reaction/question/upload actions; threadId for get_thread_messages; messageId + emoji for reactions; userId (or \"@me\") for get_user_info; filePath for upload_file.");
+      lines.push("- add_reaction schema: { platform: \"discord\", action: \"add_reaction\", channelId: string, messageId: string, emoji: \"thumbsup\" | \"eyes\" | \"ok_hand\" }");
+    } else {
+      lines.push("- Supported actions: post_message, add_reaction, get_thread_messages, ask_user, get_user_info, upload_file.");
+      lines.push("- Required fields: channelId; threadId for thread actions; messageId + emoji for reactions; userId for get_user_info.");
+      lines.push("- add_reaction schema: { action: \"add_reaction\", channelId: string, messageId: string, emoji: \"thumbsup\" | \"eyes\" | \"ok_hand\" }");
+    }
     lines.push("- You can use any tool available via bash, curl");
     lines.push("");
-    lines.push("IMPORTANT: Your text output is automatically posted to Slack.");
-    lines.push("- When asking the user to choose options, you can send an ask_user Slack action, do NOT also output text - the buttons are enough.");
+    lines.push(`IMPORTANT: Your text output is automatically posted to ${platformLabel}.`);
+    lines.push(
+      platform === "discord"
+        ? "- When asking the user to choose options, use ask_user action and do NOT also output text - the posted question is enough."
+        : "- When asking the user to choose options, you can send an ask_user Slack action, do NOT also output text - the buttons are enough."
+    );
     lines.push("- Only output text OR use a messaging tool, never both.");
     lines.push("");
     lines.push("FORMATTING:");
-    lines.push("- Slack uses *bold* and _italic_ (not **bold** or *italic*)");
+    lines.push(
+      platform === "discord"
+        ? "- Discord supports markdown like **bold**, _italic_, and code fences."
+        : "- Slack uses *bold* and _italic_ (not **bold** or *italic*)"
+    );
     lines.push("- Use ` for inline code and ``` for code blocks");
     lines.push("- Keep responses readable on mobile screens");
     lines.push("");

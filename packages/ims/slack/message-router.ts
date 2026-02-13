@@ -30,6 +30,7 @@ type RouterDeps = {
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;
+    replyThreadId: string;
     threadId: string;
     userId: string;
     messageId: string;
@@ -239,6 +240,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
     await deps.handleIncomingMessage(
       {
         channelId,
+        replyThreadId: threadId,
         threadId,
         userId,
         messageId,

@@ -13,6 +13,7 @@ export interface OpenCodeOptions {
 }
 
 export interface SlackContext {
+  platform?: "slack" | "discord";
   channelId: string;
   threadId: string;
   userId: string;

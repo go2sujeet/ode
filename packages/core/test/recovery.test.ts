@@ -8,7 +8,7 @@ describe("recoverPendingRequests", () => {
     const threadId = "TR-1";
     const statusTs = "123.45";
 
-    const active = createActiveRequest("ses-r1", channelId, threadId, statusTs, "hello");
+    const active = createActiveRequest("ses-r1", channelId, threadId, threadId, statusTs, "hello");
     active.startedAt = Date.now() - 60_000;
 
     saveSession({
@@ -39,7 +39,7 @@ describe("recoverPendingRequests", () => {
     const threadId = "TR-2";
     const statusTs = "223.45";
 
-    const active = createActiveRequest("ses-r2", channelId, threadId, statusTs, "hello");
+    const active = createActiveRequest("ses-r2", channelId, threadId, threadId, statusTs, "hello");
     active.startedAt = Date.now() - 11 * 60_000;
 
     saveSession({

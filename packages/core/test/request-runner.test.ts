@@ -7,6 +7,7 @@ function buildRequest(): ActiveRequest {
   const now = Date.now();
   return {
     sessionId: "s1",
+    replyThreadId: "T1",
     channelId: "C1",
     threadId: "T1",
     statusMessageTs: "100.2",

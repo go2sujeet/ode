@@ -2,8 +2,10 @@ import { existsSync } from "fs";
 import { join, resolve, sep } from "path";
 import { EMBEDDED_ASSETS, HAS_EMBEDDED_ASSETS } from "./embedded-assets";
 import {
+  discoverDiscordWorkspace,
   discoverSlackWorkspace,
   readLocalSettings,
+  syncDiscordWorkspace,
   syncSlackWorkspace,
   writeLocalSettings,
 } from "./local-settings";
@@ -21,7 +23,7 @@ import {
   getSessionMeta,
   type SessionEvent,
 } from "@/config/local/redis";
-import { handleSlackActionPayload } from "@/ims";
+import { handleDiscordActionPayload, handleSlackActionPayload } from "@/ims";
 import { log } from "@/utils";
 
 const DEFAULT_WEB_BUILD_DIR = join(process.cwd(), "packages", "web-ui", "build");
@@ -171,20 +173,31 @@ function jsonResponse(status: number, payload: JsonResponse): Response {
 
 function validateWorkspaceConfig(config: typeof defaultDashboardConfig): string | null {
   const idCounts = new Map<string, number>();
-  const botTokenCounts = new Map<string, number>();
+  const slackBotTokenCounts = new Map<string, number>();
+  const discordBotTokenCounts = new Map<string, number>();
   for (const workspace of config.workspaces) {
     const workspaceId = workspace.id.trim();
     if (!workspaceId) {
       return "Workspace id is required for every workspace";
     }
     idCounts.set(workspaceId, (idCounts.get(workspaceId) ?? 0) + 1);
+    if (workspace.type === "discord") {
+      const botToken = workspace.discordBotToken?.trim() ?? "";
+      if (!botToken) {
+        const label = workspace.name.trim() || workspace.id;
+        return `Missing Discord bot token for workspace: ${label}`;
+      }
+      discordBotTokenCounts.set(botToken, (discordBotTokenCounts.get(botToken) ?? 0) + 1);
+      continue;
+    }
+
     const appToken = workspace.slackAppToken?.trim() ?? "";
     const botToken = workspace.slackBotToken?.trim() ?? "";
     if (!appToken || !botToken) {
       const label = workspace.name.trim() || workspace.id;
       return `Missing Slack app/bot token for workspace: ${label}`;
     }
-    botTokenCounts.set(botToken, (botTokenCounts.get(botToken) ?? 0) + 1);
+    slackBotTokenCounts.set(botToken, (slackBotTokenCounts.get(botToken) ?? 0) + 1);
   }
 
   const duplicateIds = Array.from(idCounts.entries())
@@ -194,9 +207,14 @@ function validateWorkspaceConfig(config: typeof defaultDashboardConfig): string 
     return `Duplicate workspace ids: ${duplicateIds.join(", ")}`;
   }
 
-  const duplicateBotTokenCount = Array.from(botTokenCounts.values()).filter((count) => count > 1).length;
-  if (duplicateBotTokenCount > 0) {
+  const duplicateSlackBotTokenCount = Array.from(slackBotTokenCounts.values()).filter((count) => count > 1).length;
+  if (duplicateSlackBotTokenCount > 0) {
     return "Duplicate Slack bot tokens found across workspaces";
+  }
+
+  const duplicateDiscordBotTokenCount = Array.from(discordBotTokenCounts.values()).filter((count) => count > 1).length;
+  if (duplicateDiscordBotTokenCount > 0) {
+    return "Duplicate Discord bot tokens found across workspaces";
   }
 
   return null;
@@ -435,6 +453,24 @@ async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
+  if (pathname === "/api/discord-sync") {
+    if (request.method !== "POST") {
+      return jsonResponse(405, { ok: false, error: "Method not allowed" });
+    }
+    try {
+      const payload = (await request.json()) as Record<string, unknown>;
+      const workspaceId = typeof payload.workspaceId === "string" ? payload.workspaceId : "";
+      if (!workspaceId) {
+        return jsonResponse(400, { ok: false, error: "Missing workspaceId" });
+      }
+      const workspace = await syncDiscordWorkspace(workspaceId);
+      return jsonResponse(200, { ok: true, workspace });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Discord sync failed";
+      return jsonResponse(500, { ok: false, error: message });
+    }
+  }
+
   if (pathname === "/api/slack-discover") {
     if (request.method !== "POST") {
       return jsonResponse(405, { ok: false, error: "Method not allowed" });
@@ -448,6 +484,22 @@ async function handleRequest(request: Request): Promise<Response> {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Slack workspace discovery failed";
       const status = message.startsWith("Missing Slack") ? 400 : 500;
+      return jsonResponse(status, { ok: false, error: message });
+    }
+  }
+
+  if (pathname === "/api/discord-discover") {
+    if (request.method !== "POST") {
+      return jsonResponse(405, { ok: false, error: "Method not allowed" });
+    }
+    try {
+      const payload = (await request.json()) as Record<string, unknown>;
+      const discordBotToken = typeof payload.discordBotToken === "string" ? payload.discordBotToken : "";
+      const workspace = await discoverDiscordWorkspace(discordBotToken);
+      return jsonResponse(200, { ok: true, workspace });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Discord workspace discovery failed";
+      const status = message.startsWith("Missing Discord") ? 400 : 500;
       return jsonResponse(status, { ok: false, error: message });
     }
   }
@@ -523,7 +575,13 @@ async function handleRequest(request: Request): Promise<Response> {
       return jsonResponse(400, { ok: false, error: "Invalid JSON payload" });
     }
 
-    const response = await handleSlackActionPayload(payload);
+    const platform = payload && typeof payload === "object" && "platform" in payload
+      ? String((payload as { platform?: unknown }).platform ?? "slack").toLowerCase()
+      : "slack";
+
+    const response = platform === "discord"
+      ? await handleDiscordActionPayload(payload)
+      : await handleSlackActionPayload(payload);
     return jsonResponse(response.ok ? 200 : 400, response);
   }
 

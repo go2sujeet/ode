@@ -57,7 +57,7 @@ export async function runOpenRequest(params: {
 
   const statusTs = await deps.im.sendMessage(
     context.channelId,
-    context.threadId,
+    context.replyThreadId,
     `_${phaseLabel}..._`,
     false
   );
@@ -67,7 +67,14 @@ export async function runOpenRequest(params: {
     return null;
   }
 
-  const request = createActiveRequest(sessionId, context.channelId, context.threadId, statusTs, message);
+  const request = createActiveRequest(
+    sessionId,
+    context.channelId,
+    context.replyThreadId,
+    context.threadId,
+    statusTs,
+    message
+  );
   session.activeRequest = request;
   saveSession(session);
 
@@ -122,7 +129,7 @@ export async function runOpenRequest(params: {
     publishFinalText: async (text) => {
       await publishFinalText({
         channelId: context.channelId,
-        threadId: context.threadId,
+        threadId: context.replyThreadId,
         statusTs,
         text,
       });

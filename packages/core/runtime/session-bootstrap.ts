@@ -25,13 +25,13 @@ export async function prepareRuntimeSession(params: {
   stateMachine: CoreStateMachine;
 }): Promise<PreparedRuntimeSession | null> {
   const { deps, context, stateMachine } = params;
-  const { channelId, threadId } = context;
+  const { channelId, replyThreadId, threadId } = context;
 
   let cwd: string;
   try {
     cwd = resolveChannelCwd(channelId).cwd;
   } catch (err) {
-    await deps.im.sendMessage(channelId, threadId, `Error: ${String(err)}`, false);
+    await deps.im.sendMessage(channelId, replyThreadId, `Error: ${String(err)}`, false);
     return null;
   }
 
@@ -54,7 +54,7 @@ export async function prepareRuntimeSession(params: {
       threadId,
       error: String(err),
     });
-    await deps.im.sendMessage(channelId, threadId, `Error: ${message}\n_${suggestion}_`, false);
+    await deps.im.sendMessage(channelId, replyThreadId, `Error: ${message}\n_${suggestion}_`, false);
     return null;
   }
 
@@ -73,7 +73,7 @@ export async function prepareRuntimeSession(params: {
         gitIdentity,
       });
       if (worktree.skipped && worktree.message) {
-        await deps.im.sendMessage(channelId, threadId, worktree.message, false);
+        await deps.im.sendMessage(channelId, replyThreadId, worktree.message, false);
       }
       cwd = resolvedCwd;
     } catch (err) {
@@ -84,7 +84,7 @@ export async function prepareRuntimeSession(params: {
         sessionId,
         error: message,
       });
-      await deps.im.sendMessage(channelId, threadId, `Error: Failed to prepare worktree. ${message}`, false);
+      await deps.im.sendMessage(channelId, replyThreadId, `Error: Failed to prepare worktree. ${message}`, false);
       return null;
     }
   }

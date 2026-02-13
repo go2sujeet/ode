@@ -10,7 +10,7 @@ import {
   type OdeConfig,
   type WorkspaceConfig,
 } from "@/config";
-import { discoverSlackWorkspace } from "./web/local-settings";
+import { discoverDiscordWorkspace, discoverSlackWorkspace } from "./web/local-settings";
 
 type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
 
@@ -154,8 +154,17 @@ async function selectAgentsWithKeyboard(agents: AgentOption[], defaultSelected: 
   });
 }
 
-async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
-  console.log("Step 1/2: Slack workspace setup.");
+async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord"> {
+  while (true) {
+    const value = (await ask(rl, "Workspace type ([s]lack / [d]iscord): ")).toLowerCase();
+    if (value === "s" || value === "slack") return "slack";
+    if (value === "d" || value === "discord") return "discord";
+    console.log("Please enter slack or discord.");
+  }
+}
+
+async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
+  console.log("Step 1/2: Workspace setup.");
   let nextConfig = config;
   const existingWorkspaces = nextConfig.workspaces;
   if (existingWorkspaces.length > 0) {
@@ -166,30 +175,36 @@ async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<O
       console.log(`- ${label}${domain}`);
     }
   } else {
-    console.log("No Slack workspaces connected yet.");
+    console.log("No workspaces connected yet.");
   }
 
   const addWorkspace = await askYesNo(
     rl,
-    "Add a new Slack workspace now? You can skip and configure it later in the web UI.",
+    "Add a new workspace now? You can skip and configure it later in the web UI.",
     existingWorkspaces.length === 0
   );
 
   if (!addWorkspace) {
-    console.log("Skipped adding a new Slack workspace.");
+    console.log("Skipped adding a new workspace.");
     return config;
   }
 
   while (true) {
-    const slackBotToken = await askRequired(rl, "Paste Slack bot token (xoxb-...): ");
-    const slackAppToken = await askRequired(rl, "Paste Slack app token (xapp-...): ");
+    const workspaceType = await askWorkspaceType(rl);
 
     try {
-      const discoveredWorkspace = await discoverSlackWorkspace(slackAppToken, slackBotToken);
+      const discoveredWorkspace = workspaceType === "discord"
+        ? await discoverDiscordWorkspace(await askRequired(rl, "Paste Discord bot token: "))
+        : await discoverSlackWorkspace(
+          await askRequired(rl, "Paste Slack app token (xapp-...): "),
+          await askRequired(rl, "Paste Slack bot token (xoxb-...): ")
+        );
       const workspace: WorkspaceConfig = {
         ...discoveredWorkspace,
+        type: discoveredWorkspace.type,
         slackAppToken: discoveredWorkspace.slackAppToken ?? "",
         slackBotToken: discoveredWorkspace.slackBotToken ?? "",
+        discordBotToken: discoveredWorkspace.discordBotToken ?? "",
         channelDetails: discoveredWorkspace.channelDetails.map((channel) => ({
           ...channel,
           agentProvider: channel.agentProvider ?? "opencode",
@@ -206,15 +221,15 @@ async function setupSlackWorkspaces(rl: Interface, config: OdeConfig): Promise<O
           workspaces: [...nextConfig.workspaces, workspace],
         };
         saveOdeConfig(nextConfig);
-        console.log(`Connected Slack workspace: ${workspace.name || workspace.id}`);
-      }
+         console.log(`Connected ${workspace.type} workspace: ${workspace.name || workspace.id}`);
+       }
 
-      const addAnother = await askYesNo(rl, "Add another Slack workspace?", false);
+      const addAnother = await askYesNo(rl, "Add another workspace?", false);
       if (!addAnother) break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.log(`Slack setup failed: ${message}`);
-      const retry = await askYesNo(rl, "Try Slack setup again?", true);
+      console.log(`Workspace setup failed: ${message}`);
+      const retry = await askYesNo(rl, "Try workspace setup again?", true);
       if (!retry) break;
     }
   }
@@ -309,7 +324,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
 
   try {
     let nextConfig = config;
-    nextConfig = await setupSlackWorkspaces(rl, nextConfig);
+    nextConfig = await setupWorkspaces(rl, nextConfig);
     nextConfig = await setupCodingAgents(rl, nextConfig);
     nextConfig = {
       ...nextConfig,
@@ -327,7 +342,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
       nextConfig.agents.qwen.enabled ? "Qwen Code" : null,
     ].filter((value): value is string => Boolean(value));
     console.log("Onboarding complete.");
-    console.log(`Slack workspaces: ${nextConfig.workspaces.length}`);
+    console.log(`Workspaces: ${nextConfig.workspaces.length}`);
     console.log(`Agents enabled: ${enabledAgents.join(", ")}`);
     console.log(`You can update settings later at http://${getWebHost()}:${getWebPort()}/local-setting.`);
   } finally {

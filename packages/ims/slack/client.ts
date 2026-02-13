@@ -35,6 +35,7 @@ import { syncSlackWorkspace } from "@/core/web/local-settings";
 
 export interface MessageContext {
   channelId: string;
+  replyThreadId: string;
   threadId: string;
   userId: string;
   messageId: string;
@@ -89,6 +90,7 @@ async function buildSlackContext(
   return {
     threadHistory: threadHistory || undefined,
     slack: {
+      platform: "slack",
       channelId,
       threadId,
       userId,
@@ -587,6 +589,7 @@ export async function handleButtonSelection(
 ): Promise<void> {
   await coreRuntime.handleButtonSelection({
     channelId,
+    replyThreadId: threadId,
     threadId,
     userId,
     selection,

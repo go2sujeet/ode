@@ -96,7 +96,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
   }
 
   async function handleUserMessageInternal(context: CoreMessageContext, text: string): Promise<void> {
-    const { channelId, threadId } = context;
+    const { channelId, replyThreadId, threadId } = context;
     const stateMachine = getStateMachine(context);
     const prepared = await prepareRuntimeSession({
       deps,
@@ -108,12 +108,13 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     const { session, sessionId, created, cwd, threadOwnerUserId } = prepared;
 
     const threadHistory = created
-      ? await deps.im.fetchThreadHistory(channelId, threadId, context.messageId)
+      ? await deps.im.fetchThreadHistory(channelId, replyThreadId, context.messageId)
       : null;
 
     const agentContext = await deps.im.buildAgentContext({
       cwd,
       channelId,
+      replyThreadId,
       threadId,
       userId: threadOwnerUserId,
       threadHistory,
@@ -196,7 +197,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     request.state = "failed";
     request.error = "Stopped by user";
 
-    await deps.im.deleteMessage(channelId, request.statusMessageTs);
+    await deps.im.deleteMessage(request.channelId, request.statusMessageTs);
 
     failActiveRequest(channelId, threadId, "Stopped by user");
     return true;
@@ -204,15 +205,17 @@ export function createCoreRuntime(deps: RuntimeDeps) {
 
   async function handleButtonSelection(params: {
     channelId: string;
+    replyThreadId: string;
     threadId: string;
     userId: string;
     selection: string;
     messageTs: string;
   }): Promise<void> {
-    const { channelId, threadId, userId, selection, messageTs } = params;
+    const { channelId, replyThreadId, threadId, userId, selection, messageTs } = params;
     await handleIncomingMessage(
       {
         channelId,
+        replyThreadId,
         threadId,
         userId,
         messageId: messageTs,

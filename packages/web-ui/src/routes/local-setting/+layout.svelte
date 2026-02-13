@@ -8,9 +8,11 @@
 
   let pathname = "/local-setting";
   let normalizedPathname = pathname;
-  let activeSection: "general" | "agents" | "slack" = "general";
+  let activeSection: "general" | "agents" | "workspace" = "general";
+  let pendingWorkspaceType: "slack" | "discord" = "slack";
   let pendingSlackAppToken = "";
   let pendingSlackBotToken = "";
+  let pendingDiscordBotToken = "";
   let isAddWorkspaceDialogOpen = false;
 
   $: pathname = $page.url.pathname;
@@ -19,19 +21,23 @@
     normalizedPathname === "/local-setting/agents"
       ? "agents"
       : normalizedPathname.startsWith("/local-setting/slack-bot")
-        ? "slack"
+        ? "workspace"
         : "general";
 
   $: selectedWorkspace = getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces);
 
   async function addWorkspace(): Promise<void> {
-    const workspace = await localSettingStore.discoverSlackWorkspace(
-      pendingSlackAppToken,
-      pendingSlackBotToken
-    );
+    const workspace = pendingWorkspaceType === "discord"
+      ? await localSettingStore.discoverDiscordWorkspace(pendingDiscordBotToken)
+      : await localSettingStore.discoverSlackWorkspace(
+        pendingSlackAppToken,
+        pendingSlackBotToken
+      );
     if (!workspace) return;
     pendingSlackAppToken = "";
     pendingSlackBotToken = "";
+    pendingDiscordBotToken = "";
+    pendingWorkspaceType = "slack";
     isAddWorkspaceDialogOpen = false;
     await goto(getWorkspacePath(workspace));
   }
@@ -52,6 +58,10 @@
     pendingSlackBotToken = (event.currentTarget as HTMLInputElement).value;
   }
 
+  function onPendingDiscordBotTokenInput(event: Event): void {
+    pendingDiscordBotToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
   function removeWorkspace(workspaceId: string): void {
     const workspaces = $localSettingStore.config.workspaces;
     const removingIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
@@ -66,7 +76,7 @@
     const remainingWorkspaces = workspaces.filter((workspace) => workspace.id !== workspaceId);
     localSettingStore.removeWorkspace(workspaceId);
 
-    if (activeSection !== "slack" || selectedWorkspace?.id !== workspaceId) return;
+    if (activeSection !== "workspace" || selectedWorkspace?.id !== workspaceId) return;
 
     const nextWorkspace =
       remainingWorkspaces[removingIndex]
@@ -109,16 +119,16 @@
         </button>
 
         <div class="workspace-group">
-          <p>Slack Workspace</p>
+          <p>Workspaces</p>
           {#if $localSettingStore.config.workspaces.length === 0}
             <span class="empty-tip">No workspaces</span>
           {:else}
             {#each $localSettingStore.config.workspaces as workspace}
               <button
-                class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'slack' ? 'active' : ''}"
+                class="nav-item {selectedWorkspace?.id === workspace.id && activeSection === 'workspace' ? 'active' : ''}"
                 on:click={() => goto(getWorkspacePath(workspace))}
               >
-                {workspace.name || workspace.id}
+                [{workspace.type}] {workspace.name || workspace.id}
               </button>
             {/each}
           {/if}
@@ -138,7 +148,7 @@
         <slot />
 
         <footer class="actions">
-          {#if activeSection === "slack" && selectedWorkspace}
+          {#if activeSection === "workspace" && selectedWorkspace}
             <button
               class="danger-action"
               type="button"
@@ -169,23 +179,40 @@
     <div class="dialog card" role="dialog" aria-modal="true" aria-labelledby="add-workspace-title" on:click|stopPropagation>
       <h2 id="add-workspace-title">Add Workspace</h2>
 
-      <label for="new-workspace-app-token">Slack App Token</label>
-      <input
-        id="new-workspace-app-token"
-        type="text"
-        value={pendingSlackAppToken}
-        on:input={onPendingSlackAppTokenInput}
-        placeholder="xapp-..."
-      />
+      <label for="new-workspace-type">Workspace Type</label>
+      <select id="new-workspace-type" bind:value={pendingWorkspaceType}>
+        <option value="slack">Slack</option>
+        <option value="discord">Discord</option>
+      </select>
 
-      <label for="new-workspace-bot-token">Slack Bot Token</label>
-      <input
-        id="new-workspace-bot-token"
-        type="text"
-        value={pendingSlackBotToken}
-        on:input={onPendingSlackBotTokenInput}
-        placeholder="xoxb-..."
-      />
+      {#if pendingWorkspaceType === "slack"}
+        <label for="new-workspace-app-token">Slack App Token</label>
+        <input
+          id="new-workspace-app-token"
+          type="text"
+          value={pendingSlackAppToken}
+          on:input={onPendingSlackAppTokenInput}
+          placeholder="xapp-..."
+        />
+
+        <label for="new-workspace-bot-token">Slack Bot Token</label>
+        <input
+          id="new-workspace-bot-token"
+          type="text"
+          value={pendingSlackBotToken}
+          on:input={onPendingSlackBotTokenInput}
+          placeholder="xoxb-..."
+        />
+      {:else}
+        <label for="new-workspace-discord-bot-token">Discord Bot Token</label>
+        <input
+          id="new-workspace-discord-bot-token"
+          type="text"
+          value={pendingDiscordBotToken}
+          on:input={onPendingDiscordBotTokenInput}
+          placeholder="Bot token"
+        />
+      {/if}
 
       <div class="dialog-actions">
         <button type="button" on:click={closeAddWorkspaceDialog}>Cancel</button>

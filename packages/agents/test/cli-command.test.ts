@@ -61,6 +61,20 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).toContain("Preferred branch format before PR: `feat/<short-slug>-<threadShortId>`");
   });
 
+  it("builds Discord action instructions for Discord context", () => {
+    const systemPrompt = buildSystemPrompt({
+      platform: "discord",
+      channelId: "C123",
+      threadId: "T456",
+      userId: "U789",
+    });
+
+    expect(systemPrompt).toContain("DISCORD CONTEXT:");
+    expect(systemPrompt).toContain("DISCORD ACTIONS:");
+    expect(systemPrompt).toContain('"platform":"discord"');
+    expect(systemPrompt).toContain("Supported actions: get_guilds, get_channels, post_message");
+  });
+
   it("builds the OpenCode curl command", () => {
     const command = buildOpenCodeCommand("http://127.0.0.1:8080", "session-2", {
       directory: "/tmp/project",
