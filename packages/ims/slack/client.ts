@@ -244,16 +244,8 @@ function describeSettingsIssues(channelId: string): string[] {
   return issues;
 }
 
-function isChannelSettingsCommand(text: string): boolean {
-  return /^\/channel\b/i.test(text.trim());
-}
-
 function isGeneralSettingsCommand(text: string): boolean {
   return /^\/setting\b/i.test(text.trim());
-}
-
-function isGitHubCommand(text: string): boolean {
-  return /^\/gh\b/i.test(text.trim());
 }
 
 type SettingsLauncherButton = {
@@ -286,23 +278,6 @@ function buildSettingsLauncherBlocks(
   ];
 }
 
-async function postChannelSettingsLauncher(
-  channelId: string,
-  userId: string,
-  client: WebClient
-): Promise<void> {
-  await client.chat.postEphemeral({
-    channel: channelId,
-    user: userId,
-    text: "Open channel settings",
-    blocks: buildSettingsLauncherBlocks(
-      channelId,
-      "Open channel settings for agent, working directory, base branch, and optional channel system message (model appears for OpenCode and Codex).",
-      [{ actionId: "open_settings_modal", label: "Open settings" }]
-    ),
-  });
-}
-
 async function postGeneralSettingsLauncher(
   channelId: string,
   userId: string,
@@ -318,45 +293,9 @@ async function postGeneralSettingsLauncher(
       [
         { actionId: "open_general_settings_modal", label: "general setting" },
         { actionId: "open_settings_modal", label: "channel setting" },
+        { actionId: "open_github_token_modal", label: "github info" },
       ]
     ),
-  });
-}
-
-async function postGitHubLauncher(
-  channelId: string,
-  userId: string,
-  client: WebClient
-): Promise<void> {
-  const hasToken = Boolean(getGitHubInfoForUser(userId)?.token);
-  const statusText = hasToken
-    ? "GitHub token is set for your account."
-    : "No GitHub token set yet.";
-
-  await client.chat.postEphemeral({
-    channel: channelId,
-    user: userId,
-    text: "Open GitHub info settings",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `${statusText} Add or update your info to enable GitHub CLI actions.`,
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            action_id: "open_github_token_modal",
-            text: { type: "plain_text", text: "Set GitHub info" },
-            value: channelId,
-          },
-        ],
-      },
-    ],
   });
 }
 
@@ -616,11 +555,7 @@ export function setupMessageHandlers(): void {
       },
       isThreadActive,
       markThreadActive,
-      isGitHubCommand,
-      isChannelSettingsCommand,
       isGeneralSettingsCommand,
-      postGitHubLauncher,
-      postChannelSettingsLauncher,
       postGeneralSettingsLauncher,
       describeSettingsIssues,
       getChannelAgentProvider,

@@ -27,14 +27,6 @@ const DISCORD_LAUNCHER_COMMANDS = [
     name: "setting",
     description: "Open Ode settings",
   },
-  {
-    name: "channel",
-    description: "Open channel settings",
-  },
-  {
-    name: "gh",
-    description: "Check GitHub token status",
-  },
 ] as const;
 
 let discordClient: Client | null = null;
@@ -171,11 +163,9 @@ function isStopCommand(text: string): boolean {
   return text.trim().toLowerCase() === "stop";
 }
 
-function parseLauncherCommand(text: string): "setting" | "channel" | "gh" | null {
+function parseLauncherCommand(text: string): "setting" | null {
   const trimmed = text.trim().toLowerCase();
   if (/^\/setting\b/.test(trimmed)) return "setting";
-  if (/^\/channel\b/.test(trimmed)) return "channel";
-  if (/^\/gh\b/.test(trimmed)) return "gh";
   return null;
 }
 
@@ -420,7 +410,7 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
       if (!interaction.isChatInputCommand || !interaction.isChatInputCommand()) return;
       const commandName = String(interaction.commandName || "").toLowerCase();
-      if (!["setting", "channel", "gh"].includes(commandName)) return;
+      if (commandName !== "setting") return;
 
       const payload = buildLauncherReplyPayload({
         command: commandName as LauncherCommand,
