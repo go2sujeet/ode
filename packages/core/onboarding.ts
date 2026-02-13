@@ -47,7 +47,91 @@ async function ask(rl: Interface, prompt: string): Promise<string> {
   return answer.trim();
 }
 
+async function selectSingleOptionWithKeyboard(
+  title: string,
+  options: string[],
+  defaultIndex = 0
+): Promise<number> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return defaultIndex;
+  }
+
+  return new Promise((resolve) => {
+    let cursor = Math.max(0, Math.min(defaultIndex, options.length - 1));
+    const lineCount = options.length + 2;
+
+    const render = (initial = false): void => {
+      if (!initial) {
+        process.stdout.write(`\x1b[${lineCount}F`);
+      }
+      process.stdout.write("\x1b[J");
+      console.log(title);
+      console.log("Use Up/Down to move, Enter to confirm.");
+      for (const [index, option] of options.entries()) {
+        const pointer = index === cursor ? ">" : " ";
+        console.log(` ${pointer} ${option}`);
+      }
+    };
+
+    const cleanup = (): void => {
+      process.stdin.off("keypress", onKeypress);
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+    };
+
+    const finalize = (): void => {
+      const selected = cursor;
+      cleanup();
+      process.stdout.write("\n");
+      resolve(selected);
+    };
+
+    const onKeypress = (_input: string, key: { name?: string; ctrl?: boolean }): void => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        process.kill(process.pid, "SIGINT");
+        return;
+      }
+
+      if (key.name === "up") {
+        cursor = (cursor - 1 + options.length) % options.length;
+        render();
+        return;
+      }
+
+      if (key.name === "down") {
+        cursor = (cursor + 1) % options.length;
+        render();
+        return;
+      }
+
+      if (key.name === "return" || key.name === "enter") {
+        finalize();
+      }
+    };
+
+    emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("keypress", onKeypress);
+    render(true);
+  });
+}
+
 async function askYesNo(rl: Interface, prompt: string, defaultValue: boolean): Promise<boolean> {
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    rl.pause();
+    try {
+      const yesIndex = defaultValue ? 0 : 1;
+      const choice = await selectSingleOptionWithKeyboard(prompt, ["Yes", "No"], yesIndex);
+      return choice === 0;
+    } finally {
+      rl.resume();
+    }
+  }
+
   const suffix = defaultValue ? " [Y/n]: " : " [y/N]: ";
   while (true) {
     const answer = (await ask(rl, `${prompt}${suffix}`)).toLowerCase();
@@ -155,6 +239,20 @@ async function selectAgentsWithKeyboard(agents: AgentOption[], defaultSelected: 
 }
 
 async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord"> {
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    rl.pause();
+    try {
+      const choice = await selectSingleOptionWithKeyboard(
+        "Workspace type:",
+        ["Slack", "Discord"],
+        0
+      );
+      return choice === 0 ? "slack" : "discord";
+    } finally {
+      rl.resume();
+    }
+  }
+
   while (true) {
     const value = (await ask(rl, "Workspace type ([s]lack / [d]iscord): ")).toLowerCase();
     if (value === "s" || value === "slack") return "slack";
@@ -165,6 +263,7 @@ async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord"> {
 
 async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeConfig> {
   console.log("Step 1/2: Workspace setup.");
+  console.log("");
   let nextConfig = config;
   const existingWorkspaces = nextConfig.workspaces;
   if (existingWorkspaces.length > 0) {
@@ -172,11 +271,15 @@ async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeCon
     for (const workspace of existingWorkspaces) {
       const label = workspace.name || workspace.id;
       const domain = workspace.domain ? ` (${workspace.domain})` : "";
-      console.log(`- ${label}${domain}`);
+      const typeLabel = workspace.type === "discord" ? "Discord" : "Slack";
+      const indicator = "\x1b[32m●\x1b[0m";
+      console.log(`${indicator} [${typeLabel}] ${label}${domain}`);
     }
   } else {
     console.log("No workspaces connected yet.");
   }
+
+  console.log("");
 
   const addWorkspace = await askYesNo(
     rl,
