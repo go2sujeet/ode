@@ -4,7 +4,10 @@ import {
   ButtonStyle,
   Client,
   GatewayIntentBits,
+  ModalBuilder,
   Partials,
+  TextInputBuilder,
+  TextInputStyle,
 } from "discord.js";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
@@ -12,17 +15,35 @@ import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
 import {
   getChannelSystemMessage,
+  getChannelAgentProvider,
+  getChannelModel,
+  getChannelBaseBranch,
+  resolveChannelCwd,
+  getOpenCodeModels,
+  getCodexModels,
+  getKiloModels,
+  isAgentEnabled,
+  setChannelAgentProvider,
+  setChannelModel,
+  setChannelWorkingDirectory,
+  setChannelBaseBranch,
+  setChannelSystemMessage,
   getDiscordBotTokens,
   getDiscordTargetChannels,
   getGitHubInfoForUser,
-  getWebHost,
-  getWebPort,
+  getUserGeneralSettings,
+  setGitHubInfoForUser,
+  setUserGeneralSettings,
 } from "@/config";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_THREAD_NAME_LIMIT = 100;
+const DISCORD_MODAL_GENERAL = "ode:modal:general";
+const DISCORD_MODAL_CHANNEL = "ode:modal:channel";
+const DISCORD_MODAL_GITHUB = "ode:modal:github";
+const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"] as const;
 const DISCORD_LAUNCHER_COMMANDS = [
   {
     name: "setting",
@@ -199,11 +220,8 @@ function parseLauncherCommand(text: string): "setting" | null {
   return null;
 }
 
-function getLocalSettingsUrl(): string {
-  return `http://${getWebHost()}:${getWebPort()}/local-setting`;
-}
-
-type LauncherCommand = "setting" | "channel" | "gh";
+type LauncherCommand = "setting";
+type LauncherAction = "general" | "channel" | "github";
 
 function getResolvedChannelId(target: any): string {
   const channel = target?.channel;
@@ -213,42 +231,11 @@ function getResolvedChannelId(target: any): string {
   return target.channelId;
 }
 
-function buildLauncherCommandText(params: {
-  command: LauncherCommand;
-  userId: string;
-  channelId: string;
-}): string {
-  const { command, userId, channelId } = params;
-  const settingsUrl = getLocalSettingsUrl();
-
-  if (command === "gh") {
-    const hasToken = Boolean(getGitHubInfoForUser(userId)?.token);
-    return hasToken
-      ? `GitHub token is set for your account. You can update it at ${settingsUrl}.`
-      : `No GitHub token set yet. Add it at ${settingsUrl}.`;
-  }
-
-  if (command === "channel") {
-    return `Open channel settings for channel ${channelId}: ${settingsUrl}`;
-  }
-
-  return `Open settings: ${settingsUrl}`;
-}
-
-function buildSettingsLinkRow(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("Open settings")
-      .setURL(getLocalSettingsUrl())
-  );
-}
-
 function buildSettingsChooserRows(channelId: string): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ode:launcher:setting:${channelId}`)
+        .setCustomId(`ode:launcher:general:${channelId}`)
         .setStyle(ButtonStyle.Secondary)
         .setLabel("General setting"),
       new ButtonBuilder()
@@ -256,11 +243,10 @@ function buildSettingsChooserRows(channelId: string): ActionRowBuilder<ButtonBui
         .setStyle(ButtonStyle.Secondary)
         .setLabel("Channel setting"),
       new ButtonBuilder()
-        .setCustomId(`ode:launcher:gh:${channelId}`)
+        .setCustomId(`ode:launcher:github:${channelId}`)
         .setStyle(ButtonStyle.Secondary)
         .setLabel("GitHub info")
     ),
-    buildSettingsLinkRow(),
   ];
 }
 
@@ -269,18 +255,161 @@ function buildLauncherReplyPayload(params: {
   userId: string;
   channelId: string;
 }): { content: string; components: ActionRowBuilder<ButtonBuilder>[] } {
-  const { command, userId, channelId } = params;
-  if (command === "setting") {
-    return {
-      content: "Choose which settings page to open.",
-      components: buildSettingsChooserRows(channelId),
-    };
-  }
-
+  const { command, channelId } = params;
   return {
-    content: buildLauncherCommandText({ command, userId, channelId }),
-    components: [buildSettingsLinkRow()],
+    content: command === "setting" ? "Choose what to configure in Discord:" : "Choose settings action:",
+    components: buildSettingsChooserRows(channelId),
   };
+}
+
+function getModalValue(interaction: any, fieldId: string): string {
+  return interaction.fields.getTextInputValue(fieldId) || "";
+}
+
+function parseProvider(value: string): typeof PROVIDERS[number] | null {
+  const normalized = value.trim().toLowerCase();
+  if (!PROVIDERS.includes(normalized as typeof PROVIDERS[number])) return null;
+  return normalized as typeof PROVIDERS[number];
+}
+
+function normalizeModel(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function hasModel(models: string[], selected: string): boolean {
+  const target = normalizeModel(selected);
+  return models.some((model) => normalizeModel(model) === target);
+}
+
+function parseGeneralStatusFormat(value: string): "aggressive" | "medium" | "minimum" | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "aggressive" || normalized === "medium" || normalized === "minimum") {
+    return normalized;
+  }
+  return null;
+}
+
+function parseGitStrategy(value: string): "default" | "worktree" | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "default" || normalized === "worktree") return normalized;
+  return null;
+}
+
+function textInputRow(params: {
+  id: string;
+  label: string;
+  style?: TextInputStyle;
+  required?: boolean;
+  value?: string;
+  placeholder?: string;
+}): ActionRowBuilder<TextInputBuilder> {
+  const input = new TextInputBuilder()
+    .setCustomId(params.id)
+    .setLabel(params.label)
+    .setStyle(params.style ?? TextInputStyle.Short)
+    .setRequired(params.required ?? false);
+
+  if (params.value) input.setValue(params.value);
+  if (params.placeholder) input.setPlaceholder(params.placeholder);
+
+  return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+}
+
+function buildGeneralSettingsModal(channelId: string): ModalBuilder {
+  const settings = getUserGeneralSettings();
+  return new ModalBuilder()
+    .setCustomId(`${DISCORD_MODAL_GENERAL}:${channelId}`)
+    .setTitle("General Settings")
+    .addComponents(
+      textInputRow({
+        id: "status_format",
+        label: "Status format",
+        required: true,
+        value: settings.defaultStatusMessageFormat,
+        placeholder: "aggressive | medium | minimum",
+      }),
+      textInputRow({
+        id: "git_strategy",
+        label: "Git strategy",
+        required: true,
+        value: settings.gitStrategy,
+        placeholder: "worktree | default",
+      })
+    );
+}
+
+function buildChannelSettingsModal(channelId: string): ModalBuilder {
+  const provider = getChannelAgentProvider(channelId);
+  const model = getChannelModel(channelId) || "";
+  const baseBranch = getChannelBaseBranch(channelId) || "main";
+  const workingDirectory = resolveChannelCwd(channelId).workingDirectory || "";
+  const systemMessage = getChannelSystemMessage(channelId) || "";
+
+  return new ModalBuilder()
+    .setCustomId(`${DISCORD_MODAL_CHANNEL}:${channelId}`)
+    .setTitle("Channel Settings")
+    .addComponents(
+      textInputRow({
+        id: "provider",
+        label: "Provider",
+        required: true,
+        value: provider,
+        placeholder: PROVIDERS.join(" | "),
+      }),
+      textInputRow({
+        id: "model",
+        label: "Model (optional)",
+        required: false,
+        value: model,
+        placeholder: "Model id or blank",
+      }),
+      textInputRow({
+        id: "working_directory",
+        label: "Working directory (optional)",
+        required: false,
+        value: workingDirectory,
+      }),
+      textInputRow({
+        id: "base_branch",
+        label: "Base branch",
+        required: true,
+        value: baseBranch,
+      }),
+      textInputRow({
+        id: "channel_system_message",
+        label: "Channel system message (optional)",
+        required: false,
+        value: systemMessage,
+        style: TextInputStyle.Paragraph,
+      })
+    );
+}
+
+function buildGitHubSettingsModal(channelId: string, userId: string): ModalBuilder {
+  const info = getGitHubInfoForUser(userId);
+  return new ModalBuilder()
+    .setCustomId(`${DISCORD_MODAL_GITHUB}:${channelId}`)
+    .setTitle("GitHub Info")
+    .addComponents(
+      textInputRow({
+        id: "github_token",
+        label: "GitHub token (optional)",
+        required: false,
+        value: info?.token || "",
+      }),
+      textInputRow({
+        id: "github_name",
+        label: "Git name",
+        required: false,
+        value: info?.gitName || "",
+      }),
+      textInputRow({
+        id: "github_email",
+        label: "Git email",
+        required: false,
+        value: info?.gitEmail || "",
+      })
+    );
 }
 
 async function handleLauncherButtonInteraction(interaction: any): Promise<void> {
@@ -288,22 +417,105 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<void> 
   if (!customId.startsWith("ode:launcher:")) return;
 
   const [, , commandRaw, channelIdRaw] = customId.split(":", 4);
-  const command = commandRaw as LauncherCommand;
-  if (!["setting", "channel", "gh"].includes(command)) return;
-
+  const action = commandRaw as LauncherAction;
   const channelId = channelIdRaw || getResolvedChannelId(interaction);
-  const payload = buildLauncherReplyPayload({
-    command,
-    userId: interaction.user.id,
-    channelId,
-  });
+  if (!channelId) return;
 
-  if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ ...payload, ephemeral: true });
+  if (action === "general") {
+    await interaction.showModal(buildGeneralSettingsModal(channelId));
     return;
   }
 
-  await interaction.reply({ ...payload, ephemeral: true });
+  if (action === "channel") {
+    await interaction.showModal(buildChannelSettingsModal(channelId));
+    return;
+  }
+
+  if (action === "github") {
+    await interaction.showModal(buildGitHubSettingsModal(channelId, interaction.user.id));
+  }
+}
+
+async function handleModalSubmitInteraction(interaction: any): Promise<void> {
+  const customId = String(interaction.customId ?? "");
+  if (!customId.startsWith("ode:modal:")) return;
+
+  const parts = customId.split(":");
+  const modalKind = `${parts[0]}:${parts[1]}:${parts[2]}`;
+  const channelId = parts[3] || getResolvedChannelId(interaction);
+
+  if (modalKind === DISCORD_MODAL_GENERAL) {
+    const statusFormat = parseGeneralStatusFormat(getModalValue(interaction, "status_format"));
+    const gitStrategy = parseGitStrategy(getModalValue(interaction, "git_strategy"));
+    if (!statusFormat || !gitStrategy) {
+      await interaction.reply({
+        content: "Invalid values. Status format: aggressive|medium|minimum. Git strategy: worktree|default.",
+        ephemeral: true,
+      });
+      return;
+    }
+    setUserGeneralSettings({
+      defaultStatusMessageFormat: statusFormat,
+      gitStrategy,
+    });
+    await interaction.reply({ content: "General settings updated.", ephemeral: true });
+    return;
+  }
+
+  if (modalKind === DISCORD_MODAL_CHANNEL) {
+    const providerInput = getModalValue(interaction, "provider");
+    const provider = parseProvider(providerInput);
+    if (!provider || !isAgentEnabled(provider)) {
+      await interaction.reply({
+        content: `Invalid provider. Use one of: ${PROVIDERS.join(", ")}.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const modelInput = getModalValue(interaction, "model").trim();
+    if (provider === "opencode" && modelInput && !hasModel(getOpenCodeModels(), modelInput)) {
+      await interaction.reply({ content: "Model is not in OpenCode models list.", ephemeral: true });
+      return;
+    }
+    if (provider === "codex" && modelInput && !hasModel(getCodexModels(), modelInput)) {
+      await interaction.reply({ content: "Model is not in Codex models list.", ephemeral: true });
+      return;
+    }
+    if (provider === "kilo" && modelInput && !hasModel(getKiloModels(), modelInput)) {
+      await interaction.reply({ content: "Model is not in Kilo models list.", ephemeral: true });
+      return;
+    }
+
+    const workingDirectory = getModalValue(interaction, "working_directory").trim();
+    const baseBranch = getModalValue(interaction, "base_branch").trim() || "main";
+    const channelSystemMessage = getModalValue(interaction, "channel_system_message");
+
+    setChannelAgentProvider(channelId, provider);
+    if (provider === "claudecode" || provider === "kimi" || provider === "kiro" || provider === "qwen") {
+      setChannelModel(channelId, "");
+    } else {
+      setChannelModel(channelId, modelInput);
+    }
+    setChannelWorkingDirectory(channelId, workingDirectory.length > 0 ? workingDirectory : null);
+    setChannelBaseBranch(channelId, baseBranch);
+    setChannelSystemMessage(channelId, channelSystemMessage);
+
+    await interaction.reply({ content: "Channel settings updated.", ephemeral: true });
+    return;
+  }
+
+  if (modalKind === DISCORD_MODAL_GITHUB) {
+    const token = getModalValue(interaction, "github_token").trim();
+    const gitName = getModalValue(interaction, "github_name");
+    const gitEmail = getModalValue(interaction, "github_email");
+    setGitHubInfoForUser(interaction.user.id, {
+      token,
+      gitName,
+      gitEmail,
+    });
+    await interaction.reply({ content: "GitHub info updated.", ephemeral: true });
+  }
 }
 
 async function registerDiscordCommands(client: Client): Promise<void> {
@@ -442,10 +654,15 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
       client.on("interactionCreate", async (interaction: any) => {
         try {
-          if (interaction.isButton && interaction.isButton()) {
-            await handleLauncherButtonInteraction(interaction);
-            return;
-          }
+      if (interaction.isButton && interaction.isButton()) {
+        await handleLauncherButtonInteraction(interaction);
+        return;
+      }
+
+      if (interaction.isModalSubmit && interaction.isModalSubmit()) {
+        await handleModalSubmitInteraction(interaction);
+        return;
+      }
 
           if (!interaction.isChatInputCommand || !interaction.isChatInputCommand()) return;
           const commandName = String(interaction.commandName || "").toLowerCase();
