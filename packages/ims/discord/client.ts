@@ -3,11 +3,32 @@ import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
-import { getChannelSystemMessage, getDiscordBotTokens, getDiscordTargetChannels, getGitHubInfoForUser } from "@/config";
+import {
+  getChannelSystemMessage,
+  getDiscordBotTokens,
+  getDiscordTargetChannels,
+  getGitHubInfoForUser,
+  getWebHost,
+  getWebPort,
+} from "@/config";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
+const DISCORD_LAUNCHER_COMMANDS = [
+  {
+    name: "setting",
+    description: "Open Ode settings",
+  },
+  {
+    name: "channel",
+    description: "Open channel settings",
+  },
+  {
+    name: "gh",
+    description: "Check GitHub token status",
+  },
+] as const;
 
 let discordClient: Client | null = null;
 const statusMessageThreadMap = new Map<string, string>();
@@ -143,6 +164,63 @@ function isStopCommand(text: string): boolean {
   return text.trim().toLowerCase() === "stop";
 }
 
+function parseLauncherCommand(text: string): "setting" | "channel" | "gh" | null {
+  const trimmed = text.trim().toLowerCase();
+  if (/^\/setting\b/.test(trimmed)) return "setting";
+  if (/^\/channel\b/.test(trimmed)) return "channel";
+  if (/^\/gh\b/.test(trimmed)) return "gh";
+  return null;
+}
+
+function getLocalSettingsUrl(): string {
+  return `http://${getWebHost()}:${getWebPort()}/local-setting`;
+}
+
+function buildLauncherCommandText(params: {
+  command: "setting" | "channel" | "gh";
+  userId: string;
+  channelId: string;
+}): string {
+  const { command, userId, channelId } = params;
+  const settingsUrl = getLocalSettingsUrl();
+
+  if (command === "gh") {
+    const hasToken = Boolean(getGitHubInfoForUser(userId)?.token);
+    return hasToken
+      ? `GitHub token is set for your account. You can update it at ${settingsUrl}.`
+      : `No GitHub token set yet. Add it at ${settingsUrl}.`;
+  }
+
+  if (command === "channel") {
+    return `Open channel settings for channel ${channelId}: ${settingsUrl}`;
+  }
+
+  return `Open settings: ${settingsUrl}`;
+}
+
+async function postLauncherCommandReply(params: {
+  channel: any;
+  command: "setting" | "channel" | "gh";
+  userId: string;
+  channelId: string;
+}): Promise<void> {
+  const text = buildLauncherCommandText(params);
+  await params.channel.send(text);
+}
+
+async function registerDiscordCommands(client: Client): Promise<void> {
+  try {
+    const guilds = await client.guilds.fetch();
+    for (const [, guildPreview] of guilds) {
+      const guild = await client.guilds.fetch(guildPreview.id);
+      await guild.commands.set([...DISCORD_LAUNCHER_COMMANDS]);
+    }
+    log.info("Discord slash commands registered", { count: DISCORD_LAUNCHER_COMMANDS.length });
+  } catch (error) {
+    log.warn("Failed to register Discord slash commands", { error: String(error) });
+  }
+}
+
 export async function startDiscordRuntime(reason: string): Promise<boolean> {
   if (discordClient) return true;
   const configuredTokens = getDiscordBotTokens();
@@ -176,6 +254,16 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
         const threadId = message.channel.id;
         const text = message.content.trim();
+        const launcherCommand = parseLauncherCommand(text);
+        if (launcherCommand) {
+          await postLauncherCommandReply({
+            channel: message.channel,
+            command: launcherCommand,
+            userId: message.author.id,
+            channelId: parentId,
+          });
+          return;
+        }
         const mentioned = message.mentions.users.has(client.user.id);
         const active = isThreadActive(parentId, threadId);
         if (!mentioned && !active) return;
@@ -203,10 +291,31 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
       const parentId = message.channel.id;
       if (configuredChannels && !configuredChannels.includes(parentId)) return;
 
+      const parentLauncherCommand = parseLauncherCommand(message.content);
+      if (parentLauncherCommand) {
+        await postLauncherCommandReply({
+          channel: message.channel,
+          command: parentLauncherCommand,
+          userId: message.author.id,
+          channelId: parentId,
+        });
+        return;
+      }
+
       const isMentioned = message.mentions.users.has(client.user.id);
       if (!isMentioned) return;
 
       const cleaned = cleanBotMention(message.content, client.user.id);
+      const cleanedLauncherCommand = parseLauncherCommand(cleaned);
+      if (cleanedLauncherCommand) {
+        await postLauncherCommandReply({
+          channel: message.channel,
+          command: cleanedLauncherCommand,
+          userId: message.author.id,
+          channelId: parentId,
+        });
+        return;
+      }
       if (!cleaned) {
         await message.reply("Please include a request after mentioning me.");
         return;
@@ -230,7 +339,28 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
     }
   });
 
+  client.on("interactionCreate", async (interaction: any) => {
+    try {
+      if (!interaction.isChatInputCommand || !interaction.isChatInputCommand()) return;
+      const commandName = String(interaction.commandName || "").toLowerCase();
+      if (!["setting", "channel", "gh"].includes(commandName)) return;
+
+      const channel = interaction.channel;
+      const resolvedChannelId = channel?.isThread?.() ? (channel.parentId ?? interaction.channelId) : interaction.channelId;
+      const text = buildLauncherCommandText({
+        command: commandName as "setting" | "channel" | "gh",
+        userId: interaction.user.id,
+        channelId: resolvedChannelId,
+      });
+
+      await interaction.reply({ content: text, ephemeral: true });
+    } catch (error) {
+      log.error("Discord interaction handler failed", { error: String(error) });
+    }
+  });
+
   await client.login(token);
+  await registerDiscordCommands(client);
   discordClient = client;
   log.info("Discord runtime started", { reason, botUserId: client.user?.id ?? "unknown" });
   return true;
