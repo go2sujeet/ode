@@ -26,6 +26,7 @@ import {
 } from "@/config";
 import { log } from "@/utils";
 import { hasWebUiBuild, startLocalWebServer, stopLocalWebServer } from "./web/server";
+import { markRuntimeReady, scheduleUpgradeRestart } from "@/core/daemon/control";
 import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
 import { runOnboardingIfNeeded } from "./onboarding";
 import packageJson from "../../package.json" with { type: "json" };
@@ -181,7 +182,11 @@ async function runAutoUpgradeCheck(reason: string): Promise<void> {
       latestVersion: update.latestVersion,
     });
     await performUpgrade();
-    log.info("Auto-upgrade complete", { latestVersion: update.latestVersion });
+    scheduleUpgradeRestart("auto-upgrade");
+    log.info("Auto-upgrade complete", {
+      latestVersion: update.latestVersion,
+      restartScheduled: true,
+    });
   } catch (error) {
     log.warn("Auto-upgrade failed", { reason, error: String(error) });
   }
@@ -312,7 +317,9 @@ async function main(): Promise<void> {
     log.debug("Bot is running in Socket Mode");
   }
 
-  console.log(`Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`);
+  const readyMessage = `Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`;
+  console.log(readyMessage);
+  markRuntimeReady(readyMessage);
 }
 
 main().catch((err) => {
