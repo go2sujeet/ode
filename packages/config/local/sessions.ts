@@ -66,6 +66,8 @@ export interface PersistedSession {
   threadId: string;
   workingDirectory: string;
   threadOwnerUserId?: string;
+  branchName?: string;
+  threadNameSyncedWithBranch?: string;
   createdAt: number;
   lastActivityAt: number;
   activeRequest?: ActiveRequest;

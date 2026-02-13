@@ -55,6 +55,7 @@ export interface IMAdapter {
   deleteMessage(channelId: string, messageTs: string): Promise<void>;
   fetchThreadHistory(channelId: string, threadId: string, messageId: string): Promise<string | null>;
   buildAgentContext(params: AgentContextBuilderParams): Promise<OpenCodeMessageContext>;
+  renameThread?(channelId: string, threadId: string, name: string): Promise<void>;
 }
 
 export interface AgentAdapter {

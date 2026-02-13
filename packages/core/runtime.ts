@@ -1,3 +1,4 @@
+import { spawnSync } from "child_process";
 import {
   DEFAULT_CODEX_MODEL,
   getChannelModel,
@@ -5,10 +6,12 @@ import {
 } from "@/config";
 import {
   loadSession,
+  saveSession,
   failActiveRequest,
   isMessageProcessed,
   markMessageProcessed,
   getPendingQuestion,
+  type PersistedSession,
 } from "@/config/local/sessions";
 import {
   type SessionEvent,
@@ -51,6 +54,70 @@ function createRuntimeState(): RuntimeState {
     liveParsedState: new Map(),
     stateMachines: new Map(),
   };
+}
+
+function getCurrentBranchName(cwd: string): string | null {
+  try {
+    const result = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      env: { ...process.env },
+      encoding: "utf-8",
+    });
+    if (result.status !== 0) {
+      return null;
+    }
+    const name = String(result.stdout || "").trim();
+    if (!name || name === "HEAD") {
+      return null;
+    }
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+async function maybeSyncBranchAndThread(params: {
+  session: PersistedSession;
+  cwd: string;
+  channelId: string;
+  threadId: string;
+  replyThreadId: string;
+  im: IMAdapter;
+}): Promise<void> {
+  const { session, cwd, channelId, threadId, replyThreadId, im } = params;
+  const branchName = getCurrentBranchName(cwd);
+  if (!branchName) return;
+
+  let updated = false;
+  if (session.branchName !== branchName) {
+    session.branchName = branchName;
+    updated = true;
+  }
+
+  const looksDefault = branchName.startsWith("ode_") || branchName === `ode_${threadId}`;
+  if (
+    typeof im.renameThread === "function" &&
+    replyThreadId &&
+    !looksDefault &&
+    session.threadNameSyncedWithBranch !== branchName
+  ) {
+    try {
+      await im.renameThread(channelId, replyThreadId, branchName);
+      session.threadNameSyncedWithBranch = branchName;
+      updated = true;
+    } catch (error) {
+      log.warn("Failed to sync thread name with branch", {
+        channelId,
+        threadId,
+        branchName,
+        error: String(error),
+      });
+    }
+  }
+
+  if (updated) {
+    saveSession(session);
+  }
 }
 
 export function createCoreRuntime(deps: RuntimeDeps) {
@@ -106,6 +173,15 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     if (!prepared) return;
 
     const { session, sessionId, created, cwd, threadOwnerUserId } = prepared;
+
+    await maybeSyncBranchAndThread({
+      session,
+      cwd,
+      channelId,
+      threadId,
+      replyThreadId,
+      im: deps.im,
+    });
 
     const threadHistory = created
       ? await deps.im.fetchThreadHistory(channelId, replyThreadId, context.messageId)

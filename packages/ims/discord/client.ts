@@ -43,6 +43,7 @@ import { log } from "@/utils";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_THREAD_NAME_LIMIT = 25;
+const DISCORD_THREAD_RENAME_LIMIT = 90;
 const DISCORD_MODAL_CHANNEL = "ode:modal:channel_details";
 const DISCORD_MODAL_GITHUB = "ode:modal:github";
 const STATUS_FORMAT_OPTIONS = ["aggressive", "medium", "minimum"] as const;
@@ -189,6 +190,7 @@ const discordAdapter: IMAdapter = {
   updateMessage,
   deleteMessage,
   fetchThreadHistory,
+  renameThread: renameDiscordThread,
   buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
     buildDiscordContext(channelId, threadId, userId, threadHistory),
 };
@@ -227,6 +229,39 @@ function buildMeaningfulThreadName(text: string): string {
   }
 
   return cleaned.slice(0, DISCORD_THREAD_NAME_LIMIT).trim();
+}
+
+function formatThreadNameFromBranch(branchName: string): string {
+  const trimmed = branchName.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+  return normalized.slice(0, DISCORD_THREAD_RENAME_LIMIT);
+}
+
+async function renameDiscordThread(
+  channelId: string,
+  threadId: string,
+  branchName: string
+): Promise<void> {
+  const targetName = formatThreadNameFromBranch(branchName);
+  if (!targetName) return;
+
+  try {
+    const channel = await resolveTextChannel(threadId);
+    if (channel && typeof (channel as any).setName === "function") {
+      if ((channel as any).name === targetName) return;
+      await (channel as any).setName(targetName);
+    }
+  } catch (error) {
+    log.warn("Failed to rename Discord thread", {
+      channelId,
+      threadId,
+      branchName,
+      error: String(error),
+    });
+  }
 }
 
 function parseLauncherCommand(text: string): "setting" | null {
