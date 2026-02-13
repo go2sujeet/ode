@@ -44,10 +44,6 @@ function splitForDiscord(text: string): string[] {
 }
 
 async function resolveTextChannel(channelId: string) {
-  if (discordClients.size === 0) {
-    throw new Error("Discord client is not initialized");
-  }
-
   for (const client of discordClients.values()) {
     try {
       const channel = await client.channels.fetch(channelId);
@@ -106,14 +102,22 @@ async function updateMessage(
   text: string,
   _asMarkdown = true
 ): Promise<void> {
-  const threadId = statusMessageThreadMap.get(messageId) || channelId;
-  if (!threadId) {
-    log.warn("Cannot update Discord message without known thread", { messageId });
-    return;
+  try {
+    const threadId = statusMessageThreadMap.get(messageId) || channelId;
+    if (!threadId) {
+      log.warn("Cannot update Discord message without known thread", { messageId });
+      return;
+    }
+    const channel = await resolveTextChannel(threadId);
+    const message = await channel.messages.fetch(messageId);
+    await message.edit(splitForDiscord(text)[0] ?? text);
+  } catch (error) {
+    log.warn("Failed to update Discord message", {
+      messageId,
+      channelId,
+      error: String(error),
+    });
   }
-  const channel = await resolveTextChannel(threadId);
-  const message = await channel.messages.fetch(messageId);
-  await message.edit(splitForDiscord(text)[0] ?? text);
 }
 
 async function deleteMessage(_channelId: string, messageId: string): Promise<void> {
