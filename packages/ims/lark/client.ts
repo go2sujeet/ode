@@ -39,6 +39,16 @@ const botOpenIdCache = new Map<string, string>();
 const sentMessageThreadMap = new Map<string, { channelId: string; threadId: string }>();
 const wsClientRegistry = new Map<string, unknown>();
 
+function isLarkEventDebugEnabled(): boolean {
+  const raw = process.env.LARK_DEBUG_EVENTS?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function logLarkEvent(message: string, payload: Record<string, unknown>): void {
+  if (!isLarkEventDebugEnabled()) return;
+  log.info(message, payload);
+}
+
 function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null {
   const channel = channelId.trim();
   if (channel.length > 0) {
@@ -483,20 +493,48 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   const threadId = message?.root_id?.trim() || message?.parent_id?.trim() || messageId;
   const isThreadReply = Boolean(message?.root_id || message?.parent_id);
 
+  logLarkEvent("Lark inbound event received", {
+    channelId,
+    messageId,
+    threadId,
+    senderOpenId,
+    messageType: message?.message_type ?? "",
+    isThreadReply,
+    hasMentions: Array.isArray(message?.mentions),
+  });
+
   if (!channelId || !messageId || !threadId || !senderOpenId) {
+    logLarkEvent("Lark inbound ignored: missing required identifiers", {
+      channelId,
+      messageId,
+      threadId,
+      senderOpenId,
+    });
     return;
   }
 
   if (!isAuthorizedLarkChannel(channelId)) {
+    logLarkEvent("Lark inbound ignored: channel not authorized", { channelId });
     return;
   }
 
   const botOpenId = await getBotOpenIdForChannel(channelId);
   if (botOpenId && senderOpenId === botOpenId) {
+    logLarkEvent("Lark inbound ignored: self message", {
+      channelId,
+      messageId,
+      senderOpenId,
+      botOpenId,
+    });
     return;
   }
 
   if (message?.message_type !== "text") {
+    logLarkEvent("Lark inbound ignored: non-text message", {
+      channelId,
+      messageId,
+      messageType: message?.message_type ?? "",
+    });
     return;
   }
 
@@ -506,24 +544,58 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   const rawText = parseLarkText(message?.content);
   const text = stripLarkMentionMarkup(rawText);
 
+  logLarkEvent("Lark inbound parsed", {
+    channelId,
+    messageId,
+    botOpenId: botOpenId ?? "",
+    mentionCount: mentions.length,
+    isMentioned,
+    activeThread: active,
+    textLength: text.length,
+  });
+
   if (isSettingsCommand(text)) {
+    logLarkEvent("Lark inbound matched /setting", {
+      channelId,
+      threadId,
+      messageId,
+    });
     await sendSettingsCard(channelId, threadId);
     return;
   }
 
   if (isThreadReply) {
     if (!isMentioned && !active) {
+      logLarkEvent("Lark inbound ignored: thread reply without mention and inactive thread", {
+        channelId,
+        threadId,
+        messageId,
+      });
       return;
     }
   } else if (!isMentioned) {
+    logLarkEvent("Lark inbound ignored: top-level message without mention", {
+      channelId,
+      threadId,
+      messageId,
+    });
     return;
   }
 
   if (!text) {
+    logLarkEvent("Lark inbound ignored: empty text after mention stripping", {
+      channelId,
+      messageId,
+    });
     return;
   }
 
   if (isStopCommand(text)) {
+    logLarkEvent("Lark inbound matched stop command", {
+      channelId,
+      threadId,
+      messageId,
+    });
     const stopped = await coreRuntime.handleStopCommand(channelId, threadId);
     if (stopped) {
       await sendMessage(channelId, threadId, "Request stopped.", true);
@@ -532,6 +604,12 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   }
 
   markThreadActive(channelId, threadId);
+  logLarkEvent("Lark inbound accepted: forwarding to core runtime", {
+    channelId,
+    threadId,
+    messageId,
+    userId: senderOpenId,
+  });
   await coreRuntime.handleIncomingMessage(
     {
       channelId,
@@ -542,6 +620,11 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     },
     text
   );
+  logLarkEvent("Lark inbound handled by core runtime", {
+    channelId,
+    threadId,
+    messageId,
+  });
 }
 
 async function startLarkLongConnections(reason: string): Promise<void> {
@@ -619,15 +702,20 @@ async function stopLarkLongConnections(reason: string): Promise<void> {
 
 export async function handleLarkEventPayload(payload: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
   if (!payload || typeof payload !== "object") {
+    logLarkEvent("Lark webhook ignored: invalid payload", {});
     return { status: 400, body: { ok: false, error: "Invalid payload" } };
   }
 
   const envelope = payload as LarkIncomingEnvelope;
   if (envelope.type === "url_verification" && typeof envelope.challenge === "string") {
+    logLarkEvent("Lark webhook url_verification", {});
     return { status: 200, body: { challenge: envelope.challenge } };
   }
 
   if (envelope.header?.event_type !== "im.message.receive_v1") {
+    logLarkEvent("Lark webhook ignored: unsupported event type", {
+      eventType: envelope.header?.event_type ?? "",
+    });
     return { status: 200, body: { code: 0 } };
   }
 
