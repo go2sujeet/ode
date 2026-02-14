@@ -38,6 +38,17 @@ type LarkResponse<T> = {
   data?: T;
 };
 
+const threadMessageCache = new Map<string, string[]>();
+
+function rememberThreadMessage(threadId: string, messageId: string): void {
+  if (!threadId || !messageId) return;
+  const existing = threadMessageCache.get(threadId) ?? [];
+  if (!existing.includes(messageId)) {
+    existing.push(messageId);
+    threadMessageCache.set(threadId, existing.slice(-50));
+  }
+}
+
 function requireString(value: unknown, label: string): string {
   if (!value || typeof value !== "string") {
     throw new Error(`${label} is required`);
@@ -89,7 +100,7 @@ function getLarkCredentials(payload: LarkActionRequest): { appId: string; appSec
 }
 
 async function larkRequest<T>(
-  method: "GET" | "POST" | "PATCH",
+  method: "GET" | "POST" | "PATCH" | "PUT",
   path: string,
   token: string,
   body?: Record<string, unknown>
@@ -104,7 +115,18 @@ async function larkRequest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Lark API ${response.status} ${response.statusText}`);
+    let detail = "";
+    try {
+      const errorPayload = await response.json() as { code?: number; msg?: string };
+      if (typeof errorPayload.msg === "string" && errorPayload.msg.trim().length > 0) {
+        detail = `: ${errorPayload.msg}`;
+      } else if (typeof errorPayload.code === "number") {
+        detail = `: code ${errorPayload.code}`;
+      }
+    } catch {
+      // ignore malformed error body
+    }
+    throw new Error(`Lark API ${response.status} ${response.statusText}${detail}`);
   }
 
   const payload = await response.json() as LarkResponse<T>;
@@ -142,21 +164,41 @@ async function postTextMessage(params: {
   text: string;
   threadId?: string;
 }): Promise<{ messageId: string; channelId: string }> {
-  const data = await larkRequest<{ message_id?: string }>(
-    "POST",
-    "/open-apis/im/v1/messages?receive_id_type=chat_id",
-    params.token,
-    {
-      receive_id: params.channelId,
-      msg_type: "text",
-      content: JSON.stringify({ text: params.text }),
-      ...(params.threadId ? { root_id: params.threadId } : {}),
-    }
-  );
+  const data = params.threadId
+    ? await larkRequest<{ message_id?: string }>(
+      "POST",
+      `/open-apis/im/v1/messages/${encodeURIComponent(params.threadId)}/reply`,
+      params.token,
+      {
+        msg_type: "text",
+        content: JSON.stringify({ text: params.text }),
+        reply_in_thread: true,
+      }
+    )
+    : await larkRequest<{ message_id?: string }>(
+      "POST",
+      "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      params.token,
+      {
+        receive_id: params.channelId,
+        msg_type: "text",
+        content: JSON.stringify({ text: params.text }),
+      }
+    );
   return {
     messageId: data.message_id ?? "",
     channelId: params.channelId,
   };
+}
+
+async function getMessageById(token: string, messageId: string): Promise<Record<string, unknown> | null> {
+  const data = await larkRequest<{ items?: Array<Record<string, unknown>> }>(
+    "GET",
+    `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+    token
+  );
+  const item = Array.isArray(data.items) ? data.items[0] : null;
+  return item ?? null;
 }
 
 async function handleLarkAction(payload: LarkActionRequest): Promise<unknown> {
@@ -182,26 +224,45 @@ async function handleLarkAction(payload: LarkActionRequest): Promise<unknown> {
     case "post_message": {
       const channelId = requireString(payload.channelId, "channelId");
       const text = requireString(payload.text, "text");
-      return postTextMessage({
+      const message = await postTextMessage({
         token,
         channelId,
         text,
         threadId: payload.threadId,
       });
+      if (payload.threadId && message.messageId) {
+        rememberThreadMessage(payload.threadId, message.messageId);
+      }
+      return message;
     }
 
     case "update_message": {
       const messageId = requireString(payload.messageId, "messageId");
       const text = requireString(payload.text, "text");
-      await larkRequest<Record<string, unknown>>(
-        "PATCH",
-        `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
-        token,
-        {
-          msg_type: "text",
-          content: JSON.stringify({ text }),
+      const body = {
+        msg_type: "text",
+        content: JSON.stringify({ text }),
+      };
+      try {
+        await larkRequest<Record<string, unknown>>(
+          "PATCH",
+          `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+          token,
+          body
+        );
+      } catch (patchError) {
+        const patchMessage = patchError instanceof Error ? patchError.message : String(patchError);
+        if (!patchMessage.includes("400")) {
+          throw patchError;
         }
-      );
+
+        await larkRequest<Record<string, unknown>>(
+          "PUT",
+          `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+          token,
+          body
+        );
+      }
       return {
         status: "message_updated",
         messageId,
@@ -229,12 +290,54 @@ async function handleLarkAction(payload: LarkActionRequest): Promise<unknown> {
 
     case "get_thread_messages": {
       const threadId = requireString(payload.threadId, "threadId");
-      const data = await larkRequest<{ items?: unknown[] }>(
-        "GET",
-        `/open-apis/im/v1/messages/${encodeURIComponent(threadId)}/replies?page_size=${Math.min(Math.max(payload.limit ?? 20, 1), 50)}`,
-        token
-      );
-      return { messages: data.items ?? [] };
+      const channelId = payload.channelId?.trim();
+      const limit = Math.min(Math.max(payload.limit ?? 20, 1), 50);
+
+      let threadConversationId = "";
+      try {
+        const root = await getMessageById(token, threadId);
+        threadConversationId = typeof root?.thread_id === "string" ? root.thread_id : "";
+      } catch {
+        threadConversationId = "";
+      }
+
+      if (channelId) {
+        const data = await larkRequest<{
+          items?: Array<Record<string, unknown>>;
+        }>(
+          "GET",
+          `/open-apis/im/v1/messages?container_id_type=chat&container_id=${encodeURIComponent(channelId)}&page_size=50`,
+          token
+        );
+        const messages = (data.items ?? [])
+          .filter((item) => {
+            const messageId = typeof item.message_id === "string" ? item.message_id : "";
+            const rootId = typeof item.root_id === "string" ? item.root_id : "";
+            const parentId = typeof item.parent_id === "string" ? item.parent_id : "";
+            const itemThreadId = typeof item.thread_id === "string" ? item.thread_id : "";
+            if (threadConversationId) {
+              return itemThreadId === threadConversationId;
+            }
+            return messageId === threadId || rootId === threadId || parentId === threadId;
+          })
+          .slice(-limit);
+        if (messages.length > 0) {
+          return { messages };
+        }
+      }
+
+      const cachedIds = threadMessageCache.get(threadId) ?? [];
+      const uniqueIds = [threadId, ...cachedIds].filter((id, index, arr) => arr.indexOf(id) === index);
+      const messages: Array<Record<string, unknown>> = [];
+      for (const id of uniqueIds.slice(-limit)) {
+        try {
+          const item = await getMessageById(token, id);
+          if (item) messages.push(item);
+        } catch {
+          // ignore single message lookup failures
+        }
+      }
+      return { messages };
     }
 
     case "get_user_info": {
@@ -314,25 +417,39 @@ async function handleLarkAction(payload: LarkActionRequest): Promise<unknown> {
 
       const threadId = payload.threadId?.trim();
       if (payload.initialComment?.trim()) {
-        await postTextMessage({
+        const comment = await postTextMessage({
           token,
           channelId,
           text: payload.initialComment.trim(),
           threadId,
         });
+        if (threadId && comment.messageId) {
+          rememberThreadMessage(threadId, comment.messageId);
+        }
       }
 
       const message = await larkRequest<{ message_id?: string }>(
         "POST",
-        "/open-apis/im/v1/messages?receive_id_type=chat_id",
+        threadId
+          ? `/open-apis/im/v1/messages/${encodeURIComponent(threadId)}/reply`
+          : "/open-apis/im/v1/messages?receive_id_type=chat_id",
         token,
-        {
-          receive_id: channelId,
-          msg_type: "file",
-          content: JSON.stringify({ file_key: uploadPayload.data.file_key }),
-          ...(threadId ? { root_id: threadId } : {}),
-        }
+        threadId
+          ? {
+            msg_type: "file",
+            content: JSON.stringify({ file_key: uploadPayload.data.file_key }),
+            reply_in_thread: true,
+          }
+          : {
+            receive_id: channelId,
+            msg_type: "file",
+            content: JSON.stringify({ file_key: uploadPayload.data.file_key }),
+          }
       );
+
+      if (threadId && message.message_id) {
+        rememberThreadMessage(threadId, message.message_id);
+      }
 
       return {
         status: "file_uploaded",

@@ -28,22 +28,6 @@ type LarkMessageResponse = {
 
 type LarkMessageType = "text" | "interactive";
 
-type LarkRepliesResponse = {
-  items?: Array<{
-    message?: {
-      message_id?: string;
-      sender?: {
-        sender_id?: {
-          open_id?: string;
-        };
-      };
-      body?: {
-        content?: string;
-      };
-    };
-  }>;
-};
-
 type LarkBotInfoResponse = {
   bot?: {
     open_id?: string;
@@ -154,17 +138,27 @@ async function sendLarkMessage(params: {
   }
 
   const token = await getLarkTenantAccessToken(creds);
-  const data = await larkApi<LarkMessageResponse>(
-    token,
-    "POST",
-    "/open-apis/im/v1/messages?receive_id_type=chat_id",
-    {
-      receive_id: params.channelId,
-      msg_type: params.msgType,
-      content: JSON.stringify(params.content),
-      root_id: params.threadId,
-    }
-  );
+  const data = params.threadId
+    ? await larkApi<LarkMessageResponse>(
+      token,
+      "POST",
+      `/open-apis/im/v1/messages/${encodeURIComponent(params.threadId)}/reply`,
+      {
+        msg_type: params.msgType,
+        content: JSON.stringify(params.content),
+        reply_in_thread: true,
+      }
+    )
+    : await larkApi<LarkMessageResponse>(
+      token,
+      "POST",
+      "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      {
+        receive_id: params.channelId,
+        msg_type: params.msgType,
+        content: JSON.stringify(params.content),
+      }
+    );
 
   const messageId = data.message_id;
   if (messageId) {
@@ -232,9 +226,10 @@ async function sendMessage(
   text: string,
   _asMarkdown = true
 ): Promise<string | undefined> {
+  const isThreadMessage = Boolean(threadId && isThreadActive(channelId, threadId));
   return sendLarkMessage({
     channelId,
-    threadId,
+    threadId: isThreadMessage ? threadId : "",
     msgType: "text",
     content: { text },
   });
@@ -350,18 +345,44 @@ async function fetchThreadHistory(
   if (!creds) return null;
   const token = await getLarkTenantAccessToken(creds);
   try {
-    const data = await larkApi<LarkRepliesResponse>(
+    let threadConversationId = "";
+    try {
+      const rootData = await larkApi<{ items?: Array<Record<string, unknown>> }>(
+        token,
+        "GET",
+        `/open-apis/im/v1/messages/${encodeURIComponent(threadId)}`
+      );
+      const rootItem = Array.isArray(rootData.items) ? rootData.items[0] : null;
+      threadConversationId = typeof rootItem?.thread_id === "string" ? rootItem.thread_id : "";
+    } catch {
+      threadConversationId = "";
+    }
+
+    const data = await larkApi<{ items?: Array<Record<string, unknown>> }>(
       token,
       "GET",
-      `/open-apis/im/v1/messages/${encodeURIComponent(threadId)}/replies?page_size=50`
+      `/open-apis/im/v1/messages?container_id_type=chat&container_id=${encodeURIComponent(channelId)}&page_size=50`
     );
     const lines = (data.items ?? [])
-      .map((item) => item.message)
-      .filter((message): message is NonNullable<typeof message> => Boolean(message))
-      .filter((message) => message.message_id && message.message_id !== messageId)
+      .filter((message) => {
+        const messageId = typeof message.message_id === "string" ? message.message_id : "";
+        const rootId = typeof message.root_id === "string" ? message.root_id : "";
+        const parentId = typeof message.parent_id === "string" ? message.parent_id : "";
+        const itemThreadId = typeof message.thread_id === "string" ? message.thread_id : "";
+        if (threadConversationId) {
+          return itemThreadId === threadConversationId;
+        }
+        return messageId === threadId || rootId === threadId || parentId === threadId;
+      })
+      .filter((message) => {
+        const currentMessageId = typeof message.message_id === "string" ? message.message_id : "";
+        return currentMessageId && currentMessageId !== messageId;
+      })
       .map((message) => {
-        const author = message.sender?.sender_id?.open_id || "unknown";
-        const text = parseLarkText(message.body?.content);
+        const sender = (message.sender as Record<string, unknown> | undefined)?.sender_id as Record<string, unknown> | undefined;
+        const author = typeof sender?.open_id === "string" ? sender.open_id : "unknown";
+        const body = message.body as Record<string, unknown> | undefined;
+        const text = parseLarkText(typeof body?.content === "string" ? body.content : undefined);
         return text ? `${author}: ${text}` : "";
       })
       .filter((line) => line.trim().length > 0);
