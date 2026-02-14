@@ -29,6 +29,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.55.0",
     "@opencode-ai/sdk": "^1.1.25",
     "@slack/bolt": "^4.6.0",
     "@slack/socket-mode": "^2.0.5",

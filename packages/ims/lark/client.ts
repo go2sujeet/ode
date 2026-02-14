@@ -1,5 +1,6 @@
 import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents/types";
+import * as Lark from "@larksuiteoapi/node-sdk";
 import {
   getChannelSystemMessage,
   getGitHubInfoForUser,
@@ -52,6 +53,7 @@ type LarkBotInfoResponse = {
 const tenantTokenCache = new Map<string, { token: string; expiresAt: number }>();
 const botOpenIdCache = new Map<string, string>();
 const sentMessageThreadMap = new Map<string, { channelId: string; threadId: string }>();
+const wsClientRegistry = new Map<string, unknown>();
 
 function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null {
   const channel = channelId.trim();
@@ -444,6 +446,156 @@ type LarkIncomingEnvelope = {
   };
 };
 
+type LarkIncomingEvent = NonNullable<LarkIncomingEnvelope["event"]>;
+
+function isLarkLongConnectionEnabled(): boolean {
+  const raw = process.env.LARK_LONG_CONNECTION?.trim().toLowerCase();
+  if (!raw) return true;
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void> {
+  const message = event.message;
+  const senderOpenId = event.sender?.sender_id?.open_id?.trim() || "";
+  const channelId = message?.chat_id?.trim() || "";
+  const messageId = message?.message_id?.trim() || "";
+  const threadId = message?.root_id?.trim() || message?.parent_id?.trim() || messageId;
+  const isThreadReply = Boolean(message?.root_id || message?.parent_id);
+
+  if (!channelId || !messageId || !threadId || !senderOpenId) {
+    return;
+  }
+
+  if (!isAuthorizedLarkChannel(channelId)) {
+    return;
+  }
+
+  const botOpenId = await getBotOpenIdForChannel(channelId);
+  if (botOpenId && senderOpenId === botOpenId) {
+    return;
+  }
+
+  if (message?.message_type !== "text") {
+    return;
+  }
+
+  const mentions = parseMentionedOpenIds(message?.mentions);
+  const isMentioned = botOpenId ? mentions.includes(botOpenId) : false;
+  const active = isThreadActive(channelId, threadId);
+  const rawText = parseLarkText(message?.content);
+  const text = stripLarkMentionMarkup(rawText);
+
+  if (isSettingsCommand(text)) {
+    await sendSettingsCard(channelId, threadId);
+    return;
+  }
+
+  if (isThreadReply) {
+    if (!isMentioned && !active) {
+      return;
+    }
+  } else if (!isMentioned) {
+    return;
+  }
+
+  if (!text) {
+    return;
+  }
+
+  if (isStopCommand(text)) {
+    const stopped = await coreRuntime.handleStopCommand(channelId, threadId);
+    if (stopped) {
+      await sendMessage(channelId, threadId, "Request stopped.", true);
+    }
+    return;
+  }
+
+  markThreadActive(channelId, threadId);
+  await coreRuntime.handleIncomingMessage(
+    {
+      channelId,
+      replyThreadId: threadId,
+      threadId,
+      userId: senderOpenId,
+      messageId,
+    },
+    text
+  );
+}
+
+async function startLarkLongConnections(reason: string): Promise<void> {
+  if (!isLarkLongConnectionEnabled()) {
+    log.debug("Lark long connection disabled", { reason });
+    return;
+  }
+
+  const workspaces = getLarkAppCredentials();
+  const uniqueCredentials = new Map<string, { appId: string; appSecret: string }>();
+  for (const workspace of workspaces) {
+    if (!uniqueCredentials.has(workspace.appId)) {
+      uniqueCredentials.set(workspace.appId, {
+        appId: workspace.appId,
+        appSecret: workspace.appSecret,
+      });
+    }
+  }
+
+  for (const [appId, creds] of uniqueCredentials.entries()) {
+    if (wsClientRegistry.has(appId)) {
+      continue;
+    }
+
+    const eventDispatcher = new Lark.EventDispatcher({}).register({
+      "im.message.receive_v1": async (data: unknown) => {
+        try {
+          await processLarkIncomingEvent(data as LarkIncomingEvent);
+        } catch (error) {
+          log.warn("Failed to handle Lark long-connection message event", {
+            appId,
+            error: String(error),
+          });
+        }
+      },
+    });
+
+    const wsClient = new Lark.WSClient({
+      appId: creds.appId,
+      appSecret: creds.appSecret,
+      domain: Lark.Domain.Feishu,
+      loggerLevel: Lark.LoggerLevel.warn,
+    });
+
+    await Promise.resolve(
+      wsClient.start({
+        eventDispatcher,
+      })
+    );
+
+    wsClientRegistry.set(appId, wsClient);
+    log.info("Lark long connection started", { appId });
+  }
+}
+
+async function stopLarkLongConnections(reason: string): Promise<void> {
+  const entries = Array.from(wsClientRegistry.entries());
+  wsClientRegistry.clear();
+  for (const [appId, client] of entries) {
+    try {
+      const wsClient = client as { stop?: () => unknown | Promise<unknown> };
+      if (typeof wsClient.stop === "function") {
+        await Promise.resolve(wsClient.stop());
+      }
+      log.info("Lark long connection stopped", { appId, reason });
+    } catch (error) {
+      log.warn("Failed to stop Lark long connection", {
+        appId,
+        reason,
+        error: String(error),
+      });
+    }
+  }
+}
+
 export async function handleLarkEventPayload(payload: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
   if (!payload || typeof payload !== "object") {
     return { status: 400, body: { ok: false, error: "Invalid payload" } };
@@ -458,72 +610,9 @@ export async function handleLarkEventPayload(payload: unknown): Promise<{ status
     return { status: 200, body: { code: 0 } };
   }
 
-  const message = envelope.event?.message;
-  const senderOpenId = envelope.event?.sender?.sender_id?.open_id?.trim() || "";
-  const channelId = message?.chat_id?.trim() || "";
-  const messageId = message?.message_id?.trim() || "";
-  const threadId = message?.root_id?.trim() || message?.parent_id?.trim() || messageId;
-  const isThreadReply = Boolean(message?.root_id || message?.parent_id);
-
-  if (!channelId || !messageId || !threadId || !senderOpenId) {
-    return { status: 200, body: { code: 0 } };
+  if (envelope.event) {
+    await processLarkIncomingEvent(envelope.event);
   }
-
-  if (!isAuthorizedLarkChannel(channelId)) {
-    return { status: 200, body: { code: 0 } };
-  }
-
-  const botOpenId = await getBotOpenIdForChannel(channelId);
-  if (botOpenId && senderOpenId === botOpenId) {
-    return { status: 200, body: { code: 0 } };
-  }
-
-  if (message?.message_type !== "text") {
-    return { status: 200, body: { code: 0 } };
-  }
-
-  const mentions = parseMentionedOpenIds(message?.mentions);
-  const isMentioned = botOpenId ? mentions.includes(botOpenId) : false;
-  const active = isThreadActive(channelId, threadId);
-  const rawText = parseLarkText(message?.content);
-  const text = stripLarkMentionMarkup(rawText);
-
-  if (isSettingsCommand(text)) {
-    await sendSettingsCard(channelId, threadId);
-    return { status: 200, body: { code: 0 } };
-  }
-
-  if (isThreadReply) {
-    if (!isMentioned && !active) {
-      return { status: 200, body: { code: 0 } };
-    }
-  } else if (!isMentioned) {
-    return { status: 200, body: { code: 0 } };
-  }
-
-  if (!text) {
-    return { status: 200, body: { code: 0 } };
-  }
-
-  if (isStopCommand(text)) {
-    const stopped = await coreRuntime.handleStopCommand(channelId, threadId);
-    if (stopped) {
-      await sendMessage(channelId, threadId, "Request stopped.", true);
-    }
-    return { status: 200, body: { code: 0 } };
-  }
-
-  markThreadActive(channelId, threadId);
-  await coreRuntime.handleIncomingMessage(
-    {
-      channelId,
-      replyThreadId: threadId,
-      threadId,
-      userId: senderOpenId,
-      messageId,
-    },
-    text
-  );
 
   return { status: 200, body: { code: 0 } };
 }
@@ -543,12 +632,14 @@ export async function startLarkRuntime(reason: string): Promise<boolean> {
     reason,
     workspaceCount: workspaces.length,
   });
+  await startLarkLongConnections(reason);
   return true;
 }
 
 export async function stopLarkRuntime(reason: string): Promise<void> {
   if (!larkRuntimeStarted) return;
   larkRuntimeStarted = false;
+  await stopLarkLongConnections(reason);
   tenantTokenCache.clear();
   botOpenIdCache.clear();
   sentMessageThreadMap.clear();

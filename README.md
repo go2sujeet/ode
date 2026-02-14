@@ -51,6 +51,7 @@ Settings UI can be accessible via http://127.0.0.1:9293 or use `/setting` comman
 
 For Lark event subscriptions (Open Platform app), use callback endpoint: `POST /api/lark/event`.
 In Lark chats, send `/setting` to get a settings card and open local settings quickly.
+By default Ode also starts Lark long-connection mode (WS) when Lark app credentials are configured, so local testing can work without a public callback URL. Set `LARK_LONG_CONNECTION=false` to disable it.
 
 ![Channel](static/channel-setting.png)
 *Run `@bot /setting` to trigger setting dialog.*

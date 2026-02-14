@@ -49,6 +49,7 @@ ode
 
 Lark 开放平台事件订阅回调地址可使用：`POST /api/lark/event`。
 在 Lark 聊天里发送 `/setting` 可收到设置卡片并快速打开本地设置页面。
+默认情况下，只要配置了 Lark 凭据，Ode 也会启动 Lark 长连接（WS）模式，因此本地测试不需要公网回调地址。可通过 `LARK_LONG_CONNECTION=false` 关闭。
 
 ![Channel](static/channel-setting.png)
 *Run `@bot /setting` to trigger setting dialog.*
