@@ -443,14 +443,42 @@ function parseMentionedOpenIds(mentions: unknown): string[] {
   for (const mention of mentions) {
     if (!mention || typeof mention !== "object") continue;
     const record = mention as Record<string, unknown>;
+
+    const directOpenId = record.open_id;
+    if (typeof directOpenId === "string" && directOpenId.trim().length > 0) {
+      ids.push(directOpenId.trim());
+    }
+
+    const directUserId = record.user_id;
+    if (typeof directUserId === "string" && directUserId.trim().length > 0) {
+      ids.push(directUserId.trim());
+    }
+
+    const directKey = record.key;
+    if (typeof directKey === "string" && directKey.trim().length > 0) {
+      ids.push(directKey.trim());
+    }
+
     const idRecord = record.id;
     if (!idRecord || typeof idRecord !== "object") continue;
     const openId = (idRecord as Record<string, unknown>).open_id;
     if (typeof openId === "string" && openId.trim().length > 0) {
       ids.push(openId.trim());
     }
+
+    const userId = (idRecord as Record<string, unknown>).user_id;
+    if (typeof userId === "string" && userId.trim().length > 0) {
+      ids.push(userId.trim());
+    }
   }
-  return ids;
+  return Array.from(new Set(ids));
+}
+
+function isBotMentionedInText(rawText: string, botOpenId: string): boolean {
+  if (!rawText || !botOpenId) return false;
+  const escaped = botOpenId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`<at\\b[^>]*(?:open_id|user_id|id)\\s*=\\s*"${escaped}"[^>]*>`, "i");
+  return pattern.test(rawText);
 }
 
 type LarkIncomingEnvelope = {
@@ -538,10 +566,12 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  const mentions = parseMentionedOpenIds(message?.mentions);
-  const isMentioned = botOpenId ? mentions.includes(botOpenId) : false;
-  const active = isThreadActive(channelId, threadId);
   const rawText = parseLarkText(message?.content);
+  const mentions = parseMentionedOpenIds(message?.mentions);
+  const isMentioned = botOpenId
+    ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
+    : false;
+  const active = isThreadActive(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
 
   logLarkEvent("Lark inbound parsed", {
@@ -665,8 +695,7 @@ async function startLarkLongConnections(reason: string): Promise<void> {
     const wsClient = new Lark.WSClient({
       appId: creds.appId,
       appSecret: creds.appSecret,
-      domain: Lark.Domain.Feishu,
-      loggerLevel: Lark.LoggerLevel.warn,
+      loggerLevel: Lark.LoggerLevel.debug,
     });
 
     await Promise.resolve(
