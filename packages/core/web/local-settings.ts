@@ -73,6 +73,14 @@ type LarkBotInfoResponse = {
   };
 };
 
+type LarkTenantInfoResponse = {
+  code?: number;
+  msg?: string;
+  tenant?: {
+    name?: string;
+  };
+};
+
 type LarkChatListResponse = {
   code?: number;
   msg?: string;
@@ -393,11 +401,20 @@ export const discoverLarkWorkspace = async (
   const config = await readLocalSettings();
   const tenantAccessToken = await getLarkTenantAccessToken(appId, appSecret);
   let botInfo: LarkBotInfoResponse = {};
+  let tenantInfo: LarkTenantInfoResponse = {};
   let chatsResult: LarkChatListResponse = {};
   try {
     botInfo = await larkAuthedRequest<LarkBotInfoResponse>(tenantAccessToken, "/open-apis/bot/v3/info");
   } catch {
     botInfo = {};
+  }
+  try {
+    tenantInfo = await larkAuthedRequest<LarkTenantInfoResponse>(
+      tenantAccessToken,
+      "/open-apis/tenant/v2/tenant/query"
+    );
+  } catch {
+    tenantInfo = {};
   }
   try {
     chatsResult = await larkAuthedRequest<LarkChatListResponse>(
@@ -409,7 +426,10 @@ export const discoverLarkWorkspace = async (
   }
   const fallbackModel = config.agents.opencode.models[0] ?? "";
   const channelDetails = buildLarkChannelDetails(chatsResult.data?.items ?? [], null, fallbackModel);
-  const workspaceName = botInfo.bot?.app_name?.trim() || `Lark ${appId.slice(0, 8)}`;
+  const workspaceName =
+    tenantInfo.tenant?.name?.trim()
+    || botInfo.bot?.app_name?.trim()
+    || `Lark ${appId.slice(0, 8)}`;
 
   return {
     id: `lark-${appId}`,
@@ -446,6 +466,12 @@ export const syncLarkWorkspace = async (workspaceId: string): Promise<DashboardC
   }
 
   const token = await getLarkTenantAccessToken(appId, appSecret);
+  let tenantInfo: LarkTenantInfoResponse = {};
+  try {
+    tenantInfo = await larkAuthedRequest<LarkTenantInfoResponse>(token, "/open-apis/tenant/v2/tenant/query");
+  } catch {
+    tenantInfo = {};
+  }
   let chatsResult: LarkChatListResponse = {};
   try {
     chatsResult = await larkAuthedRequest<LarkChatListResponse>(token, "/open-apis/im/v1/chats?page_size=100");
@@ -458,6 +484,7 @@ export const syncLarkWorkspace = async (workspaceId: string): Promise<DashboardC
   const updatedWorkspace: DashboardConfig["workspaces"][number] = {
     ...workspace,
     type: "lark",
+    name: tenantInfo.tenant?.name?.trim() || workspace.name,
     channels: channelDetails.length,
     lastSync: new Date().toISOString(),
     channelDetails,

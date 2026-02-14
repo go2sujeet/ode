@@ -676,7 +676,7 @@ async function startLarkLongConnections(reason: string): Promise<void> {
     );
 
     wsClientRegistry.set(appId, wsClient);
-    log.info("Lark long connection started", { appId });
+    log.debug("Lark long connection started", { appId });
   }
 }
 
@@ -689,7 +689,7 @@ async function stopLarkLongConnections(reason: string): Promise<void> {
       if (typeof wsClient.stop === "function") {
         await Promise.resolve(wsClient.stop());
       }
-      log.info("Lark long connection stopped", { appId, reason });
+      log.debug("Lark long connection stopped", { appId, reason });
     } catch (error) {
       log.warn("Failed to stop Lark long connection", {
         appId,
