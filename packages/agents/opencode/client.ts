@@ -178,17 +178,49 @@ export async function sendMessage(
         throw new Error("OpenCode returned empty response");
       }
 
-      // Extract text from response parts
+      // Extract text from response in a few known shapes.
       const messages: OpenCodeMessage[] = [];
-      const responseParts = result.data.parts || [];
+      const data = result.data as Record<string, unknown>;
 
+      const pushText = (value: unknown): void => {
+        if (typeof value !== "string") return;
+        const text = value.trim();
+        if (!text) return;
+        messages.push({
+          text,
+          messageType: "assistant",
+        });
+      };
+
+      const responseParts = Array.isArray(data.parts) ? data.parts : [];
       for (const part of responseParts) {
-        if (part.type === "text" && part.text) {
-          messages.push({
-            text: part.text,
-            messageType: "assistant",
-          });
+        if (!part || typeof part !== "object") continue;
+        const record = part as Record<string, unknown>;
+        if (record.type === "text") {
+          pushText(record.text);
         }
+      }
+
+      if (messages.length === 0 && Array.isArray(data.messages)) {
+        for (const entry of data.messages) {
+          if (!entry || typeof entry !== "object") continue;
+          const record = entry as Record<string, unknown>;
+          pushText(record.text);
+          if (Array.isArray(record.parts)) {
+            for (const part of record.parts) {
+              if (!part || typeof part !== "object") continue;
+              const partRecord = part as Record<string, unknown>;
+              if (partRecord.type === "text") {
+                pushText(partRecord.text);
+              }
+            }
+          }
+        }
+      }
+
+      if (messages.length === 0) {
+        pushText(data.text);
+        pushText(data.output_text);
       }
 
       log.debug("OpenCode completed", { messageCount: messages.length });

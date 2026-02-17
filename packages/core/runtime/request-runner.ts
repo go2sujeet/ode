@@ -100,11 +100,16 @@ export async function runTrackedRequest(
     }
 
     if (result.responses.length === 0) {
-      log.warn("No text responses from model - tool-only response");
+      log.warn("No text responses from model - tool-only response", {
+        channelId: request.channelId,
+        threadId: request.threadId,
+        promptPreview: request.prompt.slice(0, 120),
+        currentText: request.currentText,
+      });
     }
 
     stateMachine.transition("complete");
-    const finalText = buildFinalResponseText(result.responses) ?? "_Done_";
+    const finalText = buildFinalResponseText(result.responses) ?? (request.currentText?.trim() || "_Done_");
     await publishFinalText(finalText);
     onComplete();
     return { responses: result.responses };
