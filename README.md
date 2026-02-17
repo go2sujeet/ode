@@ -8,11 +8,11 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 
 ## Highlight features
 
-* 🏖️ Coding from anywhere, just chat and get response in slack.
-* 🖇️ **Map coding session 1 - 1 to slack thread**, and use worktree to get isolated, parallel coding is so easy.
+* 🏖️ Coding from anywhere, just chat and get response in slack or discord.
+* 🖇️ **Map coding sessions 1 - 1 to chat threads**, and use worktree to get isolated, parallel coding is so easy.
 * 👬 Anyone in the channel can join coding without any extra setup, **pay one account for all team members**.
 * 📝 **Message live message updates**, you don't wait for response without any information, you can monitor from real-time text updates.
-* 🐙 **Per user git config**, who start the thread becomes corresponding git commit author. (Run @bot /gh)
+* 🐙 **Per user git config**, who start the thread becomes corresponding git commit author. (Run @bot /setting)
 
 ## Compare with OpenClaw
 
@@ -31,8 +31,10 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 ### Prerequisites
 
 - Configured OpenCode / Claude Code / Codex / Kimi Code... at least 1 coding cli.
-- Register a Slack Bot with Socket Mode enabled, have its APP TOKEN (xapp...) and BOT TOKEN (xbot..)
-  - Configuration and auth scope can be a little bit complicated if not so familiar with slack bots. If not sure, download [`slack-app-manifest.json`](https://raw.githubusercontent.com/odefun/ode/main/static/slack-app-manifest.json) and generate from the manifest file.
+- Choose one chatting app.
+  - Slack - Slack Bot with Socket Mode enabled, have its APP TOKEN (xapp...) and BOT TOKEN (xbot..). Configuration and auth scope can be a little bit complicated if not so familiar with slack bots. If not sure, download [`slack-app-manifest.json`](https://raw.githubusercontent.com/odefun/ode/main/static/slack-app-manifest.json) and generate from the manifest file.
+  - Discord - Discord Bot (real discord app, not webhook), have its BOT TOKEN.
+  - 飞书 Bot - Just CN version for now, as Lark global is not supportting long connection with socket yet. Prepare the larkAppId and larkAppSecret.
 
 ### Installation and Running
 
@@ -48,13 +50,6 @@ ode
 ```
 
 Settings UI can be accessible via http://127.0.0.1:9293 or use `/setting` command in slack like `@bot /setting`.
-
-For Lark event subscriptions (Open Platform app), use callback endpoint: `POST /api/lark/event`.
-In Lark chats, send `/setting` to get a settings card and open local settings quickly.
-By default Ode also starts Lark long-connection mode (WS) when Lark app credentials are configured, so local testing can work without a public callback URL. Set `LARK_LONG_CONNECTION=false` to disable it.
-
-![Channel](static/channel-setting.png)
-*Run `@bot /setting` to trigger setting dialog.*
 
 ## Agent List
 
