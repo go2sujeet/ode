@@ -186,6 +186,7 @@ async function fetchThreadHistory(
 }
 
 const discordAdapter: IMAdapter = {
+  maxEditableMessageChars: DISCORD_MESSAGE_LIMIT,
   sendMessage,
   updateMessage,
   deleteMessage,
@@ -196,6 +197,7 @@ const discordAdapter: IMAdapter = {
 };
 
 const coreRuntime = createCoreRuntime({
+  platform: "discord",
   im: discordAdapter,
   agent: createAgentAdapter(),
 });
@@ -214,6 +216,10 @@ function cleanBotMention(content: string, botUserId: string): string {
 
 function isStopCommand(text: string): boolean {
   return text.trim().toLowerCase() === "stop";
+}
+
+function isTopLevelMessage(message: any): boolean {
+  return !message.channel?.isThread?.();
 }
 
 function buildMeaningfulThreadName(text: string): string {
@@ -807,7 +813,7 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
           const configuredChannels = getDiscordTargetChannels();
 
-          if (message.channel.isThread()) {
+          if (!isTopLevelMessage(message)) {
             const parentId = message.channel.parentId;
             if (!parentId) return;
             if (configuredChannels && !configuredChannels.includes(parentId)) return;
@@ -956,3 +962,5 @@ export async function stopDiscordRuntime(reason: string): Promise<void> {
   statusMessageThreadMap.clear();
   log.debug("Discord runtime stopped", { reason });
 }
+
+export const recoverPendingRequests = coreRuntime.recoverPendingRequests;

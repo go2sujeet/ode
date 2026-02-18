@@ -27,6 +27,10 @@ export function createAgentAdapter(): AgentAdapter {
     getProviderForSession(sessionId) {
       return getProviderForSession(sessionId);
     },
+    getDisplayNameForSession(sessionId) {
+      const providerId = getProviderForSession(sessionId);
+      return getAgentProvider(providerId).getStaticConfig().displayName;
+    },
     async getOrCreateSession(channelId, threadId, cwd, env) {
       const providerId = getProviderForChannel(channelId);
       const provider = getAgentProvider(providerId);

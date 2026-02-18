@@ -484,6 +484,7 @@ async function fetchThreadHistory(
 }
 
 const slackAdapter: IMAdapter = {
+  maxEditableMessageChars: 35_000,
   sendMessage,
   updateMessage: updateMessageThrottled,
   deleteMessage,
@@ -493,6 +494,7 @@ const slackAdapter: IMAdapter = {
 };
 
 const coreRuntime = createCoreRuntime({
+  platform: "slack",
   im: slackAdapter,
   agent: createAgentAdapter(),
 });

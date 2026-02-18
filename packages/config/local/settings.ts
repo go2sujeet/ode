@@ -4,7 +4,7 @@ import * as os from "os";
 import {
   setChannelCwd as setChannelCwdInConfig,
 } from "./ode";
-import { loadSession } from "./sessions";
+import { loadSession, updateSessionIdForThread } from "./sessions";
 
 const readFileSync = fs.readFileSync;
 const writeFileSync = fs.writeFileSync;
@@ -228,25 +228,21 @@ export function deleteChannelAgentInstructions(
 }
 
 // Session management (one session per thread)
-export function getThreadSessionId(channelId: string, threadId: string): string | null {
-  const channelSettings = getChannelSettings(channelId);
-  const stored = channelSettings.threadSessions[threadId];
-  if (stored) return stored;
-
+export function getThreadSessionId(
+  channelId: string,
+  threadId: string,
+  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen"
+): string | null {
   const session = loadSession(channelId, threadId);
   if (!session?.sessionId) return null;
-
-  channelSettings.threadSessions[threadId] = session.sessionId;
-  updateChannelSettings(channelId, { threadSessions: channelSettings.threadSessions });
+  if (providerId && session.providerId !== providerId) {
+    return null;
+  }
   return session.sessionId;
 }
 
 export function setThreadSessionId(channelId: string, threadId: string, sessionId: string): void {
-  const channelSettings = getChannelSettings(channelId);
-  channelSettings.threadSessions[threadId] = sessionId;
-  updateChannelSettings(channelId, {
-    threadSessions: channelSettings.threadSessions,
-  });
+  updateSessionIdForThread(channelId, threadId, sessionId);
 }
 
 export function clearThreadSessions(channelId: string): void {

@@ -14,6 +14,10 @@ import type {
 
 export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
 
+export type AgentStaticConfig = {
+  displayName: string;
+};
+
 export type AgentProvider = {
   id: AgentProviderId;
   supportsEventStream: boolean;
@@ -38,6 +42,7 @@ export type AgentProvider = {
   cancelActiveRequest: (channelId: string, sessionId: string, directory?: string) => Promise<boolean>;
   ensureSession: (sessionId: string) => Promise<void>;
   subscribeToSession: (sessionId: string, handler: (event: unknown) => void) => () => void;
+  getStaticConfig: () => AgentStaticConfig;
 };
 
 const providers: Record<AgentProviderId, AgentProvider> = {
@@ -53,6 +58,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: opencode.cancelActiveRequest,
     ensureSession: opencode.ensureSession,
     subscribeToSession: opencode.subscribeToSession,
+    getStaticConfig: opencode.getStaticConfig,
   },
   claudecode: {
     id: "claudecode",
@@ -66,6 +72,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: claude.cancelActiveRequest,
     ensureSession: claude.ensureSession,
     subscribeToSession: claude.subscribeToSession,
+    getStaticConfig: claude.getStaticConfig,
   },
   codex: {
     id: "codex",
@@ -79,6 +86,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: codex.cancelActiveRequest,
     ensureSession: codex.ensureSession,
     subscribeToSession: codex.subscribeToSession,
+    getStaticConfig: codex.getStaticConfig,
   },
   kimi: {
     id: "kimi",
@@ -92,6 +100,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: kimi.cancelActiveRequest,
     ensureSession: kimi.ensureSession,
     subscribeToSession: kimi.subscribeToSession,
+    getStaticConfig: kimi.getStaticConfig,
   },
   kiro: {
     id: "kiro",
@@ -105,6 +114,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: kiro.cancelActiveRequest,
     ensureSession: kiro.ensureSession,
     subscribeToSession: kiro.subscribeToSession,
+    getStaticConfig: kiro.getStaticConfig,
   },
   kilo: {
     id: "kilo",
@@ -118,6 +128,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: kilo.cancelActiveRequest,
     ensureSession: kilo.ensureSession,
     subscribeToSession: kilo.subscribeToSession,
+    getStaticConfig: kilo.getStaticConfig,
   },
   qwen: {
     id: "qwen",
@@ -131,6 +142,7 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     cancelActiveRequest: qwen.cancelActiveRequest,
     ensureSession: qwen.ensureSession,
     subscribeToSession: qwen.subscribeToSession,
+    getStaticConfig: qwen.getStaticConfig,
   },
 };
 

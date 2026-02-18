@@ -240,10 +240,9 @@ async function sendMessage(
   text: string,
   _asMarkdown = true
 ): Promise<string | undefined> {
-  const isThreadMessage = Boolean(threadId && isThreadActive(channelId, threadId));
   return sendLarkMessage({
     channelId,
-    threadId: isThreadMessage ? threadId : "",
+    threadId: threadId || "",
     msgType: "text",
     content: { text },
   });
@@ -432,6 +431,7 @@ async function fetchThreadHistory(
 }
 
 const larkAdapter: IMAdapter = {
+  maxEditableMessageChars: 30_000,
   sendMessage,
   updateMessage,
   deleteMessage,
@@ -441,6 +441,7 @@ const larkAdapter: IMAdapter = {
 };
 
 const coreRuntime = createCoreRuntime({
+  platform: "lark",
   im: larkAdapter,
   agent: createAgentAdapter(),
 });
@@ -553,13 +554,17 @@ function isLarkLongConnectionEnabled(): boolean {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
+function isTopLevelMessage(message: LarkIncomingEvent["message"]): boolean {
+  return !(message?.root_id || message?.parent_id);
+}
+
 async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void> {
   const message = event.message;
   const senderOpenId = event.sender?.sender_id?.open_id?.trim() || "";
   const channelId = message?.chat_id?.trim() || "";
   const messageId = message?.message_id?.trim() || "";
   const threadId = message?.root_id?.trim() || message?.parent_id?.trim() || messageId;
-  const isThreadReply = Boolean(message?.root_id || message?.parent_id);
+  const topLevelMessage = isTopLevelMessage(message);
 
   logLarkEvent("Lark inbound event received", {
     channelId,
@@ -567,7 +572,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     threadId,
     senderOpenId,
     messageType: message?.message_type ?? "",
-    isThreadReply,
+    isThreadReply: !topLevelMessage,
     hasMentions: Array.isArray(message?.mentions),
   });
 
@@ -587,7 +592,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   }
 
   const botOpenId = await getBotOpenIdForChannel(channelId);
-  if (isThreadReply && botOpenId && senderOpenId === botOpenId) {
+  if (!topLevelMessage && botOpenId && senderOpenId === botOpenId) {
     logLarkEvent("Lark inbound ignored: self message", {
       channelId,
       messageId,
@@ -636,7 +641,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (isThreadReply) {
+  if (!topLevelMessage) {
     if (!isMentioned && !active) {
       logLarkEvent("Lark inbound ignored: thread reply without mention and inactive thread", {
         channelId,
@@ -825,3 +830,5 @@ export async function stopLarkRuntime(reason: string): Promise<void> {
   sentMessageThreadMap.clear();
   log.debug("Lark runtime stopped", { reason });
 }
+
+export const recoverPendingRequests = coreRuntime.recoverPendingRequests;

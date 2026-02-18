@@ -1,2 +1,6 @@
 export * from "./api";
-export { startDiscordRuntime, stopDiscordRuntime } from "./client";
+export {
+  startDiscordRuntime,
+  stopDiscordRuntime,
+  recoverPendingRequests as recoverDiscordPendingRequests,
+} from "./client";

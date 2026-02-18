@@ -66,7 +66,7 @@ export async function getOrCreateSession(
   workingPath: string,
   env: SessionEnvironment = {}
 ): Promise<OpenCodeSessionInfo> {
-  const existingSession = getThreadSessionId(channelId, threadId);
+  const existingSession = getThreadSessionId(channelId, threadId, "claudecode");
   if (existingSession) {
     if (!isValidUuid(existingSession)) {
       log.info("Invalid Claude session id found; generating new session", {

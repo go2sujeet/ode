@@ -383,7 +383,7 @@ export async function getOrCreateSession(
   workingPath: string,
   env: SessionEnvironment = {}
 ): Promise<OpenCodeSessionInfo> {
-  const existingSession = getThreadSessionId(channelId, threadId);
+  const existingSession = getThreadSessionId(channelId, threadId, "kilo");
   if (existingSession) {
     if (!isValidKiloSessionId(existingSession)) {
       log.info("Invalid Kilo session id found; generating new session", {

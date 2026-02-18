@@ -51,10 +51,41 @@ export async function runTrackedRequest(
     failureLogLabel,
   } = params;
 
-  const progressTimer = setInterval(async () => {
+  let progressInFlight = false;
+  let progressPending = false;
+  let progressDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const runProgressTick = async (): Promise<void> => {
     if (request.state !== "processing") return;
-    await onProgressTick();
-  }, 2000);
+    if (progressInFlight) {
+      progressPending = true;
+      return;
+    }
+    progressInFlight = true;
+    try {
+      await onProgressTick();
+    } finally {
+      progressInFlight = false;
+      if (progressPending) {
+        progressPending = false;
+        void runProgressTick();
+      }
+    }
+  };
+
+  const scheduleProgressTick = (): void => {
+    if (progressDebounceTimer) {
+      clearTimeout(progressDebounceTimer);
+    }
+    progressDebounceTimer = setTimeout(() => {
+      progressDebounceTimer = null;
+      void runProgressTick();
+    }, 250);
+  };
+
+  const progressTimer = setInterval(() => {
+    void runProgressTick();
+  }, 5000);
 
   const stopSignal = createDeferred<void>();
   const stopWatcher = await startEventStreamWatcher({
@@ -64,7 +95,7 @@ export async function runTrackedRequest(
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    onUpdate: () => {},
+    onUpdate: scheduleProgressTick,
     onStop: () => {
       stopSignal.resolve();
     },
@@ -79,6 +110,10 @@ export async function runTrackedRequest(
     ]);
 
     clearInterval(progressTimer);
+    if (progressDebounceTimer) {
+      clearTimeout(progressDebounceTimer);
+      progressDebounceTimer = null;
+    }
     stopWatcher();
     request.state = "completed";
 
@@ -115,6 +150,10 @@ export async function runTrackedRequest(
     return { responses: result.responses };
   } catch (err) {
     clearInterval(progressTimer);
+    if (progressDebounceTimer) {
+      clearTimeout(progressDebounceTimer);
+      progressDebounceTimer = null;
+    }
     stopWatcher();
 
     stateMachine.transition("fail");

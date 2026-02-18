@@ -10,3 +10,7 @@ export {
   stopServer,
   type SessionEnvironment,
 } from "./client";
+
+export function getStaticConfig(): { displayName: string } {
+  return { displayName: "Codex" };
+}

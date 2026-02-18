@@ -6,6 +6,7 @@ function makeFakeAgentAdapter(): AgentAdapter {
   return {
     supportsEventStream: false,
     getProviderForSession: () => "opencode",
+    getDisplayNameForSession: () => "OpenCode",
     getOrCreateSession: async () => ({ sessionId: "s1", created: true }),
     sendMessage: async () => [{ text: "ok", messageType: "assistant" }],
     abortSession: async () => {},

@@ -3,7 +3,7 @@ import {
   setupMessageHandlers,
   setupInteractiveHandlers,
   stopOAuthServer,
-  recoverPendingRequests,
+  recoverPendingRequestsAcrossPlatforms,
   initializeWorkspaceAuth,
   clearSlackAuthState,
   resetSlackState,
@@ -319,13 +319,13 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+  // Give connections time to establish before recovery
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // Recover any interrupted requests from previous run
+  await recoverPendingRequestsAcrossPlatforms();
+
   if (slackApps.length > 0) {
-    // Give socket connection time to fully establish before recovery
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Recover any interrupted requests from previous run
-    await recoverPendingRequests();
-
     log.debug("Bot is running in Socket Mode");
   }
 

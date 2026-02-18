@@ -2,8 +2,11 @@ import { clearActiveRequest, getSessionsWithPendingRequests } from "@/config/loc
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
 
-export async function recoverPendingRequests(im: IMAdapter): Promise<void> {
-  const pendingSessions = getSessionsWithPendingRequests();
+export async function recoverPendingRequests(
+  im: IMAdapter,
+  platform?: "slack" | "discord" | "lark"
+): Promise<void> {
+  const pendingSessions = getSessionsWithPendingRequests(platform);
 
   if (pendingSessions.length === 0) {
     log.debug("No pending requests to recover");
@@ -28,7 +31,7 @@ export async function recoverPendingRequests(im: IMAdapter): Promise<void> {
     }
 
     await im.updateMessage(
-      request.replyThreadId || request.channelId,
+      request.channelId,
       request.statusMessageTs,
       "_Bot restarted - please resend your message_",
       false

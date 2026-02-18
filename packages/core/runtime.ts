@@ -28,6 +28,7 @@ import { runOpenRequest } from "@/core/runtime/open-request";
 import type { OpenCodeOptions } from "@/agents";
 
 type RuntimeDeps = {
+  platform: "slack" | "discord" | "lark";
   im: IMAdapter;
   agent: AgentAdapter;
 };
@@ -153,8 +154,9 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       return;
     }
 
-    if (text.length > 2800) {
-      await deps.im.updateMessage(channelId, statusTs, "_Response posted below._", false);
+    const maxEditableMessageChars = deps.im.maxEditableMessageChars;
+    if (typeof maxEditableMessageChars === "number" && text.length > maxEditableMessageChars) {
+      await deps.im.updateMessage(channelId, statusTs, "_Final result posted below._", false);
       await deps.im.sendMessage(channelId, threadId, text, true);
       return;
     }
@@ -219,7 +221,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       sessionId,
       cwd,
       message: text,
-      phaseLabel: "Working",
       stateMachine,
       agentContext,
       options,
@@ -301,7 +302,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
   }
 
   async function recoverPendingRequests(): Promise<void> {
-    await recoverPendingRequestsInternal(deps.im);
+    await recoverPendingRequestsInternal(deps.im, deps.platform);
   }
 
   return {

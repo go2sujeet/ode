@@ -7,6 +7,7 @@ import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
 import { log } from "@/utils";
 
 type BootstrapDeps = {
+  platform: "slack" | "discord" | "lark";
   im: IMAdapter;
   agent: AgentAdapter;
 };
@@ -92,6 +93,8 @@ export async function prepareRuntimeSession(params: {
   if (!session) {
     session = {
       sessionId,
+      providerId: deps.agent.getProviderForSession(sessionId),
+      platform: deps.platform,
       channelId,
       threadId,
       workingDirectory: cwd,
@@ -101,6 +104,15 @@ export async function prepareRuntimeSession(params: {
     };
   } else if (session.sessionId !== sessionId) {
     session.sessionId = sessionId;
+  }
+
+  const providerId = deps.agent.getProviderForSession(sessionId);
+  if (session.providerId !== providerId) {
+    session.providerId = providerId;
+  }
+
+  if (session.platform !== deps.platform) {
+    session.platform = deps.platform;
   }
 
   if (session.workingDirectory !== cwd) {

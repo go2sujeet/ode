@@ -64,6 +64,8 @@ export interface PersistedSession {
   sessionId: string;
   channelId: string;
   threadId: string;
+  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+  platform?: "slack" | "discord" | "lark";
   workingDirectory: string;
   threadOwnerUserId?: string;
   branchName?: string;
@@ -280,10 +282,20 @@ export function loadAllSessions(): PersistedSession[] {
   return sessions;
 }
 
-export function getSessionsWithPendingRequests(): PersistedSession[] {
-  return loadAllSessions().filter(
-    s => s.activeRequest && s.activeRequest.state === "processing"
-  );
+export function getSessionsWithPendingRequests(platform?: "slack" | "discord" | "lark"): PersistedSession[] {
+  return loadAllSessions().filter((s) => {
+    if (!s.activeRequest || s.activeRequest.state !== "processing") return false;
+    if (!platform) return true;
+    return s.platform === platform;
+  });
+}
+
+export function updateSessionIdForThread(channelId: string, threadId: string, sessionId: string): void {
+  const session = loadSession(channelId, threadId);
+  if (!session) return;
+  if (session.sessionId === sessionId) return;
+  session.sessionId = sessionId;
+  saveSession(session);
 }
 
 export function findReplyThreadIdByStatusMessageTs(messageTs: string): string | null {

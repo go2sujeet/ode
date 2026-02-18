@@ -348,7 +348,7 @@ export async function getOrCreateSession(
   workingPath: string,
   env: SessionEnvironment = {}
 ): Promise<OpenCodeSessionInfo> {
-  const existingSession = getThreadSessionId(channelId, threadId);
+  const existingSession = getThreadSessionId(channelId, threadId, "kiro");
   if (existingSession) {
     const existingEnv = normalizeSessionEnvironment(runtime.getSessionEnvironment(existingSession));
     const desiredEnv = normalizeSessionEnvironment(env);
