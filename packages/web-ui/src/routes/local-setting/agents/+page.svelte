@@ -69,6 +69,15 @@
       {/if}
     </div>
 
+    <div class="agent-row">
+      <strong>Goose CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <span class="badge {$localSettingStore.cliCheckResult.goose ? 'on' : 'off'}">
+          {$localSettingStore.cliCheckResult.goose ? "Installed" : "Not found"}
+        </span>
+      {/if}
+    </div>
+
     <div class="agent-row opencode-row">
       <strong>OpenCode CLI</strong>
       {#if $localSettingStore.cliCheckResult}

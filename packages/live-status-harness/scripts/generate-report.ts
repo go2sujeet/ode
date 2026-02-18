@@ -8,7 +8,7 @@ import { buildSessionMessageState } from "@/utils/session-inspector";
 
 const DEFAULT_OUTPUT_PATH = "packages/live-status-harness/reports/agent-live-status.md";
 const DEFAULT_OUTPUT_DIR = "packages/live-status-harness/reports";
-const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"];
+const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"];
 const OPENCODE_REPORT_MODEL = "openai/gpt-5.3-codex";
 const REPORT_LAYOUTS = ["split", "combined", "both"] as const;
 
@@ -47,7 +47,7 @@ function parseProviders(raw: string | undefined): AgentProviderId[] {
 
   const providers = parsed.filter(
     (value): value is AgentProviderId =>
-      value === "opencode" || value === "claudecode" || value === "codex" || value === "kimi" || value === "kiro" || value === "kilo" || value === "qwen"
+      value === "opencode" || value === "claudecode" || value === "codex" || value === "kimi" || value === "kiro" || value === "kilo" || value === "qwen" || value === "goose"
   );
 
   return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
@@ -185,21 +185,23 @@ async function runProvider(
   capturePath: string,
   renderPath: string,
   store: HarnessRedisStore,
-  options: { cwd: string; promptFile?: string; redisPrefix?: string }
+  options: { cwd: string; promptFile?: string; redisPrefix?: string; runId?: string }
 ): Promise<ProviderRunSummary> {
-  const runId = buildHarnessRunId(provider);
-  const captureArgs = ["--provider", provider, "--run-id", runId, "--cwd", options.cwd];
-  if (provider === "opencode") {
-    captureArgs.push("--model", OPENCODE_REPORT_MODEL);
-  }
-  if (options.promptFile) {
-    captureArgs.push("--prompt-file", options.promptFile);
-  }
-  if (options.redisPrefix) {
-    captureArgs.push("--redis-prefix", options.redisPrefix);
-  }
+  const runId = options.runId || buildHarnessRunId(provider);
+  if (!options.runId) {
+    const captureArgs = ["--provider", provider, "--run-id", runId, "--cwd", options.cwd];
+    if (provider === "opencode") {
+      captureArgs.push("--model", OPENCODE_REPORT_MODEL);
+    }
+    if (options.promptFile) {
+      captureArgs.push("--prompt-file", options.promptFile);
+    }
+    if (options.redisPrefix) {
+      captureArgs.push("--redis-prefix", options.redisPrefix);
+    }
 
-  await runHarnessScript(capturePath, captureArgs);
+    await runHarnessScript(capturePath, captureArgs);
+  }
 
   const renderArgs = ["--run-id", runId];
   if (options.redisPrefix) {
@@ -210,6 +212,9 @@ async function runProvider(
   const meta = await store.getRunMeta(runId);
   if (!meta) {
     throw new Error(`Run metadata missing for ${runId}`);
+  }
+  if (options.runId && meta.provider !== provider) {
+    throw new Error(`Run ${runId} belongs to provider ${meta.provider}, expected ${provider}`);
   }
 
   const events = await store.getRunEvents(runId);
@@ -253,6 +258,7 @@ async function runProvider(
 
 async function main(): Promise<void> {
   const providers = parseProviders(parseArg("providers"));
+  const runIdArg = parseArg("run-id");
   const layout = parseLayout(parseArg("layout"));
   const redisPrefix = parseArg("redis-prefix");
   const promptFile = parseArg("prompt-file");
@@ -272,12 +278,17 @@ async function main(): Promise<void> {
   const summaries: ProviderRunSummary[] = [];
 
   try {
+    if (runIdArg && providers.length !== 1) {
+      throw new Error("--run-id requires exactly one provider in --providers");
+    }
+
     for (const provider of providers) {
       try {
         const summary = await runProvider(provider, capturePath, renderPath, store, {
           cwd,
           promptFile,
           redisPrefix,
+          runId: runIdArg,
         });
         summaries.push(summary);
       } catch (error) {

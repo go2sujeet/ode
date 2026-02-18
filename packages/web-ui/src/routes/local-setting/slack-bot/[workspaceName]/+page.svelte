@@ -5,7 +5,7 @@
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath, slugify } from "$lib/local-setting/workspaces";
 
-  type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+  type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
 
   const providerLabels: Record<AgentProvider, string> = {
     opencode: "OpenCode",
@@ -15,6 +15,7 @@
     kiro: "Kiro",
     kilo: "Kilo",
     qwen: "Qwen Code",
+    goose: "Goose",
   };
 
   const agentProviders = Object.keys(providerLabels) as AgentProvider[];
@@ -32,7 +33,8 @@
     if (provider === "kimi") return $localSettingStore.config.agents.kimi.enabled;
     if (provider === "kiro") return $localSettingStore.config.agents.kiro.enabled;
     if (provider === "kilo") return $localSettingStore.config.agents.kilo.enabled;
-    return $localSettingStore.config.agents.qwen.enabled;
+    if (provider === "qwen") return $localSettingStore.config.agents.qwen.enabled;
+    return $localSettingStore.config.agents.goose.enabled;
   }
 
   let isCanonicalizingWorkspaceRoute = false;

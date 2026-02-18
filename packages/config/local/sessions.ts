@@ -64,7 +64,7 @@ export interface PersistedSession {
   sessionId: string;
   channelId: string;
   threadId: string;
-  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
   platform?: "slack" | "discord" | "lark";
   workingDirectory: string;
   threadOwnerUserId?: string;

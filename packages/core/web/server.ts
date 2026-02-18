@@ -50,6 +50,7 @@ type JsonResponse = {
     kiro: boolean;
     kilo: boolean;
     qwen: boolean;
+    goose: boolean;
   };
   providers?: unknown;
   result?: unknown;
@@ -755,6 +756,7 @@ async function handleRequest(request: Request): Promise<Response> {
         kiro: Boolean(Bun.which("kiro-cli") || Bun.which("kiro")),
         kilo: kiloAvailable,
         qwen: Boolean(Bun.which("qwen") || Bun.which("qwen-code")),
+        goose: Boolean(Bun.which("goose")),
         opencodeModels,
         opencodeModelError,
         kiloModels,

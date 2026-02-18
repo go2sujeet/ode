@@ -155,6 +155,7 @@
     if (meta?.agentProvider === "kiro" || meta?.sessionId?.startsWith("kiro_")) return "kiro";
     if (meta?.agentProvider === "kilo" || meta?.sessionId?.startsWith("kilo_")) return "kilo";
     if (meta?.agentProvider === "qwen" || meta?.sessionId?.startsWith("qwen_")) return "qwen";
+    if (meta?.agentProvider === "goose" || meta?.sessionId?.startsWith("goose_")) return "goose";
     if (meta?.sessionId?.startsWith("claude_") || meta?.sessionId?.startsWith("claudecode_")) {
       return "claudecode";
     }
@@ -168,6 +169,7 @@
     if (provider === "kiro") return "Kiro";
     if (provider === "kilo") return "Kilo";
     if (provider === "qwen") return "Qwen Code";
+    if (provider === "goose") return "Goose";
     return "OpenCode";
   }
 </script>

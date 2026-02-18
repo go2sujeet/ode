@@ -5,6 +5,7 @@ import * as kiro from "./kiro";
 import * as kilo from "./kilo";
 import * as opencode from "./opencode";
 import * as qwen from "./qwen";
+import * as goose from "./goose";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -12,7 +13,7 @@ import type {
   OpenCodeSessionInfo,
 } from "./types";
 
-export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
 
 export type AgentStaticConfig = {
   displayName: string;
@@ -144,6 +145,20 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     subscribeToSession: qwen.subscribeToSession,
     getStaticConfig: qwen.getStaticConfig,
   },
+  goose: {
+    id: "goose",
+    supportsEventStream: false,
+    startServer: goose.startServer,
+    stopServer: goose.stopServer,
+    createSession: goose.createSession,
+    getOrCreateSession: goose.getOrCreateSession,
+    sendMessage: goose.sendMessage,
+    abortSession: goose.abortSession,
+    cancelActiveRequest: goose.cancelActiveRequest,
+    ensureSession: goose.ensureSession,
+    subscribeToSession: goose.subscribeToSession,
+    getStaticConfig: goose.getStaticConfig,
+  },
 };
 
 export function getSelectedAgentProviderId(): AgentProviderId {
@@ -154,6 +169,7 @@ export function getSelectedAgentProviderId(): AgentProviderId {
   if (raw === "kiro") return "kiro";
   if (raw === "kilo") return "kilo";
   if (raw === "qwen") return "qwen";
+  if (raw === "goose") return "goose";
   return "opencode";
 }
 

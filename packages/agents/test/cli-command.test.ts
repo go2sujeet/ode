@@ -7,6 +7,7 @@ import { buildKimiCommand, buildKimiCommandArgs } from "../kimi/client";
 import { buildKiroCommand, buildKiroCommandArgs } from "../kiro/client";
 import { buildKiloCommand, buildKiloCommandArgs } from "../kilo/client";
 import { buildQwenCommand, buildQwenCommandArgs } from "../qwen/client";
+import { buildGooseCommand, buildGooseCommandArgs } from "../goose/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -208,5 +209,31 @@ describe("agent cli command formatting", () => {
 
     expect(command).toContain("--yolo");
     expect(command).not.toContain("--approval-mode plan");
+  });
+
+  it("builds the Goose run command", () => {
+    const args = buildGooseCommandArgs({
+      sessionId: "session-8",
+      isNewSession: true,
+      prompt: "hello from goose",
+    });
+    const command = buildGooseCommand(args);
+
+    expect(command).toContain("goose run --output-format stream-json");
+    expect(command).toContain("--name session-8");
+    expect(command).toContain("-t 'hello from goose'");
+    expect(command).not.toContain("--resume");
+  });
+
+  it("builds the Goose resume command", () => {
+    const args = buildGooseCommandArgs({
+      sessionId: "session-9",
+      isNewSession: false,
+      prompt: "resume this",
+    });
+    const command = buildGooseCommand(args);
+
+    expect(command).toContain("--resume");
+    expect(command).toContain("--name session-9");
   });
 });

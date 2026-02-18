@@ -34,6 +34,9 @@ export type DashboardConfig = {
     qwen: {
       enabled: boolean;
     };
+    goose: {
+      enabled: boolean;
+    };
   };
   workspaces: {
     id: string;
@@ -53,7 +56,7 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
-      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
       model: string;
       workingDirectory: string;
       baseBranch: string;
@@ -90,6 +93,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     kiro: { enabled: true },
     kilo: { enabled: true, models: [] },
     qwen: { enabled: true },
+    goose: { enabled: true },
   },
   workspaces: [],
 };
@@ -129,7 +133,7 @@ const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status
 
 const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<
   DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]
->>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"]);
+>>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"]);
 
 function isKnownAgentProvider(
   value: string
@@ -249,6 +253,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const qwenRecord = agentsRecord.qwen && typeof agentsRecord.qwen === "object"
     ? (agentsRecord.qwen as Record<string, unknown>)
     : {};
+  const gooseRecord = agentsRecord.goose && typeof agentsRecord.goose === "object"
+    ? (agentsRecord.goose as Record<string, unknown>)
+    : {};
 
   const opencodeModels = asStringArray(opencodeRecord.models);
   const codexModels = asStringArray(codexRecord.models);
@@ -291,6 +298,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       },
       qwen: {
         enabled: qwenRecord.enabled !== false,
+      },
+      goose: {
+        enabled: gooseRecord.enabled !== false,
       },
     },
     workspaces,
