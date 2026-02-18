@@ -12,7 +12,7 @@ import {
 } from "@/config";
 import { discoverDiscordWorkspace, discoverLarkWorkspace, discoverSlackWorkspace } from "./web/local-settings";
 
-type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
 
 type AgentOption = {
   id: AgentId;
@@ -29,6 +29,7 @@ const agentOptions: Omit<AgentOption, "installed">[] = [
   { id: "kiro", label: "Kiro", command: "kiro-cli" },
   { id: "kilo", label: "Kilo", command: "kilo" },
   { id: "qwen", label: "Qwen Code", command: "qwen" },
+  { id: "goose", label: "Goose", command: "goose" },
 ];
 
 function isAgentCommandAvailable(agent: Omit<AgentOption, "installed">): boolean {
@@ -414,6 +415,10 @@ async function setupCodingAgents(rl: Interface, config: OdeConfig): Promise<OdeC
         ...config.agents.qwen,
         enabled: selectedIds.has("qwen"),
       },
+      goose: {
+        ...config.agents.goose,
+        enabled: selectedIds.has("goose"),
+      },
     },
   };
 
@@ -462,6 +467,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
       nextConfig.agents.kiro.enabled ? "Kiro" : null,
       nextConfig.agents.kilo.enabled ? "Kilo" : null,
       nextConfig.agents.qwen.enabled ? "Qwen Code" : null,
+      nextConfig.agents.goose.enabled ? "Goose" : null,
     ].filter((value): value is string => Boolean(value));
     console.log("Onboarding complete.");
     console.log(`Workspaces: ${nextConfig.workspaces.length}`);

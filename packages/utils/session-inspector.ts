@@ -8,6 +8,7 @@ import { applyKiroRecordToState, extractKiroRecord } from "@/agents/kiro/session
 import { applyKimiRecordToState, extractKimiRecord } from "@/agents/kimi/session-state";
 import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session-state";
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
+import { applyGooseRecordToState, extractGooseRecord } from "@/agents/goose/session-state";
 
 export type SessionEvent = {
   timestamp: number;
@@ -198,6 +199,17 @@ export function buildSessionMessageState(
     const qwenRecord = extractQwenRecord(type, eventData, eventProps);
     if (qwenRecord) {
       applyQwenRecordToState(state, qwenRecord, {
+        textByIndex: claudeTextByIndex,
+        thinkingByIndex: claudeThinkingByIndex,
+        toolByIndex: claudeToolByIndex,
+        toolById: claudeToolById,
+      });
+      continue;
+    }
+
+    const gooseRecord = extractGooseRecord(type, eventData, eventProps);
+    if (gooseRecord) {
+      applyGooseRecordToState(state, gooseRecord, {
         textByIndex: claudeTextByIndex,
         thinkingByIndex: claudeThinkingByIndex,
         toolByIndex: claudeToolByIndex,

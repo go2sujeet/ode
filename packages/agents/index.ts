@@ -15,6 +15,7 @@ const kimiProvider = getAgentProvider("kimi");
 const kiroProvider = getAgentProvider("kiro");
 const kiloProvider = getAgentProvider("kilo");
 const qwenProvider = getAgentProvider("qwen");
+const gooseProvider = getAgentProvider("goose");
 
 export const selectedAgent = agent.id;
 export const supportsEventStream = agent.supportsEventStream;
@@ -38,5 +39,6 @@ export async function stopAllServers(): Promise<void> {
     Promise.resolve().then(() => kiroProvider.stopServer()),
     Promise.resolve().then(() => kiloProvider.stopServer()),
     Promise.resolve().then(() => qwenProvider.stopServer()),
+    Promise.resolve().then(() => gooseProvider.stopServer()),
   ]);
 }

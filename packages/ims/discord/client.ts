@@ -48,7 +48,7 @@ const DISCORD_MODAL_CHANNEL = "ode:modal:channel_details";
 const DISCORD_MODAL_GITHUB = "ode:modal:github";
 const STATUS_FORMAT_OPTIONS = ["aggressive", "medium", "minimum"] as const;
 const GIT_STRATEGY_OPTIONS = ["worktree", "default"] as const;
-const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen"] as const;
+const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"] as const;
 const DISCORD_LAUNCHER_COMMANDS = [
   {
     name: "setting",
@@ -747,7 +747,7 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
     }
 
     setChannelAgentProvider(channelId, draft.provider);
-    if (draft.provider === "claudecode" || draft.provider === "kimi" || draft.provider === "kiro" || draft.provider === "qwen") {
+    if (draft.provider === "claudecode" || draft.provider === "kimi" || draft.provider === "kiro" || draft.provider === "qwen" || draft.provider === "goose") {
       setChannelModel(channelId, "");
     } else {
       setChannelModel(channelId, draft.model);

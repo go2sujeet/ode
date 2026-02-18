@@ -42,6 +42,11 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("qwen");
   });
 
+  it("selects goose from env", () => {
+    process.env.ODE_AGENT_PROVIDER = "goose";
+    expect(getSelectedAgentProviderId()).toBe("goose");
+  });
+
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
     const claudecode = getAgentProvider("claudecode");
@@ -49,11 +54,13 @@ describe("agent registry", () => {
     const kiro = getAgentProvider("kiro");
     const kilo = getAgentProvider("kilo");
     const qwen = getAgentProvider("qwen");
+    const goose = getAgentProvider("goose");
     expect(opencode.supportsEventStream).toBe(true);
     expect(claudecode.supportsEventStream).toBe(false);
     expect(kimi.supportsEventStream).toBe(false);
     expect(kiro.supportsEventStream).toBe(false);
     expect(kilo.supportsEventStream).toBe(false);
     expect(qwen.supportsEventStream).toBe(false);
+    expect(goose.supportsEventStream).toBe(false);
   });
 });

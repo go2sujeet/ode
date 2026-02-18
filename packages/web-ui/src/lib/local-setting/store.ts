@@ -9,6 +9,7 @@ export type CliCheckResult = {
   kiro: boolean;
   kilo: boolean;
   qwen: boolean;
+  goose: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
   kiloModels?: string[];
@@ -159,6 +160,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
       },
       qwen: {
         enabled: input.agents?.qwen?.enabled ?? true,
+      },
+      goose: {
+        enabled: input.agents?.goose?.enabled ?? true,
       },
     },
   };
@@ -314,6 +318,10 @@ async function checkAgents(): Promise<void> {
           qwen: {
             ...state.config.agents.qwen,
             enabled: result.qwen,
+          },
+          goose: {
+            ...state.config.agents.goose,
+            enabled: result.goose,
           },
         },
       },

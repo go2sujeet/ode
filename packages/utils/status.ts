@@ -13,7 +13,7 @@ export type StatusRequest = {
   statusFrozen?: boolean;
 };
 
-export type AgentStatusProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen";
+export type AgentStatusProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
 
 const PROVIDER_FALLBACK_TITLES: Partial<Record<AgentStatusProvider, string>> = {
   claudecode: "Claude Code Working...",
@@ -22,6 +22,7 @@ const PROVIDER_FALLBACK_TITLES: Partial<Record<AgentStatusProvider, string>> = {
   kiro: "Kiro Working...",
   kilo: "Kilo Working...",
   qwen: "Qwen Working...",
+  goose: "Goose Working...",
 };
 
 type StatusTodo = {
