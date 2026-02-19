@@ -1,7 +1,22 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { Bot } from "lucide-svelte";
   import { Badge, Button, Card } from "$lib/components/ui";
   import { localSettingStore } from "$lib/local-setting/store";
+
+  type AgentWithModels = "opencode" | "codex" | "kiro";
+
+  function getAgentModels(agent: AgentWithModels): string[] {
+    const agents = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
+    const models = agents[agent]?.models;
+    return Array.isArray(models) ? models : [];
+  }
+
+  const isBusy = $derived($localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving);
+
+  onMount(() => {
+    void localSettingStore.checkAgents();
+  });
 </script>
 
 <Card className="p-5">
@@ -13,7 +28,7 @@
     <Button
       variant="outline"
       on:click={() => void localSettingStore.checkAgents()}
-      disabled={$localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving}
+      disabled={isBusy}
     >
       {$localSettingStore.isCheckingCli ? "Checking..." : "Check"}
     </Button>
@@ -29,13 +44,24 @@
       {/if}
     </div>
 
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Codex CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.codex ? "secondary" : "destructive"}>
-          {$localSettingStore.cliCheckResult.codex ? "Installed" : "Not found"}
-        </Badge>
-      {/if}
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">Codex CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.codex ? "secondary" : "destructive"}>
+            {$localSettingStore.cliCheckResult.codex ? "Installed" : "Not found"}
+          </Badge>
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("codex").length === 0}
+          <Badge variant="outline">No models configured</Badge>
+        {:else}
+          {#each getAgentModels("codex") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {/if}
+      </div>
     </div>
 
     <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
@@ -47,13 +73,24 @@
       {/if}
     </div>
 
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Kiro CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.kiro ? "secondary" : "destructive"}>
-          {$localSettingStore.cliCheckResult.kiro ? "Installed" : "Not found"}
-        </Badge>
-      {/if}
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">Kiro CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.kiro ? "secondary" : "destructive"}>
+            {$localSettingStore.cliCheckResult.kiro ? "Installed" : "Not found"}
+          </Badge>
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("kiro").length === 0}
+          <Badge variant="outline">No models configured</Badge>
+        {:else}
+          {#each getAgentModels("kiro") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {/if}
+      </div>
     </div>
 
     <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
@@ -93,10 +130,10 @@
         {/if}
       </div>
       <div class="flex flex-wrap gap-1">
-        {#if $localSettingStore.config.agents.opencode.models.length === 0}
+        {#if getAgentModels("opencode").length === 0}
           <Badge variant="outline">No models configured</Badge>
         {:else}
-          {#each $localSettingStore.config.agents.opencode.models as model}
+          {#each getAgentModels("opencode") as model}
             <Badge variant="outline">{model}</Badge>
           {/each}
         {/if}
@@ -107,4 +144,10 @@
   {#if $localSettingStore.agentMessage}
     <p class="mt-4 text-sm text-[hsl(var(--muted-foreground))]">{$localSettingStore.agentMessage}</p>
   {/if}
+
+  <div class="mt-4 flex justify-end">
+    <Button on:click={() => void localSettingStore.saveConfig()} disabled={isBusy}>
+      Save
+    </Button>
+  </div>
 </Card>

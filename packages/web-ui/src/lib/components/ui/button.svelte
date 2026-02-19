@@ -9,7 +9,7 @@
         variant: {
           default: "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90",
           secondary: "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-[hsl(var(--secondary)/0.8)]",
-          outline: "border bg-[hsl(var(--background))] hover:bg-[hsl(var(--muted))]",
+          outline: "border bg-transparent text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]",
           ghost: "hover:bg-[hsl(var(--muted))]",
           destructive: "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] hover:opacity-90"
         },

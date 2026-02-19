@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import { Bot, Building2, Plus, Settings2, Trash2 } from "lucide-svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-  import { Badge, Button, Card, Input, Label, Select } from "$lib/components/ui";
+  import { Button, Card, Input, Label, Select } from "$lib/components/ui";
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath } from "$lib/local-setting/workspaces";
 
@@ -156,12 +156,11 @@
     </Card>
 
     <Card className="p-4">
-      <div class="mb-3 flex items-center justify-between">
+      <div class="mb-3 flex items-center gap-2">
         <div class="flex items-center gap-2">
           <Building2 class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
           <h2 class="text-sm font-semibold">Workspaces</h2>
         </div>
-        <Badge variant="outline">{$localSettingStore.config.workspaces.length}</Badge>
       </div>
 
       <div class="space-y-2">
@@ -197,10 +196,10 @@
   <section class="space-y-4">
     {@render children()}
 
-    {#if activeSection !== "general"}
+    {#if activeSection === "workspace"}
       <Card className="p-3">
         <div class="flex flex-wrap items-center justify-end gap-2">
-          {#if activeSection === "workspace" && selectedWorkspace}
+          {#if selectedWorkspace}
             <Button
               variant="destructive"
               type="button"
