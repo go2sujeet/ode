@@ -334,7 +334,7 @@ function startSessionEventLoop(sessionId: string, session: SessionInstance): voi
         const event = (globalEvent as any).payload ?? globalEvent;
         const directory = (globalEvent as any).directory;
         const eventSessionId = extractEventSessionId(event as Record<string, unknown> | undefined);
-        if (eventSessionId && eventSessionId !== sessionId) {
+        if (eventSessionId && !session.validSessionIds.has(eventSessionId)) {
           continue;
         }
 
@@ -438,26 +438,28 @@ export function subscribeToSession(
   sessionId: string,
   handler: EventHandler
 ): () => void {
+  let attachedSession: SessionInstance | null = null;
+
   // If instance already exists, add handler synchronously
   const existing = runtimeState.sessionInstances.get(sessionId);
   if (existing) {
     existing.handlers.add(handler);
+    attachedSession = existing;
     log.debug("Subscribed to session events (sync)", { sessionId, handlerCount: existing.handlers.size });
   } else {
     // Instance doesn't exist yet - this shouldn't happen if ensureSession was called first
     log.warn("subscribeToSession called before instance exists", { sessionId });
     void getOrCreateSessionInstance(sessionId).then((session) => {
       session.handlers.add(handler);
+      attachedSession = session;
       log.debug("Subscribed to session events (async)", { sessionId, handlerCount: session.handlers.size });
     });
   }
 
   return () => {
-    const session = runtimeState.sessionInstances.get(sessionId);
-    if (session) {
-      session.handlers.delete(handler);
-      log.debug("Unsubscribed from session events", { sessionId, handlerCount: session.handlers.size });
-    }
+    attachedSession?.handlers.delete(handler);
+    if (!attachedSession) return;
+    log.debug("Unsubscribed from session events", { sessionId, handlerCount: attachedSession.handlers.size });
   };
 }
 
