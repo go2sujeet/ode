@@ -210,7 +210,7 @@ function isSettingsCommand(text: string): boolean {
 }
 
 function getLocalSettingsUrl(): string {
-  return `http://${getWebHost()}:${getWebPort()}/local-setting`;
+  return `http://${getWebHost()}:${getWebPort()}/`;
 }
 
 async function buildLarkContext(

@@ -1,0 +1,329 @@
+<script lang="ts">
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import { onMount } from "svelte";
+  import { Bot, Building2, Plus, Settings2, Trash2 } from "lucide-svelte";
+  import ThemeToggle from "$lib/components/ThemeToggle.svelte";
+  import { Badge, Button, Card, Input, Label, Select } from "$lib/components/ui";
+  import { localSettingStore } from "$lib/local-setting/store";
+  import { getSelectedWorkspace, getWorkspacePath } from "$lib/local-setting/workspaces";
+
+  let { children } = $props();
+
+  const pathname = $derived($page.url.pathname);
+  const normalizedPathname = $derived(pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname);
+  const activeSection = $derived.by<"general" | "agents" | "workspace">(() =>
+    normalizedPathname === "/agents"
+      ? "agents"
+      : normalizedPathname.startsWith("/slack-bot")
+        ? "workspace"
+        : "general"
+  );
+  let pendingWorkspaceType = $state<"slack" | "discord" | "lark">("slack");
+  let pendingSlackAppToken = $state("");
+  let pendingSlackBotToken = $state("");
+  let pendingDiscordBotToken = $state("");
+  let pendingLarkAppKey = $state("");
+  let pendingLarkAppSecret = $state("");
+  let isAddWorkspaceDialogOpen = $state(false);
+
+  const selectedWorkspace = $derived(getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces));
+  const isBusy = $derived($localSettingStore.isLoading
+    || $localSettingStore.isSaving
+    || $localSettingStore.isSyncingSlack
+    || $localSettingStore.isAddingWorkspace
+    || $localSettingStore.isCheckingCli);
+  const hasErrorMessage = $derived(/(failed:|validation failed:|\berror\b)/i.test($localSettingStore.message));
+
+  async function addWorkspace(): Promise<void> {
+    const workspace = pendingWorkspaceType === "discord"
+      ? await localSettingStore.discoverDiscordWorkspace(pendingDiscordBotToken)
+      : pendingWorkspaceType === "lark"
+        ? await localSettingStore.discoverLarkWorkspace(pendingLarkAppKey, pendingLarkAppSecret)
+        : await localSettingStore.discoverSlackWorkspace(
+          pendingSlackAppToken,
+          pendingSlackBotToken
+        );
+    if (!workspace) return;
+    pendingSlackAppToken = "";
+    pendingSlackBotToken = "";
+    pendingDiscordBotToken = "";
+    pendingLarkAppKey = "";
+    pendingLarkAppSecret = "";
+    pendingWorkspaceType = "slack";
+    isAddWorkspaceDialogOpen = false;
+    await goto(getWorkspacePath(workspace));
+  }
+
+  function openAddWorkspaceDialog(): void {
+    isAddWorkspaceDialogOpen = true;
+  }
+
+  function closeAddWorkspaceDialog(): void {
+    isAddWorkspaceDialogOpen = false;
+  }
+
+  function onPendingSlackAppTokenInput(event: Event): void {
+    pendingSlackAppToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function onPendingSlackBotTokenInput(event: Event): void {
+    pendingSlackBotToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function onPendingDiscordBotTokenInput(event: Event): void {
+    pendingDiscordBotToken = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function onPendingLarkAppKeyInput(event: Event): void {
+    pendingLarkAppKey = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function onPendingLarkAppSecretInput(event: Event): void {
+    pendingLarkAppSecret = (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function removeWorkspace(workspaceId: string): void {
+    const workspaces = $localSettingStore.config.workspaces;
+    const removingIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
+    if (removingIndex < 0) return;
+
+    const workspaceToRemove = workspaces[removingIndex];
+    const workspaceLabel = workspaceToRemove?.name?.trim() || workspaceToRemove?.id || workspaceId;
+    if (!window.confirm(`Remove workspace '${workspaceLabel}'?`)) {
+      return;
+    }
+
+    const remainingWorkspaces = workspaces.filter((workspace) => workspace.id !== workspaceId);
+    localSettingStore.removeWorkspace(workspaceId);
+
+    if (activeSection !== "workspace" || selectedWorkspace?.id !== workspaceId) return;
+
+    const nextWorkspace =
+      remainingWorkspaces[removingIndex]
+      ?? remainingWorkspaces[removingIndex - 1]
+      ?? remainingWorkspaces[0]
+      ?? null;
+
+    if (nextWorkspace) {
+      void goto(getWorkspacePath(nextWorkspace), { replaceState: true });
+      return;
+    }
+
+    void goto("/", { replaceState: true });
+  }
+
+  function getWorkspaceLogo(type: "slack" | "discord" | "lark"): string {
+    if (type === "discord") return "/discord-logo.svg";
+    if (type === "lark") return "/lark-logo.svg";
+    return "/slack-logo.svg";
+  }
+
+  onMount(() => {
+    if (!$localSettingStore.loaded) {
+      void localSettingStore.loadConfig();
+    }
+  });
+</script>
+
+<main class="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-4 px-4 py-6 md:px-8 lg:grid-cols-[18rem_1fr] lg:gap-6">
+  <aside class="space-y-4">
+    <Card className="p-4">
+      <div class="mb-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <Settings2 class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+          <h1 class="text-base font-semibold">Ode Settings</h1>
+        </div>
+        <ThemeToggle />
+      </div>
+
+      <div class="space-y-2">
+        <Button
+          variant={activeSection === "general" ? "default" : "secondary"}
+          className="w-full justify-start"
+          on:click={() => goto("/")}
+        >
+          General
+        </Button>
+        <Button
+          variant={activeSection === "agents" ? "default" : "secondary"}
+          className="w-full justify-start"
+          on:click={() => goto("/agents")}
+        >
+          Agents
+        </Button>
+      </div>
+    </Card>
+
+    <Card className="p-4">
+      <div class="mb-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <Building2 class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+          <h2 class="text-sm font-semibold">Workspaces</h2>
+        </div>
+        <Badge variant="outline">{$localSettingStore.config.workspaces.length}</Badge>
+      </div>
+
+      <div class="space-y-2">
+        {#if $localSettingStore.config.workspaces.length === 0}
+          <p class="rounded-md border border-dashed px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">No workspaces</p>
+        {:else}
+          {#each $localSettingStore.config.workspaces as workspace}
+            <Button
+              variant={selectedWorkspace?.id === workspace.id && activeSection === "workspace" ? "default" : "outline"}
+              className="w-full justify-start"
+              on:click={() => goto(getWorkspacePath(workspace))}
+            >
+              <img src={getWorkspaceLogo(workspace.type)} alt={`${workspace.type} logo`} class="h-4 w-4 rounded-sm" />
+              <span class="truncate">{workspace.name || workspace.id}</span>
+            </Button>
+          {/each}
+        {/if}
+
+        <Button
+          variant="outline"
+          className="w-full justify-start"
+          type="button"
+          on:click={openAddWorkspaceDialog}
+          disabled={isBusy}
+        >
+          <Plus class="h-4 w-4" />
+          Add Workspace
+        </Button>
+      </div>
+    </Card>
+  </aside>
+
+  <section class="space-y-4">
+    {@render children()}
+
+    {#if activeSection !== "general"}
+      <Card className="p-3">
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          {#if activeSection === "workspace" && selectedWorkspace}
+            <Button
+              variant="destructive"
+              type="button"
+              on:click={() => removeWorkspace(selectedWorkspace.id)}
+              disabled={isBusy}
+            >
+              <Trash2 class="h-4 w-4" />
+              Remove Workspace
+            </Button>
+          {/if}
+          <Button
+            on:click={() => void localSettingStore.saveConfig()}
+            disabled={isBusy}
+          >
+            Save
+          </Button>
+        </div>
+      </Card>
+    {/if}
+
+    {#if $localSettingStore.message}
+      <Card className={`p-3 ${hasErrorMessage ? "border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/0.08)]" : ""}`}>
+        <p class={`mb-1 text-xs font-semibold uppercase tracking-wide ${hasErrorMessage ? "text-[hsl(var(--destructive))]" : "text-[hsl(var(--muted-foreground))]"}`}>
+          {hasErrorMessage ? "Error" : "Message"}
+        </p>
+        <p class={`text-sm ${hasErrorMessage ? "text-[hsl(var(--destructive))]" : "text-[hsl(var(--muted-foreground))]"}`}>
+          {$localSettingStore.message}
+        </p>
+      </Card>
+    {/if}
+  </section>
+</main>
+
+{#if isAddWorkspaceDialogOpen}
+  <div class="fixed inset-0 z-50 p-4" role="presentation">
+    <button
+      type="button"
+      class="absolute inset-0 bg-black/45"
+      aria-label="Close add workspace dialog"
+      onclick={closeAddWorkspaceDialog}
+    ></button>
+    <div class="relative">
+      <Card className="mx-auto mt-[8vh] w-full max-w-xl p-5" role="dialog" aria-modal="true" aria-labelledby="add-workspace-title">
+        <h2 id="add-workspace-title" class="mb-4 text-lg font-semibold">Add Workspace</h2>
+
+      <div class="grid gap-4">
+        <div class="grid gap-2">
+          <Label for="new-workspace-type">Workspace Type</Label>
+          <Select id="new-workspace-type" bind:value={pendingWorkspaceType}>
+            <option value="slack">Slack</option>
+            <option value="discord">Discord</option>
+            <option value="lark">Lark</option>
+          </Select>
+        </div>
+
+        {#if pendingWorkspaceType === "slack"}
+          <div class="grid gap-2">
+            <Label for="new-workspace-app-token">Slack App Token</Label>
+            <Input
+              id="new-workspace-app-token"
+              type="text"
+              value={pendingSlackAppToken}
+              on:input={onPendingSlackAppTokenInput}
+              placeholder="xapp-..."
+            />
+          </div>
+          <div class="grid gap-2">
+            <Label for="new-workspace-bot-token">Slack Bot Token</Label>
+            <Input
+              id="new-workspace-bot-token"
+              type="text"
+              value={pendingSlackBotToken}
+              on:input={onPendingSlackBotTokenInput}
+              placeholder="xoxb-..."
+            />
+          </div>
+        {:else if pendingWorkspaceType === "discord"}
+          <div class="grid gap-2">
+            <Label for="new-workspace-discord-bot-token">Discord Bot Token</Label>
+            <Input
+              id="new-workspace-discord-bot-token"
+              type="text"
+              value={pendingDiscordBotToken}
+              on:input={onPendingDiscordBotTokenInput}
+              placeholder="Bot token"
+            />
+          </div>
+        {:else}
+          <div class="grid gap-2">
+            <Label for="new-workspace-lark-app-key">Lark App Key</Label>
+            <Input
+              id="new-workspace-lark-app-key"
+              type="text"
+              value={pendingLarkAppKey}
+              on:input={onPendingLarkAppKeyInput}
+              placeholder="cli_xxx"
+            />
+          </div>
+
+          <div class="grid gap-2">
+            <Label for="new-workspace-lark-app-secret">Lark App Secret</Label>
+            <Input
+              id="new-workspace-lark-app-secret"
+              type="text"
+              value={pendingLarkAppSecret}
+              on:input={onPendingLarkAppSecretInput}
+              placeholder="app secret"
+            />
+          </div>
+        {/if}
+      </div>
+
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="outline" type="button" on:click={closeAddWorkspaceDialog}>Cancel</Button>
+          <Button
+            type="button"
+            on:click={() => void addWorkspace()}
+            disabled={isBusy}
+          >
+            {$localSettingStore.isAddingWorkspace ? "Adding..." : "Add Workspace"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  </div>
+{/if}

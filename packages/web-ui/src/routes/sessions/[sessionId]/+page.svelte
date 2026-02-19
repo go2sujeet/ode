@@ -2,7 +2,7 @@
   import { page } from "$app/stores";
   import SessionDetail from "$lib/session-inspector/SessionDetail.svelte";
 
-  $: sessionId = ($page.params as Record<string, string>).sessionId;
+  const sessionId = $derived(($page.params as Record<string, string>).sessionId);
 </script>
 
 {#if sessionId}
@@ -14,9 +14,8 @@
 <style>
   .missing {
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--ink-soft);
+    display: grid;
+    place-items: center;
+    color: hsl(var(--muted-foreground));
   }
 </style>

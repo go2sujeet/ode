@@ -1,13 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
 
-  export let events: Array<{
-    timestamp: number;
-    type: string;
-    data: Record<string, unknown>;
-  }>;
-  export let selectedEventIndex: number;
-  export let onSelect: (index: number) => void;
+  let {
+    events,
+    selectedEventIndex,
+    onSelect,
+  }: {
+    events: Array<{
+      timestamp: number;
+      type: string;
+      data: Record<string, unknown>;
+    }>;
+    selectedEventIndex: number;
+    onSelect: (index: number) => void;
+  } = $props();
 
   let containerEl: HTMLElement;
   let observer: IntersectionObserver | null = null;
@@ -148,14 +154,15 @@
     if (manualSelectTimeout) clearTimeout(manualSelectTimeout);
   });
 
-  $: if (observer && containerEl && events.length) {
+  $effect(() => {
+    if (!observer || !containerEl || !events.length) return;
     observer.disconnect();
     visibleIndices.clear();
     setTimeout(() => {
       const eventElements = containerEl?.querySelectorAll("[data-event-index]");
       eventElements?.forEach((el) => observer?.observe(el));
     }, 50);
-  }
+  });
 </script>
 
 <div class="event-log" bind:this={containerEl}>
@@ -170,8 +177,8 @@
         class="event"
         class:selected={i === selectedEventIndex}
         data-event-index={i}
-        on:click={() => handleManualSelect(i)}
-        on:keydown={(e) => e.key === "Enter" && handleManualSelect(i)}
+        onclick={() => handleManualSelect(i)}
+        onkeydown={(e) => e.key === "Enter" && handleManualSelect(i)}
         role="button"
         tabindex="0"
       >

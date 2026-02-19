@@ -4,7 +4,7 @@
   import EventLog from "./EventLog.svelte";
   import IMPreview from "./IMPreview.svelte";
 
-  export let sessionId: string;
+  let { sessionId }: { sessionId: string } = $props();
 
   interface SessionEvent {
     timestamp: number;
@@ -25,15 +25,15 @@
     lastActivityAt: number;
   }
 
-  let events: SessionEvent[] = [];
-  let meta: SessionMeta | null = null;
-  let loading = true;
-  let error = "";
-  let selectedEventIndex = -1;
+  let events = $state<SessionEvent[]>([]);
+  let meta = $state<SessionMeta | null>(null);
+  let loading = $state(true);
+  let error = $state("");
+  let selectedEventIndex = $state(-1);
   let pollInterval: ReturnType<typeof setInterval> | null = null;
-  let expandDeltas = false;
-  let fetchInProgress = false;
-  let lastExpandDeltas = false;
+  let expandDeltas = $state(false);
+  let fetchInProgress = $state(false);
+  let lastExpandDeltas = $state(false);
 
   function getPartId(event: SessionEvent): string | null {
     const props = (event.data?.properties || event.data) as Record<string, unknown> | undefined;
@@ -134,9 +134,11 @@
     }
   });
 
-  $: if (!loading && meta && expandDeltas !== lastExpandDeltas) {
-    fetchEvents(false);
-  }
+  $effect(() => {
+    if (!loading && meta && expandDeltas !== lastExpandDeltas) {
+      void fetchEvents(false);
+    }
+  });
 
   onDestroy(() => {
     if (pollInterval) {

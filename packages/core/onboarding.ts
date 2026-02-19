@@ -472,7 +472,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
     console.log("Onboarding complete.");
     console.log(`Workspaces: ${nextConfig.workspaces.length}`);
     console.log(`Agents enabled: ${enabledAgents.join(", ")}`);
-    console.log(`You can update settings later at http://${getWebHost()}:${getWebPort()}/local-setting.`);
+    console.log(`You can update settings later at http://${getWebHost()}:${getWebPort()}/.`);
   } finally {
     rl.close();
   }

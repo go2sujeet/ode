@@ -73,7 +73,7 @@ async function upgrade(): Promise<void> {
 function getLocalSettingsUrl(): string {
   const host = getWebHost();
   const port = getWebPort();
-  return `http://${host}:${port}/local-setting`;
+  return `http://${host}:${port}/`;
 }
 
 function fallbackReadyMessage(): string {

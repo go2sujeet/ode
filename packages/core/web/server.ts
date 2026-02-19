@@ -376,8 +376,6 @@ function resolveAssetPath(pathname: string): string {
     return pathname.slice(appAssetIndex);
   }
   if (pathname === "/") return "/index.html";
-  if (pathname === "/local-setting") return "/local-setting.html";
-  if (pathname.startsWith("/local-setting/")) return "/local-setting.html";
   if (pathname.endsWith("/")) return `${pathname.slice(0, -1)}.html`;
   return pathname;
 }
@@ -484,10 +482,18 @@ async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
-  if (pathname === "/") {
+  if (pathname === "/local-setting") {
     return new Response(null, {
       status: 307,
-      headers: { location: "/local-setting" },
+      headers: { location: "/" },
+    });
+  }
+
+  if (pathname.startsWith("/local-setting/")) {
+    const target = pathname.slice("/local-setting".length) || "/";
+    return new Response(null, {
+      status: 307,
+      headers: { location: target },
     });
   }
 

@@ -39,7 +39,7 @@ const CONFIG_WATCH_DEBOUNCE_MS = 500;
 function getLocalSettingsUrl(): string {
   const host = getWebHost();
   const port = getWebPort();
-  return `http://${host}:${port}/local-setting`;
+  return `http://${host}:${port}/`;
 }
 
 let webDevServer: ChildProcess | null = null;

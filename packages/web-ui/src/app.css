@@ -1,80 +1,96 @@
-:root {
-	color-scheme: light;
-	font-family: 'Manrope', system-ui, sans-serif;
-	background-color: #f6f3eb;
-	color: #1f1d19;
-	--bg: #f6f3eb;
-	--bg-soft: #fbf8f1;
-	--ink: #1f1d19;
-	--ink-soft: #4f4a41;
-	--accent: #c86b3c;
-	--accent-strong: #a9542f;
-	--accent-muted: #f0c8b2;
-	--line: #e2d6c6;
-	--card: #fffdf8;
-	--shadow: 0 24px 60px rgba(31, 29, 25, 0.14);
-	--shadow-soft: 0 12px 30px rgba(31, 29, 25, 0.08);
-	--radius: 24px;
-	--bg-grad-1: #fff5e6;
-	--bg-grad-2: #f6f3eb;
-	--bg-grad-3: #efe7dc;
+@import "tailwindcss";
+
+@theme {
+	--font-sans: "IBM Plex Sans", "Noto Sans SC", ui-sans-serif, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
-:root[data-theme='dark'] {
-	color-scheme: dark;
-	background-color: #141311;
-	color: #f3eee6;
-	--bg: #141311;
-	--bg-soft: #1b1a17;
-	--ink: #f3eee6;
-	--ink-soft: #c5bdb1;
-	--accent: #e3885c;
-	--accent-strong: #f0a074;
-	--accent-muted: #4b3428;
-	--line: #2b2620;
-	--card: #1c1a16;
-	--shadow: 0 24px 60px rgba(7, 6, 5, 0.5);
-	--shadow-soft: 0 12px 30px rgba(7, 6, 5, 0.35);
-	--bg-grad-1: #1e1914;
-	--bg-grad-2: #141311;
-	--bg-grad-3: #0f0e0d;
-}
+@layer base {
+	:root {
+		color-scheme: light;
+		--background: 40 33% 97%;
+		--foreground: 210 18% 15%;
+		--card: 0 0% 100%;
+		--card-foreground: 210 18% 15%;
+		--popover: 0 0% 100%;
+		--popover-foreground: 210 18% 15%;
+		--primary: 192 76% 36%;
+		--primary-foreground: 0 0% 100%;
+		--secondary: 204 28% 92%;
+		--secondary-foreground: 210 20% 20%;
+		--muted: 40 20% 93%;
+		--muted-foreground: 210 10% 40%;
+		--accent: 38 90% 58%;
+		--accent-foreground: 210 18% 15%;
+		--destructive: 0 78% 56%;
+		--destructive-foreground: 0 0% 100%;
+		--border: 210 20% 86%;
+		--input: 210 20% 86%;
+		--ring: 192 76% 36%;
+		--radius: 0.75rem;
+		--bg: hsl(var(--background));
+		--bg-soft: hsl(var(--muted));
+		--ink: hsl(var(--foreground));
+		--ink-soft: hsl(var(--muted-foreground));
+		--line: hsl(var(--border));
+		--card-legacy: hsl(var(--card));
+		--card: hsl(var(--card));
+		--accent-legacy: hsl(var(--primary));
+		--accent: hsl(var(--primary));
+		--accent-muted: hsl(var(--accent));
+		--accent-strong: hsl(var(--primary));
+		--shadow-soft: 0 8px 24px hsl(210 20% 20% / 0.08);
+		--shadow: 0 18px 40px hsl(210 20% 20% / 0.16);
+	}
 
-* {
-	box-sizing: border-box;
-	margin: 0;
-	padding: 0;
-}
+	:root[data-theme="dark"] {
+		color-scheme: dark;
+		--background: 216 30% 10%;
+		--foreground: 204 30% 94%;
+		--card: 216 26% 14%;
+		--card-foreground: 204 30% 94%;
+		--popover: 216 26% 14%;
+		--popover-foreground: 204 30% 94%;
+		--primary: 190 72% 52%;
+		--primary-foreground: 216 30% 10%;
+		--secondary: 214 22% 21%;
+		--secondary-foreground: 204 30% 94%;
+		--muted: 216 20% 18%;
+		--muted-foreground: 210 14% 70%;
+		--accent: 38 90% 58%;
+		--accent-foreground: 216 30% 10%;
+		--destructive: 0 70% 55%;
+		--destructive-foreground: 204 30% 94%;
+		--border: 216 18% 24%;
+		--input: 216 18% 24%;
+		--ring: 190 72% 52%;
+		--bg: hsl(var(--background));
+		--bg-soft: hsl(var(--muted));
+		--ink: hsl(var(--foreground));
+		--ink-soft: hsl(var(--muted-foreground));
+		--line: hsl(var(--border));
+		--card-legacy: hsl(var(--card));
+		--card: hsl(var(--card));
+		--accent-legacy: hsl(var(--primary));
+		--accent: hsl(var(--primary));
+		--accent-muted: hsl(var(--accent));
+		--accent-strong: hsl(var(--primary));
+		--shadow-soft: 0 8px 24px hsl(216 42% 4% / 0.45);
+		--shadow: 0 18px 40px hsl(216 42% 4% / 0.6);
+	}
 
-body {
-	min-height: 100vh;
-	background: radial-gradient(circle at top, var(--bg-grad-1) 0%, var(--bg-grad-2) 45%, var(--bg-grad-3) 100%);
-	color: var(--ink);
-	font-family: 'Manrope', system-ui, sans-serif;
-	line-height: 1.6;
-	transition: background 0.3s ease, color 0.3s ease;
-}
+	* {
+		border-color: hsl(var(--border));
+	}
 
-a {
-	color: inherit;
-	text-decoration: none;
-}
-
-button,
-input {
-	font-family: inherit;
-}
-
-main {
-	min-height: 100vh;
-	padding: 6vh 7vw;
-	display: flex;
-	align-items: flex-start;
-	justify-content: center;
-}
-
-@media (max-width: 768px) {
-	main {
-		padding: 5vh 6vw 9vh;
+	body {
+		margin: 0;
+		min-height: 100vh;
+		background:
+			radial-gradient(circle at 12% 0%, hsl(190 72% 80% / 0.2), transparent 32%),
+			radial-gradient(circle at 88% 10%, hsl(38 90% 70% / 0.22), transparent 36%),
+			hsl(var(--background));
+		color: hsl(var(--foreground));
+		font-family: var(--font-sans);
 	}
 }

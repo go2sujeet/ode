@@ -12,9 +12,15 @@
     statusFrozen?: boolean;
   };
 
-  export let state: SessionMessageState;
-  export let workingDirectory: string;
-  export let provider: AgentStatusProvider = "opencode";
+  let {
+    state,
+    workingDirectory,
+    provider = "opencode",
+  }: {
+    state: SessionMessageState;
+    workingDirectory: string;
+    provider?: AgentStatusProvider;
+  } = $props();
 
   function renderSlackMarkdown(text: string): string {
     if (!text) return "";
@@ -36,17 +42,17 @@
     return result;
   }
 
-  $: previewRequest = ({
+  const previewRequest = $derived(({
     channelId: "preview-channel",
     threadId: "preview-thread",
     statusMessageTs: "preview-status",
     startedAt: state.startedAt,
     currentText: state.currentText,
     statusFrozen: false,
-  }) satisfies PreviewStatusRequest;
+  }) satisfies PreviewStatusRequest);
 
-  $: liveStatusText = buildStatusMessageByProvider(provider, previewRequest, workingDirectory, state);
-  $: renderedText = renderSlackMarkdown(liveStatusText);
+  const liveStatusText = $derived(buildStatusMessageByProvider(provider, previewRequest, workingDirectory, state));
+  const renderedText = $derived(renderSlackMarkdown(liveStatusText));
 </script>
 
 <div class="slack-message">

@@ -3,36 +3,35 @@
   import type { AgentStatusProvider } from "../../../../utils/status";
   import { buildSessionMessageState, type SessionMessageState } from "@/utils/session-inspector";
 
-  export let events: Array<{
-    timestamp: number;
-    type: string;
-    data: Record<string, unknown>;
-  }>;
-  export let selectedEventIndex: number;
-  export let workingDirectory: string;
-  export let provider: AgentStatusProvider = "opencode";
+  let {
+    events,
+    selectedEventIndex,
+    workingDirectory,
+    provider = "opencode",
+  }: {
+    events: Array<{
+      timestamp: number;
+      type: string;
+      data: Record<string, unknown>;
+    }>;
+    selectedEventIndex: number;
+    workingDirectory: string;
+    provider?: AgentStatusProvider;
+  } = $props();
 
   type PreviewState = SessionMessageState & {
     currentStatus: string;
     currentStep?: string;
   };
 
-  let state: PreviewState = {
-    currentStatus: "Starting",
-    currentText: "",
-    tools: [],
-    todos: [],
-    startedAt: Date.now(),
-  };
-
-  $: state = {
+  const state = $derived(({
     ...buildSessionMessageState(events, {
       endIndex: selectedEventIndex,
       workingDirectory,
     }),
-    currentStatus: state.currentStatus,
-    currentStep: state.currentStep,
-  };
+    currentStatus: "Starting",
+    currentStep: undefined,
+  }) satisfies PreviewState);
 </script>
 
 <div class="im-preview">

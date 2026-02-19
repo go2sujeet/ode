@@ -3,7 +3,7 @@
   import { goto } from "$app/navigation";
 
   onMount(() => {
-    void goto("/local-setting", { replaceState: true });
+    void goto("/", { replaceState: true });
   });
 </script>
 
@@ -13,12 +13,9 @@
 
 <style>
   .redirect {
-    font-family: "Manrope", sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
     min-height: 100vh;
-    color: #2f2f35;
-    background: #f5f3ee;
+    place-items: center;
+    color: hsl(var(--muted-foreground));
   }
 </style>
