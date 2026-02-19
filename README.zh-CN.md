@@ -73,7 +73,7 @@ Lark 开放平台事件订阅回调地址可使用：`POST /api/lark/event`。
 | --- | --- | --- |
 | Slack | <img src="https://img.shields.io/badge/Slack-111111?style=for-the-badge&logo=slack&logoColor=white" alt="Slack logo" /> | [slack.com](https://slack.com/) |
 | Discord | <img src="https://img.shields.io/badge/Discord-111111?style=for-the-badge&logo=discord&logoColor=white" alt="Discord logo" /> | [discord.com](https://discord.com/) |
-| Lark (Feishu) | <img src="https://img.shields.io/badge/Lark-111111?style=for-the-badge&logo=lark&logoColor=white" alt="Lark logo" /> | [www.larksuite.com](https://www.larksuite.com/) |
+| 飞书（CN） | <img src="https://img.shields.io/badge/Lark-111111?style=for-the-badge&logo=lark&logoColor=white" alt="Lark logo" /> | [www.larksuite.com](https://www.larksuite.com/) |
 
 ## 使用方式
 
