@@ -8,7 +8,11 @@ import { applyKimiRecordToState, extractKimiRecord } from "@/agents/kimi/session
 import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session-state";
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
 import { applyGooseRecordToState, extractGooseRecord } from "@/agents/goose/session-state";
-import type { StreamStateMaps, StreamToolState } from "@/agents/session-state/shared";
+import {
+  extractSessionTitle,
+  type StreamStateMaps,
+  type StreamToolState,
+} from "@/agents/session-state/shared";
 
 export type SessionEvent = {
   timestamp: number;
@@ -69,13 +73,9 @@ type ProviderParser = {
 };
 
 function applySessionUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
-  const info = eventProps.info as { title?: unknown } | undefined;
-  const title = info?.title;
-  if (typeof title !== "string") return;
-  const trimmedTitle = title.trim();
-  if (trimmedTitle && !trimmedTitle.startsWith("New session")) {
-    state.sessionTitle = trimmedTitle;
-  }
+  const sessionTitle = extractSessionTitle(eventProps);
+  if (!sessionTitle) return;
+  state.sessionTitle = sessionTitle;
 }
 
 function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
@@ -114,14 +114,33 @@ function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record
 function applySessionStatusEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
   const statusValue = (eventProps as { status?: unknown }).status;
   const formattedStatus = formatSessionStatus(statusValue);
-  if (formattedStatus) {
-    state.phaseStatus = formattedStatus;
+  if (!formattedStatus) return;
+  if (
+    formattedStatus === "Working"
+    && state.phaseStatus
+    && state.phaseStatus !== "Working"
+    && state.phaseStatus !== "Waiting"
+  ) {
+    return;
   }
+  state.phaseStatus = formattedStatus;
+}
+
+function normalizeReasoningStatus(text: string): string {
+  const compact = text
+    .replace(/[*_`#]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!compact) return "Thinking";
+  const maxLength = 90;
+  const truncated = compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+  return `Thinking: ${truncated}`;
 }
 
 function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
   const part = (eventProps as { part?: Record<string, unknown> }).part;
   if (!part) return;
+  const isSessionScopedPart = typeof part.sessionID === "string";
 
   if (part.type === "tool") {
     const toolState = (part.state || {}) as Record<string, unknown>;
@@ -144,16 +163,42 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
     } else {
       state.tools.push(toolInfo);
     }
+
+    if (!isSessionScopedPart) {
+      return;
+    }
+
+    if (toolInfo.status === "running" || toolInfo.status === "pending") {
+      state.phaseStatus = `Running tool: ${toolInfo.name}`;
+    } else if (toolInfo.status === "completed") {
+      state.phaseStatus = `Finished tool: ${toolInfo.name}`;
+    } else if (toolInfo.status === "error") {
+      state.phaseStatus = `Tool failed: ${toolInfo.name}`;
+    }
     return;
   }
 
   if (part.type === "text" && typeof part.text === "string") {
     state.currentText = part.text;
+    if (isSessionScopedPart) {
+      state.phaseStatus = "Drafting response";
+    }
+    return;
+  }
+
+  if (part.type === "reasoning" && typeof part.text === "string") {
+    state.thinkingText = part.text;
+    if (isSessionScopedPart) {
+      state.phaseStatus = normalizeReasoningStatus(part.text);
+    }
     return;
   }
 
   if (part.type === "thinking" && typeof part.text === "string") {
     state.thinkingText = part.text;
+    if (isSessionScopedPart) {
+      state.phaseStatus = normalizeReasoningStatus(part.text);
+    }
   }
 }
 
@@ -199,6 +244,9 @@ function formatSessionStatus(value: unknown): string | undefined {
 
   switch (status.type) {
     case "busy":
+      if (typeof status.message === "string" && status.message.trim()) {
+        return status.message.trim();
+      }
       return "Working";
     case "idle":
       return "Waiting";
