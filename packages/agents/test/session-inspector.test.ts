@@ -107,4 +107,27 @@ describe("session inspector", () => {
     expect(preview).toContain("Tool execution");
     expect(preview).toContain("`Grep`");
   });
+
+  it("falls back to session slug when OpenCode title is generic", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "session.updated",
+        data: {
+          payload: {
+            type: "session.updated",
+            properties: {
+              info: {
+                title: "New session - 2026-02-20T05:51:37.251Z",
+                slug: "neon-harbor",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.sessionTitle).toBe("Neon Harbor");
+  });
 });

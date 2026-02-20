@@ -166,4 +166,38 @@ describe("goose stream status parsing", () => {
     expect(state.tools[0]?.status).toBe("completed");
     expect(state.phaseStatus).toBe("Waiting");
   });
+
+  it("hydrates todos from Goose todo tool input", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "message",
+        message: {
+          id: "m1",
+          role: "assistant",
+          content: [{
+            type: "toolRequest",
+            id: "call-todo-1",
+            toolCall: {
+              status: "success",
+              value: {
+                name: "todo__todo_write",
+                arguments: {
+                  todos: [
+                    { content: "Inspect parser", status: "in progress" },
+                    { text: "Write test", status: "completed" },
+                  ],
+                },
+              },
+            },
+          }],
+        },
+      }),
+    ]);
+
+    expect(state.todos).toEqual([
+      { content: "Inspect parser", status: "in_progress" },
+      { content: "Write test", status: "completed" },
+    ]);
+  });
 });

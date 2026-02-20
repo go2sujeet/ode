@@ -8,7 +8,11 @@ import { applyKimiRecordToState, extractKimiRecord } from "@/agents/kimi/session
 import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session-state";
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
 import { applyGooseRecordToState, extractGooseRecord } from "@/agents/goose/session-state";
-import type { StreamStateMaps, StreamToolState } from "@/agents/session-state/shared";
+import {
+  extractSessionTitle,
+  type StreamStateMaps,
+  type StreamToolState,
+} from "@/agents/session-state/shared";
 
 export type SessionEvent = {
   timestamp: number;
@@ -69,13 +73,9 @@ type ProviderParser = {
 };
 
 function applySessionUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
-  const info = eventProps.info as { title?: unknown } | undefined;
-  const title = info?.title;
-  if (typeof title !== "string") return;
-  const trimmedTitle = title.trim();
-  if (trimmedTitle && !trimmedTitle.startsWith("New session")) {
-    state.sessionTitle = trimmedTitle;
-  }
+  const sessionTitle = extractSessionTitle(eventProps);
+  if (!sessionTitle) return;
+  state.sessionTitle = sessionTitle;
 }
 
 function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {

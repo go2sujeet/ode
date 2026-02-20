@@ -60,6 +60,24 @@ export function composeIndexedText(parts: Map<number, string>): string {
 }
 
 export function extractSessionTitle(value: unknown): string | undefined {
+  const normalizeTitle = (candidate: unknown): string | undefined => {
+    if (typeof candidate !== "string") return undefined;
+    const trimmed = candidate.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("New session")) return undefined;
+    return trimmed;
+  };
+
+  const normalizeSlug = (candidate: unknown): string | undefined => {
+    if (typeof candidate !== "string") return undefined;
+    const trimmed = candidate.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("new-session")) return undefined;
+    const spaced = trimmed.replace(/[-_]+/g, " ").trim();
+    if (!spaced) return undefined;
+    return spaced.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
   if (!value || typeof value !== "object") return undefined;
   const queue: unknown[] = [value];
   while (queue.length > 0) {
@@ -72,23 +90,20 @@ export function extractSessionTitle(value: unknown): string | undefined {
     }
 
     const record = current as Record<string, unknown>;
-    const directTitle = record.title;
-    if (typeof directTitle === "string") {
-      const trimmed = directTitle.trim();
-      if (trimmed && !trimmed.startsWith("New session")) {
-        return trimmed;
-      }
-    }
+    const directTitle = normalizeTitle(record.title);
+    if (directTitle) return directTitle;
+
+    const directSlug = normalizeSlug(record.slug);
+    if (directSlug) return directSlug;
 
     const info = record.info;
     if (info && typeof info === "object" && !Array.isArray(info)) {
-      const infoTitle = (info as Record<string, unknown>).title;
-      if (typeof infoTitle === "string") {
-        const trimmed = infoTitle.trim();
-        if (trimmed && !trimmed.startsWith("New session")) {
-          return trimmed;
-        }
-      }
+      const infoRecord = info as Record<string, unknown>;
+      const infoTitle = normalizeTitle(infoRecord.title);
+      if (infoTitle) return infoTitle;
+
+      const infoSlug = normalizeSlug(infoRecord.slug);
+      if (infoSlug) return infoSlug;
     }
 
     for (const nested of Object.values(record)) {
