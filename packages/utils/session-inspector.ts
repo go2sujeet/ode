@@ -51,6 +51,8 @@ export type SessionMessageState = {
   sessionTitle?: string;
   phaseStatus?: string;
   thinkingText?: string;
+  model?: string;
+  agent?: string;
   tokenUsage?: SessionTokenUsage;
   currentText: string;
   tools: SessionTool[];
@@ -82,7 +84,10 @@ function applySessionUpdatedEvent(state: SessionMessageState, eventProps: Record
 function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
   const info = eventProps.info as
     | {
+        modelID?: unknown;
+        agent?: unknown;
         tokens?: {
+          total?: unknown;
           input?: unknown;
           output?: unknown;
           reasoning?: unknown;
@@ -91,25 +96,37 @@ function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record
         cost?: unknown;
       }
     | undefined;
-  const tokens = info?.tokens;
-  if (!tokens || typeof tokens !== "object") return;
+  if (typeof info?.modelID === "string" && info.modelID.trim()) {
+    state.model = info.modelID;
+  }
 
-  const input = Number(tokens.input ?? 0) || 0;
-  const output = Number(tokens.output ?? 0) || 0;
-  const reasoning = Number(tokens.reasoning ?? 0) || 0;
-  const cacheRead = Number(tokens.cache?.read ?? 0) || 0;
-  const cacheWrite = Number(tokens.cache?.write ?? 0) || 0;
-  const total = input + output + reasoning;
-  const cost = typeof info?.cost === "number" ? info.cost : undefined;
-  state.tokenUsage = {
-    input,
-    output,
-    reasoning,
-    cacheRead,
-    cacheWrite,
-    total,
-    cost,
-  };
+  if (typeof info?.agent === "string" && info.agent.trim()) {
+    state.agent = info.agent;
+  }
+
+  const tokens = info?.tokens;
+  if (tokens && typeof tokens === "object") {
+    const input = Number(tokens.input ?? 0) || 0;
+    const output = Number(tokens.output ?? 0) || 0;
+    const reasoning = Number(tokens.reasoning ?? 0) || 0;
+    const cacheRead = Number(tokens.cache?.read ?? 0) || 0;
+    const cacheWrite = Number(tokens.cache?.write ?? 0) || 0;
+    const reportedTotal = Number(tokens.total);
+    const total = Number.isFinite(reportedTotal)
+      ? reportedTotal
+      : input + output + reasoning + cacheRead + cacheWrite;
+    const parsedCost = Number(info?.cost);
+    const cost = Number.isFinite(parsedCost) ? parsedCost : undefined;
+    state.tokenUsage = {
+      input,
+      output,
+      reasoning,
+      cacheRead,
+      cacheWrite,
+      total,
+      cost,
+    };
+  }
 }
 
 function applySessionStatusEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
@@ -275,6 +292,8 @@ export function buildSessionMessageState(
     sessionTitle: baseState?.sessionTitle,
     phaseStatus: baseState?.phaseStatus,
     thinkingText: baseState?.thinkingText,
+    model: baseState?.model,
+    agent: baseState?.agent,
     tokenUsage: baseState?.tokenUsage,
     currentText: baseState?.currentText ?? "",
     tools: baseState?.tools ? [...baseState.tools] : [],

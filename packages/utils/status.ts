@@ -41,6 +41,60 @@ export function formatElapsedTime(startedAt: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+function formatCompactCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const sign = value < 0 ? "-" : "";
+  let current = Math.abs(value);
+  let unitIndex = 0;
+  const units = ["", "k", "m", "b", "t"];
+
+  while (current >= 1000 && unitIndex < units.length - 1) {
+    current /= 1000;
+    unitIndex += 1;
+  }
+
+  if (unitIndex === 0) {
+    return `${sign}${Math.round(current)}`;
+  }
+
+  const rounded = current >= 10
+    ? Math.round(current)
+    : Math.round(current * 10) / 10;
+  const numeric = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return `${sign}${numeric}${units[unitIndex]}`;
+}
+
+function formatCost(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (value >= 1) return String(Math.round(value * 100) / 100);
+  if (value >= 0.01) return value.toFixed(2);
+  return value.toFixed(4);
+}
+
+function buildHeaderDetails(state: SessionMessageState): string {
+  const details: string[] = [];
+  if (state.model) {
+    details.push(`model: ${state.model}`);
+  }
+
+  const totalTokens = state.tokenUsage?.total;
+  if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+    details.push(`${formatCompactCount(totalTokens)} tokens`);
+  }
+
+  if (state.agent) {
+    details.push(`${state.agent} agent`);
+  }
+
+  const cost = state.tokenUsage?.cost;
+  if (typeof cost === "number" && Number.isFinite(cost) && cost > 0) {
+    details.push(`cost ${formatCost(cost)}`);
+  }
+
+  details.push(formatElapsedTime(state.startedAt));
+  return details.join(", ");
+}
+
 export function getToolIcon(status: string): string {
   switch (status) {
     case "running":
@@ -249,11 +303,12 @@ export function buildLiveStatusMessage(
   }
 
   const lines: string[] = [];
+  const headerDetails = buildHeaderDetails(state);
 
   if (state.sessionTitle) {
-    lines.push(`*${state.sessionTitle}* (${formatElapsedTime(state.startedAt)})`);
+    lines.push(`*${state.sessionTitle}* (${headerDetails})`);
   } else {
-    lines.push(`_${formatElapsedTime(state.startedAt)}_`);
+    lines.push(`_${headerDetails}_`);
   }
 
   if (state.phaseStatus) {

@@ -220,4 +220,72 @@ describe("session inspector", () => {
 
     expect(state.sessionTitle).toBe("Fix session title extraction");
   });
+
+  it("hydrates OpenCode model/agent and reported total tokens", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "session.updated",
+        data: {
+          payload: {
+            type: "session.updated",
+            properties: {
+              info: {
+                title: "Inspect stream payload",
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: startedAt + 1,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                modelID: "gpt-5.3-codex",
+                agent: "build",
+                cost: 0,
+                tokens: {
+                  total: 41681,
+                  input: 295,
+                  output: 42,
+                  reasoning: 0,
+                  cache: {
+                    read: 41344,
+                    write: 0,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.model).toBe("gpt-5.3-codex");
+    expect(state.agent).toBe("build");
+    expect(state.tokenUsage?.total).toBe(41681);
+
+    const text = buildLiveStatusMessage(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "medium"
+    );
+
+    expect(text).toContain("model: gpt-5.3-codex");
+    expect(text).toContain("42k tokens");
+    expect(text).toContain("build agent");
+    expect(text).not.toContain("cost 0");
+  });
 });
