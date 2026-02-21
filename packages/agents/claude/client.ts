@@ -166,6 +166,8 @@ export function buildClaudeCommand(
 ): { args: string[]; command: string } {
   const args = [...baseArgs];
   const prompt = args.pop();
+  args.push("--tools", "default");
+  args.push("--allowedTools", "Bash,Glob,Grep,Read,Edit,Write,WebFetch,Task,TodoWrite,NotebookEdit,TaskOutput,TaskStop,ToolSearch,Skill,AskUserQuestion");
   if (prompt !== undefined) {
     args.push("--permission-mode", permissionMode, "--", prompt);
   } else {
