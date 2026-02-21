@@ -10,6 +10,9 @@ export type DashboardConfig = {
     defaultMessageFrequency?: "aggressive" | "medium" | "minimum";
     statusMessageFrequencyMs?: 2000 | 5000 | 10000;
   };
+  updates: {
+    autoUpgrade: boolean;
+  };
   agents: {
     opencode: {
       enabled: boolean;
@@ -89,6 +92,9 @@ export const defaultDashboardConfig: DashboardConfig = {
     gitStrategy: "worktree",
     defaultStatusMessageFormat: "medium",
     statusMessageFrequencyMs: 2000,
+  },
+  updates: {
+    autoUpgrade: true,
   },
   agents: {
     opencode: { enabled: true, models: [] },
@@ -288,6 +294,11 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
         user.defaultStatusMessageFormat ?? user.defaultMessageFrequency
       ),
       statusMessageFrequencyMs: asStatusMessageFrequencyMs(user.statusMessageFrequencyMs),
+    },
+    updates: {
+      autoUpgrade: record.updates && typeof record.updates === "object"
+        ? (record.updates as Record<string, unknown>).autoUpgrade !== false
+        : true,
     },
     agents: {
       opencode: {

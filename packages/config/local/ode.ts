@@ -371,6 +371,9 @@ function toDashboardConfig(config: OdeConfig): DashboardConfig {
           ? config.user.IM_MESSAGE_UPDATE_INTERVAL_MS
           : 2000,
     },
+    updates: {
+      autoUpgrade: config.updates.autoUpgrade,
+    },
     agents: structuredClone(config.agents),
     workspaces: structuredClone(config.workspaces),
   };
@@ -406,6 +409,10 @@ function mergeDashboardConfig(config: OdeConfig, dashboardConfig: DashboardConfi
         statusMessageFrequencyMs === 5000 || statusMessageFrequencyMs === 10000
           ? statusMessageFrequencyMs
           : 2000,
+    },
+    updates: {
+      ...config.updates,
+      autoUpgrade: dashboardConfig.updates.autoUpgrade !== false,
     },
     agents: structuredClone(dashboardConfig.agents),
     workspaces,
@@ -623,6 +630,8 @@ export type GitHubInfo = {
 export type UserGeneralSettings = {
   defaultStatusMessageFormat: "minimum" | "medium" | "aggressive";
   gitStrategy: "default" | "worktree";
+  statusMessageFrequencyMs: 2000 | 5000 | 10000;
+  autoUpdate: boolean;
 };
 
 export function getGitHubInfoForUser(userId: string): GitHubInfo | null {
@@ -640,13 +649,20 @@ export function getGitHubInfoForUser(userId: string): GitHubInfo | null {
 }
 
 export function getUserGeneralSettings(): UserGeneralSettings {
-  const user = loadOdeConfig().user;
+  const odeConfig = loadOdeConfig();
+  const user = odeConfig.user;
+  const updates = odeConfig.updates;
   return {
     defaultStatusMessageFormat:
       user.defaultStatusMessageFormat === "minimum" || user.defaultStatusMessageFormat === "aggressive"
         ? user.defaultStatusMessageFormat
         : "medium",
     gitStrategy: user.gitStrategy === "default" ? "default" : "worktree",
+    statusMessageFrequencyMs:
+      user.IM_MESSAGE_UPDATE_INTERVAL_MS === 5000 || user.IM_MESSAGE_UPDATE_INTERVAL_MS === 10000
+        ? user.IM_MESSAGE_UPDATE_INTERVAL_MS
+        : 2000,
+    autoUpdate: updates.autoUpgrade !== false,
   };
 }
 
@@ -657,6 +673,14 @@ export function setUserGeneralSettings(settings: UserGeneralSettings): void {
       ...config.user,
       defaultStatusMessageFormat: settings.defaultStatusMessageFormat,
       gitStrategy: settings.gitStrategy,
+      IM_MESSAGE_UPDATE_INTERVAL_MS:
+        settings.statusMessageFrequencyMs === 5000 || settings.statusMessageFrequencyMs === 10000
+          ? settings.statusMessageFrequencyMs
+          : 2000,
+    },
+    updates: {
+      ...config.updates,
+      autoUpgrade: settings.autoUpdate !== false,
     },
   }));
 }

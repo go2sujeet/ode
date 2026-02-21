@@ -19,6 +19,7 @@ export type CliCheckResult = {
 
 type LocalSettingState = {
   config: DashboardConfig;
+  appVersion: string;
   isLoading: boolean;
   isSaving: boolean;
   isSyncingSlack: boolean;
@@ -32,6 +33,7 @@ type LocalSettingState = {
 
 const initialState: LocalSettingState = {
   config: defaultDashboardConfig,
+  appVersion: "",
   isLoading: false,
   isSaving: false,
   isSyncingSlack: false,
@@ -141,6 +143,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
           ? input.user.statusMessageFrequencyMs
           : 2000,
     },
+    updates: {
+      autoUpgrade: input.updates?.autoUpgrade !== false,
+    },
     agents: {
       opencode: {
         enabled: input.agents?.opencode?.enabled ?? true,
@@ -212,6 +217,7 @@ async function loadConfig(): Promise<void> {
     const payload = (await response.json()) as {
       ok?: boolean;
       error?: string;
+      version?: string;
       config?: DashboardConfig;
     };
     if (!response.ok || !payload.ok || !payload.config) {
@@ -220,6 +226,7 @@ async function loadConfig(): Promise<void> {
     store.update((state) => ({
       ...state,
       config: normalizeConfig(payload.config as DashboardConfig),
+      appVersion: typeof payload.version === "string" ? payload.version : state.appVersion,
       loaded: true,
       isLoading: false,
     }));
@@ -254,6 +261,7 @@ async function saveConfig(): Promise<void> {
     const result = (await response.json()) as {
       ok?: boolean;
       error?: string;
+      version?: string;
       config?: DashboardConfig;
     };
     if (!response.ok || !result.ok || !result.config) {
@@ -262,6 +270,7 @@ async function saveConfig(): Promise<void> {
     store.update((state) => ({
       ...state,
       config: normalizeConfig(result.config as DashboardConfig),
+      appVersion: typeof result.version === "string" ? result.version : state.appVersion,
       isSaving: false,
       message: "Saved.",
     }));

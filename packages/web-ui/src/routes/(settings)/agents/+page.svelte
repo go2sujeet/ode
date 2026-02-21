@@ -5,6 +5,19 @@
   import { localSettingStore } from "$lib/local-setting/store";
 
   type AgentWithModels = "opencode" | "codex" | "kilo";
+  type AgentStatusKey = "opencode" | "claude" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+
+  const AGENT_DOCS: Record<AgentStatusKey, string> = {
+    opencode: "https://opencode.ai",
+    claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
+    codex: "https://github.com/openai/codex",
+    kimi: "https://www.moonshot.ai/kimi-code",
+    kiro: "https://kiro.dev",
+    kilo: "https://github.com/Kilo-Org/kilo",
+    qwen: "https://github.com/QwenLM/qwen-code",
+    goose: "https://block.github.io/goose/",
+    gemini: "https://github.com/google-gemini/gemini-cli",
+  };
 
   function getAgentModels(agent: AgentWithModels): string[] {
     const agents = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
@@ -30,7 +43,7 @@
       on:click={() => void localSettingStore.checkAgents()}
       disabled={isBusy}
     >
-      {$localSettingStore.isCheckingCli ? "Checking..." : "Check"}
+      {$localSettingStore.isCheckingCli ? "Syncing..." : "Sync"}
     </Button>
   </div>
 
@@ -41,6 +54,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.claude ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.claude ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.claude}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.claude} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -51,6 +67,9 @@
           <Badge variant={$localSettingStore.cliCheckResult.codex ? "secondary" : "destructive"}>
             {$localSettingStore.cliCheckResult.codex ? "Installed" : "Not found"}
           </Badge>
+          {#if !$localSettingStore.cliCheckResult.codex}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.codex} target="_blank" rel="noreferrer">Official docs</a>
+          {/if}
         {/if}
       </div>
       <div class="flex flex-wrap gap-1">
@@ -70,6 +89,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.kimi ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.kimi ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.kimi}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kimi} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -79,6 +101,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.kiro ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.kiro ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.kiro}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kiro} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -89,6 +114,9 @@
           <Badge variant={$localSettingStore.cliCheckResult.kilo ? "secondary" : "destructive"}>
             {$localSettingStore.cliCheckResult.kilo ? "Installed" : "Not found"}
           </Badge>
+          {#if !$localSettingStore.cliCheckResult.kilo}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kilo} target="_blank" rel="noreferrer">Official docs</a>
+          {/if}
         {/if}
       </div>
       <div class="flex flex-wrap gap-1">
@@ -108,6 +136,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.qwen ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.qwen ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.qwen}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.qwen} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -117,6 +148,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.goose ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.goose ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.goose}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.goose} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -126,6 +160,9 @@
         <Badge variant={$localSettingStore.cliCheckResult.gemini ? "secondary" : "destructive"}>
           {$localSettingStore.cliCheckResult.gemini ? "Installed" : "Not found"}
         </Badge>
+        {#if !$localSettingStore.cliCheckResult.gemini}
+          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.gemini} target="_blank" rel="noreferrer">Official docs</a>
+        {/if}
       {/if}
     </div>
 
@@ -136,6 +173,9 @@
           <Badge variant={$localSettingStore.cliCheckResult.opencode ? "secondary" : "destructive"}>
             {$localSettingStore.cliCheckResult.opencode ? "Installed" : "Not found"}
           </Badge>
+          {#if !$localSettingStore.cliCheckResult.opencode}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.opencode} target="_blank" rel="noreferrer">Official docs</a>
+          {/if}
         {/if}
       </div>
       <div class="flex flex-wrap gap-1">

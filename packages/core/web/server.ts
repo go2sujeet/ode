@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join, resolve, sep } from "path";
 import { EMBEDDED_ASSETS, HAS_EMBEDDED_ASSETS } from "./embedded-assets";
 import {
@@ -37,11 +37,47 @@ const DEFAULT_WEB_BUILD_DIR = join(process.cwd(), "packages", "web-ui", "build")
 const DEFAULT_SESSION_EVENTS_LIMIT = 2000;
 const MAX_SESSION_EVENTS_LIMIT = 10000;
 
+function resolveAppVersion(): string {
+  try {
+    const proc = Bun.spawnSync({
+      cmd: ["ode", "version"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (proc.exitCode === 0) {
+      const output = Buffer.from(proc.stdout).toString("utf-8").trim();
+      const match = output.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/);
+      if (match?.[0]) {
+        return match[0];
+      }
+      if (output.length > 0) {
+        return output;
+      }
+    }
+  } catch {
+    // Ignore and try file fallback.
+  }
+
+  try {
+    const raw = readFileSync(join(process.cwd(), "package.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    if (typeof parsed.version === "string" && parsed.version.trim().length > 0) {
+      return parsed.version.trim();
+    }
+  } catch {
+    // Ignore and use fallback.
+  }
+  return "unknown";
+}
+
+const APP_VERSION = resolveAppVersion();
+
 let webServer: ReturnType<typeof Bun.serve> | null = null;
 
 type JsonResponse = {
   ok: boolean;
   error?: string;
+  version?: string;
   config?: typeof defaultDashboardConfig;
   workspace?: (typeof defaultDashboardConfig)["workspaces"][number];
   agentCheck?: {
@@ -497,7 +533,7 @@ async function handleRequest(request: Request): Promise<Response> {
   if (pathname === "/api/config") {
     if (request.method === "GET") {
       const config = await readLocalSettings();
-      return jsonResponse(200, { ok: true, config });
+      return jsonResponse(200, { ok: true, config, version: APP_VERSION });
     }
     if (request.method === "PUT") {
       try {
@@ -508,7 +544,7 @@ async function handleRequest(request: Request): Promise<Response> {
           return jsonResponse(400, { ok: false, error: validationError });
         }
         await writeLocalSettings(sanitized);
-        return jsonResponse(200, { ok: true, config: sanitized });
+        return jsonResponse(200, { ok: true, config: sanitized, version: APP_VERSION });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Invalid payload";
         return jsonResponse(400, { ok: false, error: message });

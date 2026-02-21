@@ -48,7 +48,9 @@ const DISCORD_THREAD_RENAME_LIMIT = 90;
 const DISCORD_MODAL_CHANNEL = "ode:modal:channel_details";
 const DISCORD_MODAL_GITHUB = "ode:modal:github";
 const STATUS_FORMAT_OPTIONS = ["aggressive", "medium", "minimum"] as const;
+const STATUS_FREQUENCY_OPTIONS = ["2000", "5000", "10000"] as const;
 const GIT_STRATEGY_OPTIONS = ["worktree", "default"] as const;
+const AUTO_UPDATE_OPTIONS = ["on", "off"] as const;
 const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"] as const;
 const DISCORD_LAUNCHER_COMMANDS = [
   {
@@ -62,7 +64,9 @@ const statusMessageThreadMap = new Map<string, string>();
 const channelSettingsDrafts = new Map<string, { provider: typeof PROVIDERS[number]; model: string }>();
 const generalSettingsDrafts = new Map<string, {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
+  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
+  autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 }>();
 
 function splitForDiscord(text: string): string[] {
@@ -429,20 +433,40 @@ function parseGitStrategy(value: string): "default" | "worktree" | null {
   return null;
 }
 
+function parseStatusFrequency(value: string): "2000" | "5000" | "10000" | null {
+  const normalized = value.trim();
+  if (normalized === "2000" || normalized === "5000" || normalized === "10000") {
+    return normalized;
+  }
+  return null;
+}
+
+function parseAutoUpdate(value: string): "on" | "off" | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "on" || normalized === "off") return normalized;
+  return null;
+}
+
 function getInitialGeneralDraft(): {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
+  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
+  autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 } {
   const settings = getUserGeneralSettings();
   return {
     statusFormat: settings.defaultStatusMessageFormat,
+    statusFrequencyMs: String(settings.statusMessageFrequencyMs) as typeof STATUS_FREQUENCY_OPTIONS[number],
     gitStrategy: settings.gitStrategy,
+    autoUpdate: settings.autoUpdate ? "on" : "off",
   };
 }
 
 function getGeneralDraftOrInitial(userId: string, channelId: string): {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
+  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
+  autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 } {
   return generalSettingsDrafts.get(draftKey(userId, channelId)) ?? getInitialGeneralDraft();
 }
@@ -478,11 +502,35 @@ function buildGeneralSettingsPickerPayload(params: {
       }))
     );
 
+  const statusFrequencySelect = new StringSelectMenuBuilder()
+    .setCustomId(`ode:general:frequency:${params.channelId}`)
+    .setPlaceholder("Status frequency")
+    .addOptions(
+      STATUS_FREQUENCY_OPTIONS.map((value) => ({
+        label: `${Number(value) / 1000} seconds`,
+        value,
+        default: value === draft.statusFrequencyMs,
+      }))
+    );
+
+  const autoUpdateSelect = new StringSelectMenuBuilder()
+    .setCustomId(`ode:general:auto_update:${params.channelId}`)
+    .setPlaceholder("Auto update")
+    .addOptions(
+      AUTO_UPDATE_OPTIONS.map((value) => ({
+        label: value === "on" ? "On" : "Off",
+        value,
+        default: value === draft.autoUpdate,
+      }))
+    );
+
   return {
-    content: `General settings (draft)\nStatus: ${draft.statusFormat}\nGit strategy: ${draft.gitStrategy}`,
+    content: `General settings (draft)\nStatus: ${draft.statusFormat}\nStatus frequency: ${Number(draft.statusFrequencyMs) / 1000} seconds\nGit strategy: ${draft.gitStrategy}\nAuto update: ${draft.autoUpdate}`,
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(statusSelect),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(statusFrequencySelect),
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(gitSelect),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(autoUpdateSelect),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(`ode:general:save:${params.channelId}`)
@@ -657,7 +705,27 @@ async function handleGeneralSettingsComponentInteraction(interaction: any): Prom
     }
     generalSettingsDrafts.set(key, {
       statusFormat: parsed,
+      statusFrequencyMs: draft.statusFrequencyMs,
       gitStrategy: draft.gitStrategy,
+      autoUpdate: draft.autoUpdate,
+    });
+    const payload = buildGeneralSettingsPickerPayload({ channelId, userId });
+    await interaction.update(payload);
+    return true;
+  }
+
+  if (action === "frequency") {
+    const selected = interaction.values?.[0] as string | undefined;
+    const parsed = selected ? parseStatusFrequency(selected) : null;
+    if (!parsed) {
+      await interaction.reply({ content: "Invalid status message frequency.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    generalSettingsDrafts.set(key, {
+      statusFormat: draft.statusFormat,
+      statusFrequencyMs: parsed,
+      gitStrategy: draft.gitStrategy,
+      autoUpdate: draft.autoUpdate,
     });
     const payload = buildGeneralSettingsPickerPayload({ channelId, userId });
     await interaction.update(payload);
@@ -673,7 +741,27 @@ async function handleGeneralSettingsComponentInteraction(interaction: any): Prom
     }
     generalSettingsDrafts.set(key, {
       statusFormat: draft.statusFormat,
+      statusFrequencyMs: draft.statusFrequencyMs,
       gitStrategy: parsed,
+      autoUpdate: draft.autoUpdate,
+    });
+    const payload = buildGeneralSettingsPickerPayload({ channelId, userId });
+    await interaction.update(payload);
+    return true;
+  }
+
+  if (action === "auto_update") {
+    const selected = interaction.values?.[0] as string | undefined;
+    const parsed = selected ? parseAutoUpdate(selected) : null;
+    if (!parsed) {
+      await interaction.reply({ content: "Invalid auto update setting.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    generalSettingsDrafts.set(key, {
+      statusFormat: draft.statusFormat,
+      statusFrequencyMs: draft.statusFrequencyMs,
+      gitStrategy: draft.gitStrategy,
+      autoUpdate: parsed,
     });
     const payload = buildGeneralSettingsPickerPayload({ channelId, userId });
     await interaction.update(payload);
@@ -684,6 +772,12 @@ async function handleGeneralSettingsComponentInteraction(interaction: any): Prom
     setUserGeneralSettings({
       defaultStatusMessageFormat: draft.statusFormat,
       gitStrategy: draft.gitStrategy,
+      statusMessageFrequencyMs: draft.statusFrequencyMs === "5000"
+        ? 5000
+        : draft.statusFrequencyMs === "10000"
+          ? 10000
+          : 2000,
+      autoUpdate: draft.autoUpdate !== "off",
     });
     generalSettingsDrafts.delete(key);
     await interaction.reply({ content: "General settings updated.", flags: MessageFlags.Ephemeral });
