@@ -4,7 +4,7 @@
   import { Badge, Button, Card } from "$lib/components/ui";
   import { localSettingStore } from "$lib/local-setting/store";
 
-  type AgentWithModels = "opencode" | "codex" | "kiro";
+  type AgentWithModels = "opencode" | "codex" | "kilo";
 
   function getAgentModels(agent: AgentWithModels): string[] {
     const agents = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
@@ -73,33 +73,33 @@
       {/if}
     </div>
 
+    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+      <strong class="text-sm">Kiro CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <Badge variant={$localSettingStore.cliCheckResult.kiro ? "secondary" : "destructive"}>
+          {$localSettingStore.cliCheckResult.kiro ? "Installed" : "Not found"}
+        </Badge>
+      {/if}
+    </div>
+
     <div class="rounded-lg border p-3">
       <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">Kiro CLI</strong>
+        <strong class="text-sm">Kilo CLI</strong>
         {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.kiro ? "secondary" : "destructive"}>
-            {$localSettingStore.cliCheckResult.kiro ? "Installed" : "Not found"}
+          <Badge variant={$localSettingStore.cliCheckResult.kilo ? "secondary" : "destructive"}>
+            {$localSettingStore.cliCheckResult.kilo ? "Installed" : "Not found"}
           </Badge>
         {/if}
       </div>
       <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("kiro").length === 0}
+        {#if getAgentModels("kilo").length === 0}
           <Badge variant="outline">No models configured</Badge>
         {:else}
-          {#each getAgentModels("kiro") as model}
+          {#each getAgentModels("kilo") as model}
             <Badge variant="outline">{model}</Badge>
           {/each}
         {/if}
       </div>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Kilo CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.kilo ? "secondary" : "destructive"}>
-          {$localSettingStore.cliCheckResult.kilo ? "Installed" : "Not found"}
-        </Badge>
-      {/if}
     </div>
 
     <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
