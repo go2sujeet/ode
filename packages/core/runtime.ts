@@ -25,6 +25,7 @@ import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core
 import { prepareRuntimeSession } from "@/core/runtime/session-bootstrap";
 import { runOpenRequest } from "@/core/runtime/open-request";
 import { buildMessageOptions } from "@/core/runtime/message-options";
+import { splitResultMessage } from "@/core/runtime/result-message";
 import type { OpenCodeOptions } from "@/agents";
 
 type RuntimeDeps = {
@@ -160,19 +161,34 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     text: string;
   }): Promise<void> {
     const { channelId, threadId, statusTs, text } = params;
-    if (resolveStatusMessageFormat() === "aggressive") {
-      await deps.im.sendMessage(channelId, threadId, text, true);
+    const statusFormat = resolveStatusMessageFormat();
+    const finalChunks = splitResultMessage(text);
+    const singleChunk = finalChunks[0] ?? text;
+
+    if (finalChunks.length > 1) {
+      if (statusFormat !== "aggressive") {
+        await deps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.", false);
+      }
+
+      for (const chunk of finalChunks) {
+        await deps.im.sendMessage(channelId, threadId, chunk, true);
+      }
+      return;
+    }
+
+    if (statusFormat === "aggressive") {
+      await deps.im.sendMessage(channelId, threadId, singleChunk, true);
       return;
     }
 
     const maxEditableMessageChars = deps.im.maxEditableMessageChars;
     if (typeof maxEditableMessageChars === "number" && text.length > maxEditableMessageChars) {
-      await deps.im.updateMessage(channelId, statusTs, "_Final result posted below._", false);
-      await deps.im.sendMessage(channelId, threadId, text, true);
+      await deps.im.updateMessage(channelId, statusTs, "Final result posted below.", false);
+      await deps.im.sendMessage(channelId, threadId, singleChunk, true);
       return;
     }
 
-    await deps.im.updateMessage(channelId, statusTs, text, true);
+    await deps.im.updateMessage(channelId, statusTs, singleChunk, true);
   }
 
   async function handleUserMessageInternal(context: CoreMessageContext, text: string): Promise<void> {
