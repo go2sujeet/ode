@@ -40,24 +40,9 @@ type GeminiJsonRecord = {
 const runtime = new CliAgentRuntime("Gemini");
 const newSessions = new Set<string>();
 
-const GEMINI_PLAN_SYSTEM_PROMPT = [
-  "PLAN MODE REQUIREMENT:",
-  "- This turn is planning-only.",
-  "- Do not modify files.",
-  "- Do not execute shell commands.",
-  "- Return an implementation plan and risk notes.",
-].join("\n");
-
 function resolveGeminiBinary(): string {
   if (typeof Bun !== "undefined" && Bun.which("gemini")) return "gemini";
   return "gemini";
-}
-
-function buildGeminiSystemPrompt(baseSystemPrompt: string, agent?: string): string {
-  if (agent?.trim().toLowerCase() !== "plan") {
-    return baseSystemPrompt;
-  }
-  return `${baseSystemPrompt}\n\n${GEMINI_PLAN_SYSTEM_PROMPT}`;
 }
 
 function resolveGeminiApprovalMode(agent?: string): "plan" | undefined {
@@ -228,7 +213,7 @@ export async function sendMessage(
       const approvalMode = resolveGeminiApprovalMode(agent);
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
-      const systemPrompt = buildGeminiSystemPrompt(buildSystemPrompt(context?.slack), agent);
+      const systemPrompt = buildSystemPrompt(context?.slack);
       const geminiPrompt = buildSystemWrappedPrompt(systemPrompt, prompt);
       const isNewSession = newSessions.has(sessionId);
       const envOverrides = runtime.getSessionEnvironment(sessionId);
