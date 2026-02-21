@@ -1,0 +1,39 @@
+import { Elysia } from "elysia";
+import { serveStaticAsset } from "./static-assets";
+import { registerConfigRoutes } from "./routes/config";
+import { registerWorkspaceRoutes } from "./routes/workspaces";
+import { registerLarkRoutes } from "./routes/lark";
+import { registerAgentCheckRoutes } from "./routes/agent-check";
+import { registerSessionRoutes } from "./routes/sessions";
+import { registerActionRoutes } from "./routes/action";
+
+export function createWebApp(): Elysia {
+  const app = new Elysia();
+
+  app.get("/local-setting", () => new Response(null, {
+    status: 307,
+    headers: { location: "/" },
+  }));
+
+  app.get("/local-setting/*", ({ request }: { request: Request }) => {
+    const pathname = new URL(request.url).pathname;
+    const target = pathname.slice("/local-setting".length) || "/";
+    return new Response(null, {
+      status: 307,
+      headers: { location: target },
+    });
+  });
+
+  registerConfigRoutes(app);
+  registerWorkspaceRoutes(app);
+  registerLarkRoutes(app);
+  registerAgentCheckRoutes(app);
+  registerSessionRoutes(app);
+  registerActionRoutes(app);
+
+  app.all("*", async ({ request }: { request: Request }) => {
+    return serveStaticAsset(request);
+  });
+
+  return app;
+}

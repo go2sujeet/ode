@@ -10,6 +10,7 @@ import {
   type OdeConfig,
   type WorkspaceConfig,
 } from "@/config";
+import { getInstalledAgentStatus } from "@/core/web/agent-check";
 import { discoverDiscordWorkspace, discoverLarkWorkspace, discoverSlackWorkspace } from "./web/local-settings";
 
 type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
@@ -32,13 +33,6 @@ const agentOptions: Omit<AgentOption, "installed">[] = [
   { id: "goose", label: "Goose", command: "goose" },
   { id: "gemini", label: "Gemini CLI", command: "gemini" },
 ];
-
-function isAgentCommandAvailable(agent: Omit<AgentOption, "installed">): boolean {
-  if (agent.id === "qwen") {
-    return Boolean(Bun.which("qwen") || Bun.which("qwen-code"));
-  }
-  return Boolean(Bun.which(agent.command));
-}
 
 function isInteractiveTerminal(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -153,9 +147,10 @@ async function askRequired(rl: Interface, prompt: string): Promise<string> {
 }
 
 function detectAgents(): AgentOption[] {
+  const installed = getInstalledAgentStatus();
   return agentOptions.map((agent) => ({
     ...agent,
-    installed: isAgentCommandAvailable(agent),
+    installed: installed[agent.id],
   }));
 }
 
