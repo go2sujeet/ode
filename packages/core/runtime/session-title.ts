@@ -27,7 +27,7 @@ function normalizeTitle(value: string): string | null {
   return title.slice(0, MAX_TITLE_LENGTH).trim();
 }
 
-async function generateTitleFromPrompt(prompt: string): Promise<string | null> {
+export async function generateTitleFromPrompt(prompt: string): Promise<string | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
