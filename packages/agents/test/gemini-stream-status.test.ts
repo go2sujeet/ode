@@ -54,7 +54,7 @@ describe("gemini stream status parsing", () => {
     expect(state.phaseStatus).toBe("Drafting response");
   });
 
-  it("uses Gemini fallback header when title is missing", () => {
+  it("uses opencode fallback header when title is missing", () => {
     const now = Date.now();
     const state = buildSessionMessageState([
       rawEvent(now, {
@@ -77,6 +77,6 @@ describe("gemini stream status parsing", () => {
       "medium"
     );
 
-    expect(text).toContain("*Gemini Working...*");
+    expect(text).toContain("*Opencode is running...*");
   });
 });

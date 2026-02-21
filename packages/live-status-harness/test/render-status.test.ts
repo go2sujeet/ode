@@ -65,7 +65,7 @@ describe("live status harness renderer", () => {
     const joined = statuses.map((status) => status.text).join("\n\n");
 
     expect(statuses.length).toBeGreaterThanOrEqual(2);
-    expect(joined).toContain("Goose Working...");
+    expect(joined).toContain("Opencode is running...");
     expect(joined).toContain("Finished tool: Read");
   });
 
@@ -120,7 +120,7 @@ describe("live status harness renderer", () => {
     const joined = statuses.map((status) => status.text).join("\n\n");
 
     expect(statuses.length).toBeGreaterThanOrEqual(2);
-    expect(joined).toContain("Gemini Working...");
+    expect(joined).toContain("Opencode is running...");
     expect(joined).toContain("Running tool: read_file");
   });
 });

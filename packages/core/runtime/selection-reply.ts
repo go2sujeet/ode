@@ -11,6 +11,7 @@ import { resolveStatusMessageFormat } from "@/config";
 import { buildMessageOptions } from "@/core/runtime/message-options";
 import { runTrackedRequest } from "@/core/runtime/request-runner";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
+import { maybeGenerateSessionTitle } from "@/core/runtime/session-title";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { OpenCodeOptions } from "@/agents";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
@@ -69,15 +70,22 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
   markMessageProcessed(channelId, threadId, messageTs);
 
   const providerId = deps.agent.getProviderForSession(sessionId);
-  const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
-  const statusTs = await deps.im.sendMessage(channelId, threadId, `${providerLabel} is working...`, false);
+  const statusTs = await deps.im.sendMessage(channelId, threadId, "Opencode is running...", false);
   if (!statusTs) {
     log.error("Failed to send status message for button selection");
     return;
   }
 
   const request = createActiveRequest(sessionId, channelId, threadId, threadId, statusTs, selection);
+  const statusMessageKey = getStatusMessageKey(request);
+
+  void maybeGenerateSessionTitle({
+    prompt: selection,
+    stateKey: statusMessageKey,
+    liveParsedState: state.liveParsedState,
+    startedAt: request.startedAt,
+  });
 
   const session = loadSession(channelId, threadId);
   if (session) {
@@ -125,7 +133,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
         agent: deps.agent,
         request,
         workingPath: cwd,
-        state: state.liveParsedState.get(getStatusMessageKey(request)),
+        state: state.liveParsedState.get(statusMessageKey),
         statusMessageFormat: resolveStatusMessageFormat(),
       });
       await deps.im.updateMessage(channelId, statusTs, statusText, false);

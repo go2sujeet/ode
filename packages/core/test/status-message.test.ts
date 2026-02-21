@@ -44,7 +44,7 @@ describe("buildStatusMessageForAgent", () => {
     expect(text).not.toBe("custom status");
   });
 
-  it("uses fallback header for non-opencode providers when title is missing", () => {
+  it("uses opencode fallback header when title is missing", () => {
     const agent = {
       getProviderForSession: () => "codex",
       buildStatusMessage: () => "custom status",
@@ -61,10 +61,10 @@ describe("buildStatusMessageForAgent", () => {
       statusMessageFormat: "medium",
     });
 
-    expect(text).toContain("*Codex Working...*");
+    expect(text).toContain("*Opencode is running...*");
   });
 
-  it("does not inject fallback header for opencode", () => {
+  it("uses fallback header for opencode when title is missing", () => {
     const agent = {
       getProviderForSession: () => "opencode",
       buildStatusMessage: () => "custom status",
@@ -81,7 +81,7 @@ describe("buildStatusMessageForAgent", () => {
       statusMessageFormat: "medium",
     });
 
-    expect(text).not.toContain("Working...");
+    expect(text).toContain("*Opencode is running...*");
     expect(text).toContain("_Thinking_");
   });
 });

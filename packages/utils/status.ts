@@ -14,17 +14,7 @@ export type StatusRequest = {
 };
 
 export type AgentStatusProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
-
-const PROVIDER_FALLBACK_TITLES: Partial<Record<AgentStatusProvider, string>> = {
-  claudecode: "Claude Code Working...",
-  codex: "Codex Working...",
-  kimi: "Kimi Working...",
-  kiro: "Kiro Working...",
-  kilo: "Kilo Working...",
-  qwen: "Qwen Working...",
-  goose: "Goose Working...",
-  gemini: "Gemini Working...",
-};
+const DEFAULT_FALLBACK_TITLE = "Opencode is running...";
 
 type StatusTodo = {
   content: string;
@@ -295,7 +285,7 @@ export function buildLiveStatusMessage(
     if (request.statusFrozen && request.currentText) {
       return request.currentText;
     }
-    return `_Working_ (${formatElapsedTime(request.startedAt)})`;
+    return `${DEFAULT_FALLBACK_TITLE} (${formatElapsedTime(request.startedAt)})`;
   }
 
   if (request.statusFrozen && request.currentText) {
@@ -308,7 +298,7 @@ export function buildLiveStatusMessage(
   if (state.sessionTitle) {
     lines.push(`*${state.sessionTitle}* (${headerDetails})`);
   } else {
-    lines.push(`_${headerDetails}_`);
+    lines.push(`*${DEFAULT_FALLBACK_TITLE}* (${headerDetails})`);
   }
 
   if (state.phaseStatus) {
@@ -333,27 +323,11 @@ export function buildLiveStatusMessage(
 }
 
 export function buildStatusMessageByProvider(
-  provider: AgentStatusProvider,
+  _provider: AgentStatusProvider,
   request: StatusRequest,
   workingPath: string,
   state?: SessionMessageState,
   statusMessageFormat: StatusMessageFormat = "medium"
 ): string {
-  const fallbackTitle = state && !state.sessionTitle
-    ? PROVIDER_FALLBACK_TITLES[provider]
-    : undefined;
-
-  if (fallbackTitle && state) {
-    return buildLiveStatusMessage(
-      request,
-      workingPath,
-      {
-        ...state,
-        sessionTitle: fallbackTitle,
-      },
-      statusMessageFormat
-    );
-  }
-
   return buildLiveStatusMessage(request, workingPath, state, statusMessageFormat);
 }
