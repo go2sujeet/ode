@@ -58,6 +58,35 @@ type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "ki
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
 
+type SlackActionBody = {
+  actions?: Array<{
+    value?: string;
+    selected_option?: {
+      value?: string;
+    };
+  }>;
+  channel?: {
+    id?: string;
+  };
+  user?: {
+    id?: string;
+  };
+  trigger_id?: string;
+  view?: {
+    private_metadata?: string;
+    id?: string;
+    hash?: string;
+    state?: {
+      values?: Record<string, Record<string, { value?: string; selected_option?: { value?: string } }>>;
+    };
+  };
+  message?: {
+    thread_ts?: string;
+    ts?: string;
+    text?: string;
+  };
+};
+
 const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"];
 
 const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
@@ -107,6 +136,38 @@ function getSelectableProviders(): AgentProvider[] {
 
 function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose"): AgentProvider {
   return parseAgentProvider(provider);
+}
+
+function getActionChannelId(body: SlackActionBody): string | undefined {
+  return body.actions?.[0]?.value ?? body.channel?.id;
+}
+
+function getActionUserId(body: SlackActionBody): string | undefined {
+  return body.user?.id;
+}
+
+function getActionTriggerId(body: SlackActionBody): string | undefined {
+  return body.trigger_id;
+}
+
+function getActionSelectedOptionValue(body: SlackActionBody): string | undefined {
+  return body.actions?.[0]?.selected_option?.value;
+}
+
+function getActionViewMetadata(body: SlackActionBody): string | undefined {
+  return body.view?.private_metadata;
+}
+
+function getActionThreadTs(body: SlackActionBody): string | undefined {
+  return body.message?.thread_ts || body.message?.ts;
+}
+
+function getActionMessageTs(body: SlackActionBody): string | undefined {
+  return body.message?.ts;
+}
+
+function getActionMessageText(body: SlackActionBody): string {
+  return body.message?.text || "Question";
 }
 
 function buildSettingsModal(params: {
@@ -417,9 +478,11 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(SETTINGS_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 
-    const channelId = (body as any).actions?.[0]?.value
-      ?? (body as any).channel?.id;
-    if (!channelId) return;
+    const actionBody = body as SlackActionBody;
+
+    const channelId = getActionChannelId(actionBody);
+    const triggerId = getActionTriggerId(actionBody);
+    if (!channelId || !triggerId) return;
 
     try {
       await startOpenCodeServer();
@@ -448,7 +511,7 @@ export function setupInteractiveHandlers(): void {
     });
 
     await client.views.open({
-      trigger_id: (body as any).trigger_id,
+      trigger_id: triggerId,
       view,
     });
     });
@@ -456,10 +519,12 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(GITHUB_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 
-    const channelId = (body as any).actions?.[0]?.value
-      ?? (body as any).channel?.id;
-    const userId = (body as any).user?.id;
-    if (!channelId || !userId) return;
+    const actionBody = body as SlackActionBody;
+
+    const channelId = getActionChannelId(actionBody);
+    const userId = getActionUserId(actionBody);
+    const triggerId = getActionTriggerId(actionBody);
+    if (!channelId || !userId || !triggerId) return;
 
     const info = getGitHubInfoForUser(userId);
     const view = buildGitHubTokenModal({
@@ -471,7 +536,7 @@ export function setupInteractiveHandlers(): void {
     });
 
     await client.views.open({
-      trigger_id: (body as any).trigger_id,
+      trigger_id: triggerId,
       view,
     });
     });
@@ -479,8 +544,11 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(GENERAL_SETTINGS_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 
-    const channelId = (body as any).actions?.[0]?.value
-      ?? (body as any).channel?.id
+    const actionBody = body as SlackActionBody;
+    const triggerId = getActionTriggerId(actionBody);
+    if (!triggerId) return;
+
+    const channelId = getActionChannelId(actionBody)
       ?? "";
     const generalSettings = getUserGeneralSettings();
     const view = buildGeneralSettingsModal({
@@ -490,7 +558,7 @@ export function setupInteractiveHandlers(): void {
     });
 
     await client.views.open({
-      trigger_id: (body as any).trigger_id,
+      trigger_id: triggerId,
       view,
     });
     });
@@ -498,10 +566,12 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(GENERAL_SYNC_WORKSPACE_ACTION, async ({ ack, body, client }) => {
       await ack();
 
-      const channelId = (body as any).actions?.[0]?.value
-        ?? (body as any).view?.private_metadata
-        ?? (body as any).channel?.id;
-      const userId = (body as any).user?.id;
+      const actionBody = body as SlackActionBody;
+
+      const channelId = getActionChannelId(actionBody)
+        ?? getActionViewMetadata(actionBody)
+        ?? actionBody.channel?.id;
+      const userId = getActionUserId(actionBody);
       if (!channelId || !userId) return;
 
       const workspaces = getWorkspaces();
@@ -532,11 +602,14 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(PROVIDER_ACTION, async ({ ack, body, client }) => {
     await ack();
 
-    const view = (body as any).view;
-    if (!view) return;
+    const actionBody = body as SlackActionBody;
+
+    const view = actionBody.view;
+    if (!view || !view.id || !view.hash) return;
 
     const channelId = view.private_metadata;
-    const selectedOption = (body as any).actions?.[0]?.selected_option?.value;
+    if (!channelId) return;
+    const selectedOption = getActionSelectedOptionValue(actionBody);
     const selectedProvider = parseAgentProvider(selectedOption);
     if (selectedProvider === "opencode") {
       try {
@@ -656,7 +729,8 @@ export function setupInteractiveHandlers(): void {
       setChannelBaseBranch(channelId, baseBranch);
       setChannelSystemMessage(channelId, channelSystemMessage);
     } catch (err) {
-      const userId = (body as any).user?.id;
+      const actionBody = body as SlackActionBody;
+      const userId = getActionUserId(actionBody);
       if (userId) {
         await client.chat.postEphemeral({
           channel: channelId,
@@ -667,7 +741,8 @@ export function setupInteractiveHandlers(): void {
       return;
     }
 
-    const userId = (body as any).user?.id;
+    const actionBody = body as SlackActionBody;
+    const userId = getActionUserId(actionBody);
     if (userId) {
       await client.chat.postEphemeral({
         channel: channelId,
@@ -686,9 +761,11 @@ export function setupInteractiveHandlers(): void {
 
     await ack();
 
-    const userId = (body as any).user?.id;
-    const channelId = (body as any).view?.private_metadata
-      ?? (body as any).channel?.id;
+    const actionBody = body as SlackActionBody;
+
+    const userId = getActionUserId(actionBody);
+    const channelId = getActionViewMetadata(actionBody)
+      ?? actionBody.channel?.id;
     if (!userId || !channelId) return;
 
     try {
@@ -734,8 +811,9 @@ export function setupInteractiveHandlers(): void {
         gitStrategy,
       });
     } catch (err) {
-      const userId = (body as any).user?.id;
-      const channelId = view.private_metadata || (body as any).channel?.id;
+      const actionBody = body as SlackActionBody;
+      const userId = getActionUserId(actionBody);
+      const channelId = view.private_metadata || actionBody.channel?.id;
       if (userId && channelId) {
         await client.chat.postEphemeral({
           channel: channelId,
@@ -746,8 +824,9 @@ export function setupInteractiveHandlers(): void {
       return;
     }
 
-    const userId = (body as any).user?.id;
-    const channelId = view.private_metadata || (body as any).channel?.id;
+    const actionBody = body as SlackActionBody;
+    const userId = getActionUserId(actionBody);
+    const channelId = view.private_metadata || actionBody.channel?.id;
     if (userId && channelId) {
       await client.chat.postEphemeral({
         channel: channelId,
@@ -761,18 +840,20 @@ export function setupInteractiveHandlers(): void {
     slackApp.action(/^user_choice_\d+$/, async ({ ack, body, client }) => {
     await ack();
 
-    const action = (body as any).actions?.[0];
+    const actionBody = body as SlackActionBody;
+
+    const action = actionBody.actions?.[0];
     const value = action?.value;
-    const channel = (body as any).channel?.id;
-    const threadTs = (body as any).message?.thread_ts || (body as any).message?.ts;
-    const userId = (body as any).user?.id;
-    const messageTs = (body as any).message?.ts;
+    const channel = actionBody.channel?.id;
+    const threadTs = getActionThreadTs(actionBody);
+    const userId = getActionUserId(actionBody);
+    const messageTs = getActionMessageTs(actionBody);
 
     if (!value || !channel || !threadTs) return;
 
     // Update the original message to remove buttons (keep question text only)
     if (messageTs) {
-      const originalText = (body as any).message?.text || "Question";
+      const originalText = getActionMessageText(actionBody);
       await client.chat.update({
         channel,
         ts: messageTs,
