@@ -283,9 +283,9 @@ describe("session inspector", () => {
       "medium"
     );
 
-    expect(text).toContain("model: gpt-5.3-codex");
+    expect(text).toContain("gpt-5.3-codex");
     expect(text).toContain("42k tokens");
-    expect(text).toContain("build agent");
+    expect(text).toContain("build");
     expect(text).not.toContain("cost 0");
   });
 });

@@ -74,7 +74,7 @@ function formatCost(value: number): string {
 function buildHeaderDetails(state: SessionMessageState): string {
   const details: string[] = [];
   if (state.model) {
-    details.push(`model: ${state.model}`);
+    details.push(state.model);
   }
 
   const totalTokens = state.tokenUsage?.total;
@@ -83,7 +83,7 @@ function buildHeaderDetails(state: SessionMessageState): string {
   }
 
   if (state.agent) {
-    details.push(`${state.agent} agent`);
+    details.push(state.agent);
   }
 
   const cost = state.tokenUsage?.cost;
@@ -305,10 +305,12 @@ export function buildLiveStatusMessage(
   const lines: string[] = [];
   const headerDetails = buildHeaderDetails(state);
 
-  if (state.sessionTitle) {
+  const shouldHideSessionTitle = Boolean(state.model || state.agent);
+
+  if (state.sessionTitle && !shouldHideSessionTitle) {
     lines.push(`*${state.sessionTitle}* (${headerDetails})`);
   } else {
-    lines.push(`_${headerDetails}_`);
+    lines.push(`(${headerDetails})`);
   }
 
   if (state.phaseStatus) {
