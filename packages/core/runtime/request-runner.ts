@@ -3,6 +3,7 @@ import type { ActiveRequest } from "@/config/local/sessions";
 import { CoreStateMachine } from "@/core/state-machine";
 import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "@/core/runtime/helpers";
 import { startEventStreamWatcher } from "@/core/runtime/event-stream";
+import { resolveMessageUpdateIntervalMs } from "@/config";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
 
@@ -55,41 +56,23 @@ export async function runTrackedRequest(
     failureLogLabel,
   } = params;
 
+  const progressIntervalMs = resolveMessageUpdateIntervalMs();
   let progressInFlight = false;
-  let progressPending = false;
-  let progressDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   const runProgressTick = async (): Promise<void> => {
     if (request.state !== "processing") return;
-    if (progressInFlight) {
-      progressPending = true;
-      return;
-    }
+    if (progressInFlight) return;
     progressInFlight = true;
     try {
       await onProgressTick();
     } finally {
       progressInFlight = false;
-      if (progressPending) {
-        progressPending = false;
-        void runProgressTick();
-      }
     }
-  };
-
-  const scheduleProgressTick = (): void => {
-    if (progressDebounceTimer) {
-      clearTimeout(progressDebounceTimer);
-    }
-    progressDebounceTimer = setTimeout(() => {
-      progressDebounceTimer = null;
-      void runProgressTick();
-    }, 250);
   };
 
   const progressTimer = setInterval(() => {
     void runProgressTick();
-  }, 5000);
+  }, progressIntervalMs);
 
   const stopSignal = createDeferred<void>();
   const stopWatcher = await startEventStreamWatcher({
@@ -99,7 +82,7 @@ export async function runTrackedRequest(
     stateMachine,
     liveEventHistory,
     liveParsedState,
-    onUpdate: scheduleProgressTick,
+    onUpdate: () => {},
     onStop: () => {
       stopSignal.resolve();
     },
@@ -114,10 +97,6 @@ export async function runTrackedRequest(
     ]);
 
     clearInterval(progressTimer);
-    if (progressDebounceTimer) {
-      clearTimeout(progressDebounceTimer);
-      progressDebounceTimer = null;
-    }
     stopWatcher();
 
     if (isExternallySettled(request)) {
@@ -162,10 +141,6 @@ export async function runTrackedRequest(
     return { responses: result.responses };
   } catch (err) {
     clearInterval(progressTimer);
-    if (progressDebounceTimer) {
-      clearTimeout(progressDebounceTimer);
-      progressDebounceTimer = null;
-    }
     stopWatcher();
 
     if (isExternallySettled(request)) {

@@ -135,6 +135,10 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
         input.user.defaultStatusMessageFormat
         ?? input.user.defaultMessageFrequency
         ?? "medium",
+      statusMessageFrequencyMs:
+        input.user.statusMessageFrequencyMs === 5000 || input.user.statusMessageFrequencyMs === 10000
+          ? input.user.statusMessageFrequencyMs
+          : 2000,
     },
     agents: {
       opencode: {

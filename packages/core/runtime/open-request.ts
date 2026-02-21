@@ -1,4 +1,5 @@
 import { resolveStatusMessageFormat } from "@/config/status-message-format";
+import { resolveMessageUpdateIntervalMs } from "@/config/message-update-interval";
 import {
   completeActiveRequest,
   createActiveRequest,
@@ -78,6 +79,7 @@ export async function runOpenRequest(params: {
   session.activeRequest = request;
   saveSession(session);
 
+  const progressIntervalMs = resolveMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
   const result = await runTrackedRequest({
     deps,
@@ -98,7 +100,7 @@ export async function runOpenRequest(params: {
       ),
     onProgressTick: async () => {
       const now = Date.now();
-      if (now - lastHeartbeat > 5000) {
+      if (now - lastHeartbeat > progressIntervalMs) {
         lastHeartbeat = now;
         request.lastUpdatedAt = now;
       }

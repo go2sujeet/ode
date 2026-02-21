@@ -8,6 +8,7 @@ export type DashboardConfig = {
     gitStrategy: "default" | "worktree";
     defaultStatusMessageFormat: "aggressive" | "medium" | "minimum";
     defaultMessageFrequency?: "aggressive" | "medium" | "minimum";
+    statusMessageFrequencyMs?: 2000 | 5000 | 10000;
   };
   agents: {
     opencode: {
@@ -84,6 +85,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     email: "",
     gitStrategy: "worktree",
     defaultStatusMessageFormat: "medium",
+    statusMessageFrequencyMs: 2000,
   },
   agents: {
     opencode: { enabled: true, models: [] },
@@ -121,6 +123,11 @@ const asFrequency = (
 ): DashboardConfig["user"]["defaultStatusMessageFormat"] => {
   if (value === "aggressive" || value === "minimum") return value;
   return "medium";
+};
+
+const asStatusMessageFrequencyMs = (value: unknown): 2000 | 5000 | 10000 => {
+  if (value === 5000 || value === 10000) return value;
+  return 2000;
 };
 
 const asGitStrategy = (
@@ -273,6 +280,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       defaultStatusMessageFormat: asFrequency(
         user.defaultStatusMessageFormat ?? user.defaultMessageFrequency
       ),
+      statusMessageFrequencyMs: asStatusMessageFrequencyMs(user.statusMessageFrequencyMs),
     },
     agents: {
       opencode: {

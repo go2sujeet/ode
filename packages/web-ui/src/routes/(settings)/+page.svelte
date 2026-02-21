@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { TOOL_DISPLAY_CONFIG, type GitStrategy, type StatusMessageFormat } from "$lib/localConfig";
+  import {
+    TOOL_DISPLAY_CONFIG,
+    type DashboardConfig,
+    type GitStrategy,
+    type StatusMessageFormat,
+  } from "$lib/localConfig";
   import { Button, Card } from "$lib/components/ui";
   import ToggleGroup from "$lib/components/ui/toggle-group.svelte";
   import { localSettingStore } from "$lib/local-setting/store";
@@ -13,6 +18,50 @@
     { value: "worktree", label: "Worktree" },
     { value: "default", label: "Default" },
   ];
+  const statusMessageFrequencyItems: Array<{ value: "2000" | "5000" | "10000"; label: string }> = [
+    { value: "2000", label: "2 seconds" },
+    { value: "5000", label: "5 seconds" },
+    { value: "10000", label: "10 seconds" },
+  ];
+
+  function parseStatusMessageFrequencyMs(value: string): 2000 | 5000 | 10000 {
+    if (value === "5000") return 5000;
+    if (value === "10000") return 10000;
+    return 2000;
+  }
+
+  function parseStatusMessageFormat(value: string): StatusMessageFormat {
+    if (value === "minimum" || value === "aggressive") return value;
+    return "medium";
+  }
+
+  function parseGitStrategyValue(value: string): GitStrategy {
+    return value === "default" ? "default" : "worktree";
+  }
+
+  function handleStatusFormatChange(nextValue: string): void {
+    const nextFormat = parseStatusMessageFormat(nextValue);
+    localSettingStore.updateConfig((config: DashboardConfig) => ({
+      ...config,
+      user: { ...config.user, defaultStatusMessageFormat: nextFormat },
+    }));
+  }
+
+  function handleStatusFrequencyChange(nextValue: string): void {
+    const nextMs = parseStatusMessageFrequencyMs(nextValue);
+    localSettingStore.updateConfig((config: DashboardConfig) => ({
+      ...config,
+      user: { ...config.user, statusMessageFrequencyMs: nextMs },
+    }));
+  }
+
+  function handleGitStrategyChange(nextValue: string): void {
+    const nextStrategy = parseGitStrategyValue(nextValue);
+    localSettingStore.updateConfig((config: DashboardConfig) => ({
+      ...config,
+      user: { ...config.user, gitStrategy: nextStrategy },
+    }));
+  }
 </script>
 
 <Card className="p-5">
@@ -28,13 +77,19 @@
         <ToggleGroup
           items={statusMessageFormatItems}
           value={$localSettingStore.config.user.defaultStatusMessageFormat}
-          onValueChange={(nextValue: string) => {
-            const nextFormat = nextValue as StatusMessageFormat;
-            localSettingStore.updateConfig((config) => ({
-              ...config,
-              user: { ...config.user, defaultStatusMessageFormat: nextFormat },
-            }));
-          }}
+          onValueChange={handleStatusFormatChange}
+        />
+      </div>
+    </div>
+
+    <div class="grid gap-2">
+      <p class="text-sm font-medium">Status Message Frequency</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">Controls how often status messages refresh while a request is running.</p>
+      <div class="inline-block w-fit">
+        <ToggleGroup
+          items={statusMessageFrequencyItems}
+          value={String($localSettingStore.config.user.statusMessageFrequencyMs ?? 2000)}
+          onValueChange={handleStatusFrequencyChange}
         />
       </div>
     </div>
@@ -46,13 +101,7 @@
         <ToggleGroup
           items={gitStrategyItems}
           value={$localSettingStore.config.user.gitStrategy}
-          onValueChange={(nextValue: string) => {
-            const nextStrategy = nextValue as GitStrategy;
-            localSettingStore.updateConfig((config) => ({
-              ...config,
-              user: { ...config.user, gitStrategy: nextStrategy },
-            }));
-          }}
+          onValueChange={handleGitStrategyChange}
         />
       </div>
     </div>
