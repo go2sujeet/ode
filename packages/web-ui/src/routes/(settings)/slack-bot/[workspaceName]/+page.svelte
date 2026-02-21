@@ -353,6 +353,7 @@
         <Input
           id="workspace-name"
           value={selectedWorkspace.name}
+          disabled
           on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "name", event)}
         />
       </div>
@@ -362,6 +363,7 @@
         <Input
           id="workspace-domain"
           value={selectedWorkspace.domain}
+          disabled
           on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "domain", event)}
         />
       </div>

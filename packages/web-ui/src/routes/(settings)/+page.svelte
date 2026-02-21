@@ -80,7 +80,10 @@
 
 <Card className="p-5">
   <div class="mb-4 flex items-center justify-between gap-2">
-    <h2 class="text-lg font-semibold">General</h2>
+    <div>
+      <h2 class="text-lg font-semibold">General</h2>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">Current version: {$localSettingStore.appVersion || "unknown"}</p>
+    </div>
   </div>
 
   <div class="grid gap-5">
