@@ -15,6 +15,7 @@ import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
+import { isStopCommand } from "@/ims/shared/stop-command";
 import {
   getChannelSystemMessage,
   getChannelAgentProvider,
@@ -212,10 +213,6 @@ function cleanBotMention(content: string, botUserId: string): string {
     text = text.replace(pattern, " ");
   }
   return text.replace(/\s+/g, " ").trim();
-}
-
-function isStopCommand(text: string): boolean {
-  return text.trim().toLowerCase() === "stop";
 }
 
 function isTopLevelMessage(message: any): boolean {

@@ -27,6 +27,63 @@ function createDeps(overrides: Partial<Parameters<typeof registerSlackMessageRou
 }
 
 describe("registerSlackMessageRouter", () => {
+  it("only treats exact 'stop' as stop command", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleStopCommand = mock(async () => true);
+    const handleIncomingMessage = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      handleStopCommand,
+      handleIncomingMessage,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    const basePayload = {
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    };
+
+    await registeredHandler!({
+      ...basePayload,
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_BOT> please stop this request",
+        ts: "1710000000.000000",
+      },
+    });
+
+    expect(handleStopCommand).toHaveBeenCalledTimes(0);
+    expect(handleIncomingMessage).toHaveBeenCalledTimes(1);
+
+    await registeredHandler!({
+      ...basePayload,
+      message: {
+        channel: "C1",
+        user: "U2",
+        text: "<@U_BOT> stop",
+        ts: "1710000000.000009",
+      },
+    });
+
+    expect(handleStopCommand).toHaveBeenCalledTimes(1);
+    expect(handleIncomingMessage).toHaveBeenCalledTimes(1);
+    expect(say).toHaveBeenCalledWith({ text: "Request stopped.", thread_ts: "1710000000.000009" });
+  });
+
   it("caches bot identity and avoids auth.test on every message", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const authTest = mock(async () => ({ user_id: "U_BOT", team_id: "T1", enterprise_id: "E1" }));

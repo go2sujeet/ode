@@ -2,7 +2,6 @@ import { spawnSync } from "child_process";
 import {
   resolveStatusMessageFormat,
 } from "@/config";
-import { isProcessAlive, readDaemonState } from "@/core/daemon/state";
 import {
   loadSession,
   saveSession,
@@ -47,27 +46,6 @@ function createRuntimeState(): RuntimeState {
     liveParsedState: new Map(),
     stateMachines: new Map(),
   };
-}
-
-function scheduleRuntimeShutdown(): void {
-  setTimeout(() => {
-    const state = readDaemonState();
-    const managerPid = state.managerPid;
-    if (managerPid && managerPid !== process.pid && isProcessAlive(managerPid)) {
-      try {
-        process.kill(managerPid, "SIGTERM");
-        return;
-      } catch {
-        // Fall through to self shutdown.
-      }
-    }
-
-    try {
-      process.kill(process.pid, "SIGTERM");
-    } catch {
-      process.exit(0);
-    }
-  }, 150).unref();
 }
 
 function getCurrentBranchName(cwd: string): string | null {
@@ -282,7 +260,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     const session = loadSession(channelId, threadId);
     if (!session) {
       log.info("Stop command received without session", { channelId, threadId });
-      scheduleRuntimeShutdown();
       return true;
     }
 
@@ -301,7 +278,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     }
 
     if (!request || request.state !== "processing") {
-      scheduleRuntimeShutdown();
       return true;
     }
 
@@ -311,7 +287,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     await runtimeDeps.im.deleteMessage(request.channelId, request.statusMessageTs);
 
     failActiveRequest(channelId, threadId, "Stopped by user");
-    scheduleRuntimeShutdown();
     return true;
   }
 

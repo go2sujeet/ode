@@ -1,4 +1,5 @@
 import { log } from "@/utils";
+import { isStopCommand } from "@/ims/shared/stop-command";
 
 type RouterDeps = {
   app: any;
@@ -94,12 +95,12 @@ function shouldDropForOtherMentions(text: string, isMention: boolean): boolean {
 
 async function maybeHandleStopCommand(
   deps: RouterDeps,
-  text: string,
+  cleanText: string,
   channelId: string,
   threadId: string,
   say: any
 ): Promise<boolean> {
-  if (!/\bstop\b/i.test(text)) return false;
+  if (!isStopCommand(cleanText)) return false;
   const stopped = await deps.handleStopCommand(channelId, threadId);
   if (!stopped) return false;
 
@@ -227,6 +228,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
 
       const isMention = currentBotUserId ? text.includes(`<@${currentBotUserId}>`) : false;
+      const cleanText = stripBotMention(text, currentBotUserId);
       await maybeRefreshWorkspaceForMention({
         deps,
         channelId,
@@ -234,7 +236,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
-      if (await maybeHandleStopCommand(deps, text, channelId, threadId, say)) {
+      if (await maybeHandleStopCommand(deps, cleanText, channelId, threadId, say)) {
         return;
       }
       const threadActive = deps.isThreadActive(channelId, threadId);
@@ -250,8 +252,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
 
       deps.markThreadActive(channelId, threadId);
-
-      const cleanText = stripBotMention(text, currentBotUserId);
 
       if (await maybeHandleLauncherCommand({
         deps,

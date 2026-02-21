@@ -30,6 +30,7 @@ const args = foregroundRequested
   ? rawArgs.filter((arg) => arg !== "--foreground")
   : rawArgs;
 const command = args[0];
+const isOnboardingCommand = command === "onboarding" || command === "onboard" || command === "config";
 
 function printHelp(): void {
   console.log(
@@ -41,7 +42,9 @@ function printHelp(): void {
       "  ode status",
       "  ode restart",
       "  ode stop",
+      "  ode onboard",
       "  ode onboarding",
+      "  ode config",
       "  ode upgrade",
       "  ode --version",
       "",
@@ -50,6 +53,7 @@ function printHelp(): void {
       "  ode status",
       "  ode restart",
       "  ode stop",
+      "  ode onboard",
       "  ode --foreground",
     ].join("\n"),
   );
@@ -285,7 +289,7 @@ if (command === "upgrade") {
   process.exit(0);
 }
 
-if (command === "onboarding") {
+if (isOnboardingCommand) {
   await runOnboarding({ force: true });
   process.exit(0);
 }

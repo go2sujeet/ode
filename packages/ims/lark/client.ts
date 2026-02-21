@@ -14,6 +14,7 @@ import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
+import { isStopCommand } from "@/ims/shared/stop-command";
 
 let larkRuntimeStarted = false;
 
@@ -211,10 +212,6 @@ function parseLarkText(content: string | undefined): string {
   } catch {
     return content;
   }
-}
-
-function isStopCommand(text: string): boolean {
-  return text.trim().toLowerCase() === "stop";
 }
 
 function isSettingsCommand(text: string): boolean {
