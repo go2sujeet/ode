@@ -26,6 +26,7 @@ import { prepareRuntimeSession } from "@/core/runtime/session-bootstrap";
 import { runOpenRequest } from "@/core/runtime/open-request";
 import { buildMessageOptions } from "@/core/runtime/message-options";
 import { splitResultMessage } from "@/core/runtime/result-message";
+import { createRateLimitedImAdapter } from "@/core/runtime/message-updates";
 import type { OpenCodeOptions } from "@/agents";
 
 type RuntimeDeps = {
@@ -134,6 +135,10 @@ async function maybeSyncBranchAndThread(params: {
 }
 
 export function createCoreRuntime(deps: RuntimeDeps) {
+  const runtimeDeps: RuntimeDeps = {
+    ...deps,
+    im: createRateLimitedImAdapter(deps.im),
+  };
   const state = createRuntimeState();
 
   function getStateKey(context: { channelId: string; threadId: string }): string {
@@ -167,35 +172,35 @@ export function createCoreRuntime(deps: RuntimeDeps) {
 
     if (finalChunks.length > 1) {
       if (statusFormat !== "aggressive") {
-        await deps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.", false);
+        await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.", false);
       }
 
       for (const chunk of finalChunks) {
-        await deps.im.sendMessage(channelId, threadId, chunk, true);
+        await runtimeDeps.im.sendMessage(channelId, threadId, chunk, true);
       }
       return;
     }
 
     if (statusFormat === "aggressive") {
-      await deps.im.sendMessage(channelId, threadId, singleChunk, true);
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
       return;
     }
 
-    const maxEditableMessageChars = deps.im.maxEditableMessageChars;
-    if (typeof maxEditableMessageChars === "number" && text.length > maxEditableMessageChars) {
-      await deps.im.updateMessage(channelId, statusTs, "Final result posted below.", false);
-      await deps.im.sendMessage(channelId, threadId, singleChunk, true);
+    const maxEditableMessageChars = runtimeDeps.im.maxEditableMessageChars;
+    if (typeof maxEditableMessageChars === "number" && singleChunk.length > maxEditableMessageChars) {
+      await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below.", false);
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
       return;
     }
 
-    await deps.im.updateMessage(channelId, statusTs, singleChunk, true);
+    await runtimeDeps.im.updateMessage(channelId, statusTs, singleChunk, true);
   }
 
   async function handleUserMessageInternal(context: CoreMessageContext, text: string): Promise<void> {
     const { channelId, replyThreadId, threadId } = context;
     const stateMachine = getStateMachine(context);
     const prepared = await prepareRuntimeSession({
-      deps,
+      deps: runtimeDeps,
       context,
       stateMachine,
     });
@@ -209,14 +214,14 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       channelId,
       threadId,
       replyThreadId,
-      im: deps.im,
+      im: runtimeDeps.im,
     });
 
     const threadHistory = created
-      ? await deps.im.fetchThreadHistory(channelId, replyThreadId, context.messageId)
+      ? await runtimeDeps.im.fetchThreadHistory(channelId, replyThreadId, context.messageId)
       : null;
 
-    const agentContext = await deps.im.buildAgentContext({
+    const agentContext = await runtimeDeps.im.buildAgentContext({
       cwd,
       channelId,
       replyThreadId,
@@ -233,7 +238,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     });
 
     const responses = await runOpenRequest({
-      deps,
+      deps: runtimeDeps,
       session,
       context,
       sessionId,
@@ -259,7 +264,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     const pendingQuestion = getPendingQuestion(context.channelId, context.threadId);
     if (pendingQuestion) {
       const handled = await handlePendingQuestionReply({
-        deps,
+        deps: runtimeDeps,
         pendingQuestion,
         context,
         text,
@@ -303,7 +308,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     request.state = "failed";
     request.error = "Stopped by user";
 
-    await deps.im.deleteMessage(request.channelId, request.statusMessageTs);
+    await runtimeDeps.im.deleteMessage(request.channelId, request.statusMessageTs);
 
     failActiveRequest(channelId, threadId, "Stopped by user");
     scheduleRuntimeShutdown();
@@ -332,7 +337,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
   }
 
   async function recoverPendingRequests(): Promise<void> {
-    await recoverPendingRequestsInternal(deps.im, deps.platform);
+    await recoverPendingRequestsInternal(runtimeDeps.im, deps.platform);
   }
 
   return {

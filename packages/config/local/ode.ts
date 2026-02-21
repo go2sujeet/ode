@@ -39,6 +39,7 @@ const userSchema = z.object({
     "low",
     "high",
   ]).optional(),
+  messageUpdateIntervalMs: z.number().optional().default(2000),
 });
 
 const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"]);
@@ -97,6 +98,8 @@ const channelDetailSchema = z.object({
 
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = 2000;
+const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 export const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
 
 const updateSchema = z.object({
@@ -162,6 +165,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     avatar: "",
     gitStrategy: "worktree",
     defaultStatusMessageFormat: "medium",
+    messageUpdateIntervalMs: 2000,
   },
   githubInfos: {},
   agents: {
@@ -212,6 +216,11 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
         : statusMessageFormat;
   const normalizedGitStrategy =
     config.user.gitStrategy === "default" ? "default" : "worktree";
+  const messageUpdateIntervalCandidate = config.user.messageUpdateIntervalMs ?? DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
+  const normalizedMessageUpdateInterval =
+    Number.isFinite(messageUpdateIntervalCandidate) && messageUpdateIntervalCandidate > 0
+      ? Math.max(messageUpdateIntervalCandidate, MIN_MESSAGE_UPDATE_INTERVAL_MS)
+      : DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
   const intervalCandidate = config.updates?.checkIntervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
   const normalizedInterval =
     Number.isFinite(intervalCandidate) && intervalCandidate > 0
@@ -247,6 +256,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       ...normalizedUser,
       gitStrategy: normalizedGitStrategy,
       defaultStatusMessageFormat: normalizedFrequency,
+      messageUpdateIntervalMs: normalizedMessageUpdateInterval,
     },
     updates: {
       autoUpgrade,

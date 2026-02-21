@@ -89,7 +89,7 @@ export function buildSystemPrompt(slack?: SlackContext): string {
       platform === "discord"
         ? "- Discord supports markdown like **bold**, _italic_, and code fences."
         : platform === "lark"
-          ? "- Lark supports markdown-style formatting in text messages."
+          ? "- Lark output should be plain text for now; do not rely on markdown styling."
         : "- Slack uses *bold* and _italic_ (not **bold** or *italic*)"
     );
     lines.push("- Use ` for inline code and ``` for code blocks");

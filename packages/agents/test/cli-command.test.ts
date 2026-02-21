@@ -88,6 +88,7 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).toContain("LARK ACTIONS:");
     expect(systemPrompt).toContain('"platform":"lark"');
     expect(systemPrompt).toContain("Supported actions: get_channels, post_message, update_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
+    expect(systemPrompt).toContain("Lark output should be plain text for now; do not rely on markdown styling.");
   });
 
   it("builds the OpenCode curl command", () => {

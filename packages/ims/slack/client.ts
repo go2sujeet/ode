@@ -15,7 +15,7 @@ import {
   getChannelSystemMessage,
   resolveChannelCwd,
 } from "@/config";
-import { markdownToSlack, splitForSlack } from "./formatter";
+import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
 import {
   markThreadActive,
   isThreadActive,
@@ -28,7 +28,6 @@ import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
 import { log } from "@/utils";
 import { getSlackActionApiUrl } from "./config";
-import { createThrottledMessageUpdater } from "./message-updates";
 import { fetchThreadHistoryByClient } from "./message-history";
 import { registerSlackMessageRouter } from "./message-router";
 import { syncSlackWorkspace } from "@/core/web/local-settings";
@@ -102,11 +101,6 @@ async function buildSlackContext(
     },
   };
 }
-
-const updateMessageThrottled = createThrottledMessageUpdater({
-  getApp,
-  getSlackBotToken,
-});
 
 export async function createSlackApp(appToken: string): Promise<App> {
   const normalizedAppToken = appToken.trim();
@@ -469,6 +463,31 @@ export async function deleteMessage(
   }
 }
 
+export async function updateMessage(
+  channelId: string,
+  messageTs: string,
+  text: string,
+  asMarkdown = true
+): Promise<void> {
+  try {
+    const slackApp = getApp();
+    const formattedText = asMarkdown ? markdownToSlack(text) : text;
+    const truncatedText = truncateForSlack(formattedText);
+    const botToken = getSlackBotToken(channelId);
+    if (!botToken) {
+      log.warn("No Slack bot token available for message update", { channelId });
+    }
+    await slackApp.client.chat.update({
+      channel: channelId,
+      ts: messageTs,
+      text: truncatedText,
+      token: botToken,
+    });
+  } catch (err) {
+    log.debug("Failed to update message", { error: String(err) });
+  }
+}
+
 async function fetchThreadHistory(
   channelId: string,
   threadId: string,
@@ -486,7 +505,7 @@ async function fetchThreadHistory(
 const slackAdapter: IMAdapter = {
   maxEditableMessageChars: 35_000,
   sendMessage,
-  updateMessage: updateMessageThrottled,
+  updateMessage,
   deleteMessage,
   fetchThreadHistory,
   buildAgentContext: async ({ cwd, channelId, threadId, userId, threadHistory }) =>
@@ -510,7 +529,7 @@ export async function recoverPendingRequests(): Promise<void> {
   log.info("Updating pending restart messages", { count: pendingRestartMessages.length });
 
   for (const pendingRestart of pendingRestartMessages) {
-    await updateMessageThrottled(
+    await updateMessage(
       pendingRestart.channelId,
       pendingRestart.messageTs,
       "Restarting Ode complete.",

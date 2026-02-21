@@ -68,6 +68,8 @@ export {
   type StatusMessageFormat,
 } from "./status-message-format";
 
+export { resolveMessageUpdateIntervalMs } from "./message-update-interval";
+
 export { resolveGitStrategy, type GitStrategy } from "./git-strategy";
 
 export { getSlackActionApiUrl, getWebHost, getWebPort } from "./network";
