@@ -51,12 +51,17 @@ const CHANNEL_SYSTEM_MESSAGE_BLOCK = "channel_system_message";
 const CHANNEL_SYSTEM_MESSAGE_ACTION = "channel_system_message_input";
 const GENERAL_STATUS_MESSAGE_FORMAT_BLOCK = "general_status_message_format";
 const GENERAL_STATUS_MESSAGE_FORMAT_ACTION = "general_status_message_format_select";
+const GENERAL_STATUS_MESSAGE_FREQUENCY_BLOCK = "general_status_message_frequency";
+const GENERAL_STATUS_MESSAGE_FREQUENCY_ACTION = "general_status_message_frequency_select";
 const GENERAL_GIT_STRATEGY_BLOCK = "general_git_strategy";
 const GENERAL_GIT_STRATEGY_ACTION = "general_git_strategy_select";
+const GENERAL_AUTO_UPDATE_BLOCK = "general_auto_update";
+const GENERAL_AUTO_UPDATE_ACTION = "general_auto_update_select";
 
 type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
+type StatusMessageFrequencyMs = 2000 | 5000 | 10000;
 
 type SlackActionBody = {
   actions?: Array<{
@@ -107,9 +112,20 @@ const STATUS_MESSAGE_FORMAT_OPTIONS: Array<{ label: string; value: StatusMessage
   { label: "Minimum", value: "minimum" },
 ];
 
+const STATUS_MESSAGE_FREQUENCY_OPTIONS: Array<{ label: string; value: "2000" | "5000" | "10000" }> = [
+  { label: "2 seconds", value: "2000" },
+  { label: "5 seconds", value: "5000" },
+  { label: "10 seconds", value: "10000" },
+];
+
 const GIT_STRATEGY_OPTIONS: Array<{ label: string; value: GitStrategy }> = [
   { label: "Worktree", value: "worktree" },
   { label: "Default", value: "default" },
+];
+
+const AUTO_UPDATE_OPTIONS: Array<{ label: string; value: "on" | "off" }> = [
+  { label: "On", value: "on" },
+  { label: "Off", value: "off" },
 ];
 
 function parseAgentProvider(value: unknown): AgentProvider {
@@ -405,14 +421,30 @@ function buildGitHubTokenModal(params: {
 function buildGeneralSettingsModal(params: {
   channelId: string;
   statusMessageFormat: StatusMessageFormat;
+  statusMessageFrequencyMs: StatusMessageFrequencyMs;
   gitStrategy: GitStrategy;
+  autoUpdate: boolean;
 }) {
-  const { channelId, statusMessageFormat, gitStrategy } = params;
+  const {
+    channelId,
+    statusMessageFormat,
+    statusMessageFrequencyMs,
+    gitStrategy,
+    autoUpdate,
+  } = params;
   const statusMessageFormatOptions = STATUS_MESSAGE_FORMAT_OPTIONS.map((option) => ({
     text: { type: "plain_text" as const, text: option.label },
     value: option.value,
   }));
+  const statusMessageFrequencyOptions = STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => ({
+    text: { type: "plain_text" as const, text: option.label },
+    value: option.value,
+  }));
   const gitStrategyOptions = GIT_STRATEGY_OPTIONS.map((option) => ({
+    text: { type: "plain_text" as const, text: option.label },
+    value: option.value,
+  }));
+  const autoUpdateOptions = AUTO_UPDATE_OPTIONS.map((option) => ({
     text: { type: "plain_text" as const, text: option.label },
     value: option.value,
   }));
@@ -429,7 +461,7 @@ function buildGeneralSettingsModal(params: {
         type: "section" as const,
         text: {
           type: "mrkdwn" as const,
-          text: "Configure default status message format and git strategy.",
+          text: "Configure status updates, git strategy, and auto update.",
         },
       },
       {
@@ -447,6 +479,19 @@ function buildGeneralSettingsModal(params: {
       },
       {
         type: "input" as const,
+        block_id: GENERAL_STATUS_MESSAGE_FREQUENCY_BLOCK,
+        label: { type: "plain_text" as const, text: "Status Message Frequency" },
+        element: {
+          type: "static_select" as const,
+          action_id: GENERAL_STATUS_MESSAGE_FREQUENCY_ACTION,
+          options: statusMessageFrequencyOptions,
+          initial_option:
+            statusMessageFrequencyOptions.find((option) => option.value === String(statusMessageFrequencyMs))
+            ?? statusMessageFrequencyOptions[0],
+        },
+      },
+      {
+        type: "input" as const,
         block_id: GENERAL_GIT_STRATEGY_BLOCK,
         label: { type: "plain_text" as const, text: "Git Strategy" },
         element: {
@@ -456,6 +501,19 @@ function buildGeneralSettingsModal(params: {
           initial_option:
             gitStrategyOptions.find((option) => option.value === gitStrategy)
             ?? gitStrategyOptions[0],
+        },
+      },
+      {
+        type: "input" as const,
+        block_id: GENERAL_AUTO_UPDATE_BLOCK,
+        label: { type: "plain_text" as const, text: "Auto Update" },
+        element: {
+          type: "static_select" as const,
+          action_id: GENERAL_AUTO_UPDATE_ACTION,
+          options: autoUpdateOptions,
+          initial_option:
+            autoUpdateOptions.find((option) => option.value === (autoUpdate ? "on" : "off"))
+            ?? autoUpdateOptions[0],
         },
       },
       {
@@ -555,7 +613,9 @@ export function setupInteractiveHandlers(): void {
     const view = buildGeneralSettingsModal({
       channelId,
       statusMessageFormat: generalSettings.defaultStatusMessageFormat,
+      statusMessageFrequencyMs: generalSettings.statusMessageFrequencyMs,
       gitStrategy: generalSettings.gitStrategy,
+      autoUpdate: generalSettings.autoUpdate,
     });
 
     await client.views.open({
@@ -794,7 +854,9 @@ export function setupInteractiveHandlers(): void {
     slackApp.view(GENERAL_SETTINGS_MODAL_ID, async ({ ack, view, body, client }) => {
     const values = view.state.values;
     const selectedStatusMessageFormat = values?.[GENERAL_STATUS_MESSAGE_FORMAT_BLOCK]?.[GENERAL_STATUS_MESSAGE_FORMAT_ACTION]?.selected_option?.value;
+    const selectedStatusMessageFrequency = values?.[GENERAL_STATUS_MESSAGE_FREQUENCY_BLOCK]?.[GENERAL_STATUS_MESSAGE_FREQUENCY_ACTION]?.selected_option?.value;
     const selectedGitStrategy = values?.[GENERAL_GIT_STRATEGY_BLOCK]?.[GENERAL_GIT_STRATEGY_ACTION]?.selected_option?.value;
+    const selectedAutoUpdate = values?.[GENERAL_AUTO_UPDATE_BLOCK]?.[GENERAL_AUTO_UPDATE_ACTION]?.selected_option?.value;
 
     const statusMessageFormat: StatusMessageFormat =
       selectedStatusMessageFormat === "aggressive"
@@ -803,6 +865,12 @@ export function setupInteractiveHandlers(): void {
         ? selectedStatusMessageFormat
         : "medium";
     const gitStrategy: GitStrategy = selectedGitStrategy === "default" ? "default" : "worktree";
+    const statusMessageFrequencyMs: StatusMessageFrequencyMs = selectedStatusMessageFrequency === "5000"
+      ? 5000
+      : selectedStatusMessageFrequency === "10000"
+        ? 10000
+        : 2000;
+    const autoUpdate = selectedAutoUpdate !== "off";
 
     await ack();
 
@@ -810,6 +878,8 @@ export function setupInteractiveHandlers(): void {
       setUserGeneralSettings({
         defaultStatusMessageFormat: statusMessageFormat,
         gitStrategy,
+        statusMessageFrequencyMs,
+        autoUpdate,
       });
     } catch (err) {
       const actionBody = body as SlackActionBody;

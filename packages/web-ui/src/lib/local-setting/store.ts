@@ -141,6 +141,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
           ? input.user.statusMessageFrequencyMs
           : 2000,
     },
+    updates: {
+      autoUpgrade: input.updates?.autoUpgrade !== false,
+    },
     agents: {
       opencode: {
         enabled: input.agents?.opencode?.enabled ?? true,

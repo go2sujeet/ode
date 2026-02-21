@@ -23,6 +23,10 @@
     { value: "5000", label: "5 seconds" },
     { value: "10000", label: "10 seconds" },
   ];
+  const autoUpdateItems: Array<{ value: "on" | "off"; label: string }> = [
+    { value: "on", label: "On" },
+    { value: "off", label: "Off" },
+  ];
 
   function parseStatusMessageFrequencyMs(value: string): 2000 | 5000 | 10000 {
     if (value === "5000") return 5000;
@@ -60,6 +64,16 @@
     localSettingStore.updateConfig((config: DashboardConfig) => ({
       ...config,
       user: { ...config.user, gitStrategy: nextStrategy },
+    }));
+  }
+
+  function handleAutoUpdateChange(nextValue: string): void {
+    localSettingStore.updateConfig((config: DashboardConfig) => ({
+      ...config,
+      updates: {
+        ...config.updates,
+        autoUpgrade: nextValue !== "off",
+      },
     }));
   }
 </script>
@@ -102,6 +116,18 @@
           items={gitStrategyItems}
           value={$localSettingStore.config.user.gitStrategy}
           onValueChange={handleGitStrategyChange}
+        />
+      </div>
+    </div>
+
+    <div class="grid gap-2">
+      <p class="text-sm font-medium">Auto Update</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">Controls whether Ode automatically checks for and applies updates.</p>
+      <div class="inline-block w-fit">
+        <ToggleGroup
+          items={autoUpdateItems}
+          value={$localSettingStore.config.updates.autoUpgrade === false ? "off" : "on"}
+          onValueChange={handleAutoUpdateChange}
         />
       </div>
     </div>
