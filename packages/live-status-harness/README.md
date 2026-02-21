@@ -30,6 +30,7 @@ Optional flags:
 - `--run-id <id>`
 - `--prompt-file <path>`
 - `--model <provider/model>` (or `<model>`, defaults provider to `openai`)
+- `--agent <id>` (for example `plan`)
 - `--redis-prefix <prefix>`
 
 ## Render captured data into live status output
@@ -63,6 +64,8 @@ By default, it writes one report per provider:
 Use `--providers <list>` to run only specific providers.
 
 For `opencode`, the report run forces model `openai/gpt-5.3-codex` so it does not depend on channel-level model config.
+
+For `gemini`, the report run forces `--agent plan` to avoid file edits during harness capture.
 
 Optional flags:
 

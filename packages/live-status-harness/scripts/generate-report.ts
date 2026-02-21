@@ -190,6 +190,9 @@ async function runProvider(
   const runId = options.runId || buildHarnessRunId(provider);
   if (!options.runId) {
     const captureArgs = ["--provider", provider, "--run-id", runId, "--cwd", options.cwd];
+    if (provider === "gemini") {
+      captureArgs.push("--agent", "plan");
+    }
     if (provider === "opencode") {
       captureArgs.push("--model", OPENCODE_REPORT_MODEL);
     }

@@ -177,6 +177,7 @@ async function main(): Promise<void> {
   const userId = parseArg("user") || DEFAULT_USER_ID;
   const prompt = await loadPrompt(parseArg("prompt-file"));
   const model = parseModelArg(parseArg("model"));
+  const agent = parseArg("agent") || (provider === "gemini" ? "plan" : undefined);
 
   const runId = parseArg("run-id") || buildHarnessRunId(provider);
   const startedAt = Date.now();
@@ -318,12 +319,18 @@ async function main(): Promise<void> {
 
     let responses: OpenCodeMessage[] = [];
     try {
+      const options: OpenCodeOptions | undefined = model || agent
+        ? {
+          ...(model ? { model } : {}),
+          ...(agent ? { agent } : {}),
+        }
+        : undefined;
       responses = await providerClient.sendMessage(
         channelId,
         session.sessionId,
         prompt,
         cwd,
-        model ? { model } : undefined,
+        options,
         context
       );
     } finally {
