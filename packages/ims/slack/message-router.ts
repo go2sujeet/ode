@@ -22,7 +22,7 @@ type RouterDeps = {
   isGeneralSettingsCommand: (text: string) => boolean;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
-  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;

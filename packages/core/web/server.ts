@@ -53,6 +53,7 @@ type JsonResponse = {
     kilo: boolean;
     qwen: boolean;
     goose: boolean;
+    gemini: boolean;
   };
   providers?: unknown;
   result?: unknown;
@@ -770,6 +771,7 @@ async function handleRequest(request: Request): Promise<Response> {
         kilo: kiloAvailable,
         qwen: Boolean(Bun.which("qwen") || Bun.which("qwen-code")),
         goose: Boolean(Bun.which("goose")),
+        gemini: Boolean(Bun.which("gemini")),
         opencodeModels,
         opencodeModelError,
         kiloModels,

@@ -64,6 +64,7 @@ Lark 开放平台事件订阅回调地址可使用：`POST /api/lark/event`。
 | Kimi Code | <img src="https://img.shields.io/badge/Kimi_Code-111111?style=for-the-badge&logo=moonrepo&logoColor=white" alt="Kimi Code logo" /> | [moonshotai.github.io/kimi-cli](https://moonshotai.github.io/kimi-cli/) |
 | Qwen Code | <img src="https://img.shields.io/badge/Qwen_Code-111111?style=for-the-badge&logo=alibabacloud&logoColor=white" alt="Qwen Code logo" /> | [github.com/QwenLM/qwen-code](https://github.com/QwenLM/qwen-code) |
 | Goose CLI | <img src="https://img.shields.io/badge/Goose_CLI-111111?style=for-the-badge&logo=go&logoColor=white" alt="Goose CLI logo" /> | [block.github.io/goose](https://block.github.io/goose/) |
+| Gemini CLI | <img src="https://img.shields.io/badge/Gemini_CLI-111111?style=for-the-badge&logo=google&logoColor=white" alt="Gemini CLI logo" /> | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
 | Kilo Code | <img src="https://img.shields.io/badge/Kilo_Code-111111?style=for-the-badge&logo=codeium&logoColor=white" alt="Kilo Code logo" /> | [kilo.ai/docs/code-with-ai/platforms/cli](https://kilo.ai/docs/code-with-ai/platforms/cli) |
 | Kiro CLI | <img src="https://img.shields.io/badge/Kiro_CLI-111111?style=for-the-badge&logo=amazonec2&logoColor=white" alt="Kiro CLI logo" /> | [kiro.dev/docs/cli/reference](https://kiro.dev/docs/cli/reference/cli-commands/) |
 

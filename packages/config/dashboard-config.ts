@@ -38,6 +38,9 @@ export type DashboardConfig = {
     goose: {
       enabled: boolean;
     };
+    gemini: {
+      enabled: boolean;
+    };
   };
   workspaces: {
     id: string;
@@ -57,7 +60,7 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
-      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
       model: string;
       workingDirectory: string;
       baseBranch: string;
@@ -96,6 +99,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     kilo: { enabled: true, models: [] },
     qwen: { enabled: true },
     goose: { enabled: true },
+    gemini: { enabled: true },
   },
   workspaces: [],
 };
@@ -140,7 +144,7 @@ const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status
 
 const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<
   DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]
->>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"]);
+>>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"]);
 
 function isKnownAgentProvider(
   value: string
@@ -263,6 +267,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const gooseRecord = agentsRecord.goose && typeof agentsRecord.goose === "object"
     ? (agentsRecord.goose as Record<string, unknown>)
     : {};
+  const geminiRecord = agentsRecord.gemini && typeof agentsRecord.gemini === "object"
+    ? (agentsRecord.gemini as Record<string, unknown>)
+    : {};
 
   const opencodeModels = asStringArray(opencodeRecord.models);
   const codexModels = asStringArray(codexRecord.models);
@@ -309,6 +316,9 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       },
       goose: {
         enabled: gooseRecord.enabled !== false,
+      },
+      gemini: {
+        enabled: geminiRecord.enabled !== false,
       },
     },
     workspaces,

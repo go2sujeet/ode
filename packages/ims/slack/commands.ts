@@ -54,7 +54,7 @@ const GENERAL_STATUS_MESSAGE_FORMAT_ACTION = "general_status_message_format_sele
 const GENERAL_GIT_STRATEGY_BLOCK = "general_git_strategy";
 const GENERAL_GIT_STRATEGY_ACTION = "general_git_strategy_select";
 
-type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
 
@@ -87,7 +87,7 @@ type SlackActionBody = {
   };
 };
 
-const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"];
+const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"];
 
 const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
   opencode: "OpenCode",
@@ -98,6 +98,7 @@ const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
   kilo: "Kilo",
   qwen: "Qwen Code",
   goose: "Goose",
+  gemini: "Gemini",
 };
 
 const STATUS_MESSAGE_FORMAT_OPTIONS: Array<{ label: string; value: StatusMessageFormat }> = [
@@ -134,7 +135,7 @@ function getSelectableProviders(): AgentProvider[] {
   return AGENT_PROVIDERS;
 }
 
-function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose"): AgentProvider {
+function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini"): AgentProvider {
   return parseAgentProvider(provider);
 }
 
@@ -720,7 +721,7 @@ export function setupInteractiveHandlers(): void {
         const normalizedSelectedModel = findMatchingModel(getKiloModels(), selectedModel) ?? selectedModel;
         setChannelModel(channelId, normalizedSelectedModel);
       }
-      if (selectedProvider === "claudecode" || selectedProvider === "kimi" || selectedProvider === "kiro" || selectedProvider === "qwen" || selectedProvider === "goose") {
+      if (selectedProvider === "claudecode" || selectedProvider === "kimi" || selectedProvider === "kiro" || selectedProvider === "qwen" || selectedProvider === "goose" || selectedProvider === "gemini") {
         setChannelModel(channelId, "");
       }
 

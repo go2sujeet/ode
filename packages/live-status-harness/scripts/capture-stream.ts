@@ -27,7 +27,7 @@ function parseArg(name: string): string | undefined {
 function normalizeProvider(value: string | undefined): AgentProviderId {
   const normalized = value?.trim().toLowerCase();
   if (normalized === "claude") return "claudecode";
-  if (normalized === "claudecode" || normalized === "codex" || normalized === "kimi" || normalized === "kiro" || normalized === "kilo" || normalized === "qwen" || normalized === "goose") {
+  if (normalized === "claudecode" || normalized === "codex" || normalized === "kimi" || normalized === "kiro" || normalized === "kilo" || normalized === "qwen" || normalized === "goose" || normalized === "gemini") {
     return normalized;
   }
   return "opencode";
@@ -177,6 +177,7 @@ async function main(): Promise<void> {
   const userId = parseArg("user") || DEFAULT_USER_ID;
   const prompt = await loadPrompt(parseArg("prompt-file"));
   const model = parseModelArg(parseArg("model"));
+  const agent = parseArg("agent") || (provider === "gemini" ? "plan" : undefined);
 
   const runId = parseArg("run-id") || buildHarnessRunId(provider);
   const startedAt = Date.now();
@@ -318,12 +319,18 @@ async function main(): Promise<void> {
 
     let responses: OpenCodeMessage[] = [];
     try {
+      const options: OpenCodeOptions | undefined = model || agent
+        ? {
+          ...(model ? { model } : {}),
+          ...(agent ? { agent } : {}),
+        }
+        : undefined;
       responses = await providerClient.sendMessage(
         channelId,
         session.sessionId,
         prompt,
         cwd,
-        model ? { model } : undefined,
+        options,
         context
       );
     } finally {

@@ -1,7 +1,7 @@
 import { DEFAULT_CODEX_MODEL, getChannelModel } from "@/config";
 import type { OpenCodeOptions } from "@/agents";
 
-type ProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+type ProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 
 function toKiloModel(modelValue: string | null | undefined): OpenCodeOptions["model"] | undefined {
   const trimmed = modelValue?.trim();

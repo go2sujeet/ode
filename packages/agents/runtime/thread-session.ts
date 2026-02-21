@@ -11,7 +11,7 @@ type SessionEnvironmentWriter = (sessionId: string, env: SessionEnvironment) => 
 export async function getOrCreateThreadSession(params: {
   channelId: string;
   threadId: string;
-  providerId: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+  providerId: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
   workingPath: string;
   env: SessionEnvironment;
   createSession: (workingPath: string, env?: SessionEnvironment) => Promise<string>;

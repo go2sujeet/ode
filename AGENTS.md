@@ -38,7 +38,7 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 
 ## Agent live status workflow
 - Use `packages/live-status-harness/fixed-prompt.md` as the baseline stream-capture prompt.
-- Capture stream events with `bun run live-status:capture --provider <opencode|claudecode|codex|kimi>`.
+- Capture stream events with `bun run live-status:capture --provider <opencode|claudecode|codex|kimi|kiro|kilo|qwen|goose|gemini>`.
 - Store raw ordered events in Redis under the harness keyspace (`harness:live_status:*`).
 - Render status outputs from captured events with `bun run live-status:render --run-id <runId>`.
 - Keep harness scripts in `packages/live-status-harness/` so stream capture/testing stays decoupled from the normal Ode runtime.

@@ -8,6 +8,7 @@ import { applyKimiRecordToState, extractKimiRecord } from "@/agents/kimi/session
 import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session-state";
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
 import { applyGooseRecordToState, extractGooseRecord } from "@/agents/goose/session-state";
+import { applyGeminiRecordToState, extractGeminiRecord } from "@/agents/gemini/session-state";
 import {
   extractSessionTitle,
   type StreamStateMaps,
@@ -293,6 +294,7 @@ export function buildSessionMessageState(
   const codexToolById = new Map<string, SessionTool>();
   const kimiToolById = new Map<string, SessionTool>();
   const kiloToolById = new Map<string, SessionTool>();
+  const geminiToolById = new Map<string, SessionTool>();
   const kiroTodoById = new Map<string, SessionTodo>();
   const kiloStreamState: StreamStateMaps<StreamToolState> = {
     textByIndex: sharedStreamState.textByIndex,
@@ -306,6 +308,7 @@ export function buildSessionMessageState(
     codexToolById.set(existingTool.id, { ...existingTool });
     kimiToolById.set(existingTool.id, { ...existingTool });
     kiloToolById.set(existingTool.id, { ...existingTool });
+    geminiToolById.set(existingTool.id, { ...existingTool });
   }
 
   for (const existingTodo of state.todos) {
@@ -354,6 +357,12 @@ export function buildSessionMessageState(
       extract: extractGooseRecord,
       apply: (record) => {
         applyGooseRecordToState(state, record as Parameters<typeof applyGooseRecordToState>[1], sharedStreamState);
+      },
+    },
+    {
+      extract: extractGeminiRecord,
+      apply: (record) => {
+        applyGeminiRecordToState(state, record as Parameters<typeof applyGeminiRecordToState>[1], geminiToolById);
       },
     },
   ];

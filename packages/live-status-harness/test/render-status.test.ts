@@ -68,4 +68,59 @@ describe("live status harness renderer", () => {
     expect(joined).toContain("Goose Working...");
     expect(joined).toContain("Finished tool: Read");
   });
+
+  it("renders gemini live status from synthetic fixture", () => {
+    const now = Date.now();
+    const meta: HarnessRunMeta = {
+      runId: "run-gemini-test",
+      provider: "gemini",
+      prompt: "test",
+      promptHash: "hash",
+      cwd: "/tmp/repo",
+      channelId: "C1",
+      threadId: "T1",
+      sessionId: "gemini_s1",
+      startedAt: now,
+      eventCount: 3,
+    };
+    const events: HarnessCapturedEvent[] = [
+      {
+        runId: "run-gemini-test",
+        sessionId: "gemini_s1",
+        provider: "gemini",
+        timestamp: now,
+        index: 0,
+        event: { type: "gemini.raw.init", properties: { record: { type: "init" } } },
+      },
+      {
+        runId: "run-gemini-test",
+        sessionId: "gemini_s1",
+        provider: "gemini",
+        timestamp: now + 1,
+        index: 1,
+        event: {
+          type: "gemini.raw.tool_use",
+          properties: { record: { type: "tool_use", tool_name: "read_file", tool_id: "tool-1" } },
+        },
+      },
+      {
+        runId: "run-gemini-test",
+        sessionId: "gemini_s1",
+        provider: "gemini",
+        timestamp: now + 2,
+        index: 2,
+        event: {
+          type: "gemini.raw.message",
+          properties: { record: { type: "message", role: "assistant", content: "Done", delta: true } },
+        },
+      },
+    ];
+
+    const statuses = renderStatusesFromRun(meta, events);
+    const joined = statuses.map((status) => status.text).join("\n\n");
+
+    expect(statuses.length).toBeGreaterThanOrEqual(2);
+    expect(joined).toContain("Gemini Working...");
+    expect(joined).toContain("Running tool: read_file");
+  });
 });

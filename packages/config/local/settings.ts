@@ -231,7 +231,7 @@ export function deleteChannelAgentInstructions(
 export function getThreadSessionId(
   channelId: string,
   threadId: string,
-  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose"
+  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini"
 ): string | null {
   const session = loadSession(channelId, threadId);
   if (!session?.sessionId) return null;

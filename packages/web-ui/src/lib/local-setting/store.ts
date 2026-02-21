@@ -10,6 +10,7 @@ export type CliCheckResult = {
   kilo: boolean;
   qwen: boolean;
   goose: boolean;
+  gemini: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
   kiloModels?: string[];
@@ -167,6 +168,9 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
       },
       goose: {
         enabled: input.agents?.goose?.enabled ?? true,
+      },
+      gemini: {
+        enabled: input.agents?.gemini?.enabled ?? true,
       },
     },
   };
@@ -326,6 +330,10 @@ async function checkAgents(): Promise<void> {
           goose: {
             ...state.config.agents.goose,
             enabled: result.goose,
+          },
+          gemini: {
+            ...state.config.agents.gemini,
+            enabled: result.gemini,
           },
         },
       },

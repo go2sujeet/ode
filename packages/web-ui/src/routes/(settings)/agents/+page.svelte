@@ -120,6 +120,15 @@
       {/if}
     </div>
 
+    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+      <strong class="text-sm">Gemini CLI</strong>
+      {#if $localSettingStore.cliCheckResult}
+        <Badge variant={$localSettingStore.cliCheckResult.gemini ? "secondary" : "destructive"}>
+          {$localSettingStore.cliCheckResult.gemini ? "Installed" : "Not found"}
+        </Badge>
+      {/if}
+    </div>
+
     <div class="rounded-lg border p-3">
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <strong class="text-sm">OpenCode CLI</strong>

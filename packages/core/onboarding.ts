@@ -12,7 +12,7 @@ import {
 } from "@/config";
 import { discoverDiscordWorkspace, discoverLarkWorkspace, discoverSlackWorkspace } from "./web/local-settings";
 
-type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+type AgentId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 
 type AgentOption = {
   id: AgentId;
@@ -30,6 +30,7 @@ const agentOptions: Omit<AgentOption, "installed">[] = [
   { id: "kilo", label: "Kilo", command: "kilo" },
   { id: "qwen", label: "Qwen Code", command: "qwen" },
   { id: "goose", label: "Goose", command: "goose" },
+  { id: "gemini", label: "Gemini CLI", command: "gemini" },
 ];
 
 function isAgentCommandAvailable(agent: Omit<AgentOption, "installed">): boolean {
@@ -419,6 +420,10 @@ async function setupCodingAgents(rl: Interface, config: OdeConfig): Promise<OdeC
         ...config.agents.goose,
         enabled: selectedIds.has("goose"),
       },
+      gemini: {
+        ...config.agents.gemini,
+        enabled: selectedIds.has("gemini"),
+      },
     },
   };
 
@@ -468,6 +473,7 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
       nextConfig.agents.kilo.enabled ? "Kilo" : null,
       nextConfig.agents.qwen.enabled ? "Qwen Code" : null,
       nextConfig.agents.goose.enabled ? "Goose" : null,
+      nextConfig.agents.gemini.enabled ? "Gemini CLI" : null,
     ].filter((value): value is string => Boolean(value));
     console.log("Onboarding complete.");
     console.log(`Workspaces: ${nextConfig.workspaces.length}`);

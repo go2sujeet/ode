@@ -47,6 +47,11 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("goose");
   });
 
+  it("selects gemini from env", () => {
+    process.env.ODE_AGENT_PROVIDER = "gemini";
+    expect(getSelectedAgentProviderId()).toBe("gemini");
+  });
+
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
     const claudecode = getAgentProvider("claudecode");
@@ -55,6 +60,7 @@ describe("agent registry", () => {
     const kilo = getAgentProvider("kilo");
     const qwen = getAgentProvider("qwen");
     const goose = getAgentProvider("goose");
+    const gemini = getAgentProvider("gemini");
     expect(opencode.supportsEventStream).toBe(true);
     expect(claudecode.supportsEventStream).toBe(false);
     expect(kimi.supportsEventStream).toBe(false);
@@ -62,5 +68,6 @@ describe("agent registry", () => {
     expect(kilo.supportsEventStream).toBe(false);
     expect(qwen.supportsEventStream).toBe(false);
     expect(goose.supportsEventStream).toBe(false);
+    expect(gemini.supportsEventStream).toBe(false);
   });
 });

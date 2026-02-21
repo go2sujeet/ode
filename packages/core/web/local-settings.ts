@@ -78,6 +78,7 @@ const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<ChannelAgentProvider>>([
   "kilo",
   "qwen",
   "goose",
+  "gemini",
 ]);
 
 function normalizeChannelAgentProvider(value: unknown): NonNullable<ChannelAgentProvider> {

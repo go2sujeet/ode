@@ -43,7 +43,7 @@ const userSchema = z.object({
   IM_MESSAGE_UPDATE_INTERVAL_MS: z.number().optional().default(2000),
 });
 
-const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose"]);
+const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"]);
 
 const agentsSchema = z.object({
   opencode: z.object({
@@ -73,6 +73,9 @@ const agentsSchema = z.object({
   goose: z.object({
     enabled: z.boolean().optional().default(true),
   }).optional().default({ enabled: true }),
+  gemini: z.object({
+    enabled: z.boolean().optional().default(true),
+  }).optional().default({ enabled: true }),
 }).optional().default({
   opencode: { enabled: true, models: [] },
   claudecode: { enabled: true },
@@ -82,6 +85,7 @@ const agentsSchema = z.object({
   kilo: { enabled: true, models: [] },
   qwen: { enabled: true },
   goose: { enabled: true },
+  gemini: { enabled: true },
 });
 
 const channelDetailSchema = z.object({
@@ -178,6 +182,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     kilo: { enabled: true, models: [] },
     qwen: { enabled: true },
     goose: { enabled: true },
+    gemini: { enabled: true },
   },
   completeOnboarding: false,
   workspaces: [],
@@ -297,6 +302,9 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       },
       goose: {
         enabled: config.agents?.goose?.enabled ?? true,
+      },
+      gemini: {
+        enabled: config.agents?.gemini?.enabled ?? true,
       },
     },
     completeOnboarding,
@@ -440,6 +448,7 @@ export function getEnabledAgentProviders(): AgentProvider[] {
   if (agents.kilo.enabled) enabled.push("kilo");
   if (agents.qwen.enabled) enabled.push("qwen");
   if (agents.goose.enabled) enabled.push("goose");
+  if (agents.gemini.enabled) enabled.push("gemini");
   return enabled.length > 0 ? enabled : ["opencode"];
 }
 
@@ -452,7 +461,8 @@ export function isAgentEnabled(agentProvider: AgentProvider): boolean {
   if (agentProvider === "kiro") return agents.kiro.enabled;
   if (agentProvider === "kilo") return agents.kilo.enabled;
   if (agentProvider === "qwen") return agents.qwen.enabled;
-  return agents.goose.enabled;
+  if (agentProvider === "goose") return agents.goose.enabled;
+  return agents.gemini.enabled;
 }
 
 export function getOpenCodeModels(): string[] {
@@ -744,7 +754,7 @@ export function getChannelModel(channelId: string): string | null {
 
 export function getChannelAgentProvider(channelId: string): AgentProvider {
   const provider = getChannelDetails(channelId)?.agentProvider;
-  if (provider === "claudecode" || provider === "codex" || provider === "kimi" || provider === "kiro" || provider === "kilo" || provider === "qwen" || provider === "goose") return provider;
+  if (provider === "claudecode" || provider === "codex" || provider === "kimi" || provider === "kiro" || provider === "kilo" || provider === "qwen" || provider === "goose" || provider === "gemini") return provider;
   return "opencode";
 }
 

@@ -6,6 +6,7 @@ import * as kilo from "./kilo";
 import * as opencode from "./opencode";
 import * as qwen from "./qwen";
 import * as goose from "./goose";
+import * as gemini from "./gemini";
 import type {
   OpenCodeMessage,
   OpenCodeMessageContext,
@@ -13,7 +14,7 @@ import type {
   OpenCodeSessionInfo,
 } from "./types";
 
-export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose";
+export type AgentProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 
 export type AgentStaticConfig = {
   displayName: string;
@@ -159,6 +160,20 @@ const providers: Record<AgentProviderId, AgentProvider> = {
     subscribeToSession: goose.subscribeToSession,
     getStaticConfig: goose.getStaticConfig,
   },
+  gemini: {
+    id: "gemini",
+    supportsEventStream: false,
+    startServer: gemini.startServer,
+    stopServer: gemini.stopServer,
+    createSession: gemini.createSession,
+    getOrCreateSession: gemini.getOrCreateSession,
+    sendMessage: gemini.sendMessage,
+    abortSession: gemini.abortSession,
+    cancelActiveRequest: gemini.cancelActiveRequest,
+    ensureSession: gemini.ensureSession,
+    subscribeToSession: gemini.subscribeToSession,
+    getStaticConfig: gemini.getStaticConfig,
+  },
 };
 
 export function getSelectedAgentProviderId(): AgentProviderId {
@@ -170,6 +185,7 @@ export function getSelectedAgentProviderId(): AgentProviderId {
   if (raw === "kilo") return "kilo";
   if (raw === "qwen") return "qwen";
   if (raw === "goose") return "goose";
+  if (raw === "gemini") return "gemini";
   return "opencode";
 }
 

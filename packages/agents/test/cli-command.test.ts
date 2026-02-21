@@ -8,6 +8,7 @@ import { buildKiroCommand, buildKiroCommandArgs } from "../kiro/client";
 import { buildKiloCommand, buildKiloCommandArgs } from "../kilo/client";
 import { buildQwenCommand, buildQwenCommandArgs } from "../qwen/client";
 import { buildGooseCommand, buildGooseCommandArgs } from "../goose/client";
+import { buildGeminiCommand, buildGeminiCommandArgs } from "../gemini/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -236,5 +237,33 @@ describe("agent cli command formatting", () => {
 
     expect(command).toContain("--resume");
     expect(command).toContain("--name session-9");
+  });
+
+  it("builds the Gemini plan-mode command", () => {
+    const args = buildGeminiCommandArgs({
+      sessionId: "session-10",
+      isNewSession: false,
+      prompt: "plan migration",
+      approvalMode: "plan",
+    });
+    const command = buildGeminiCommand(args);
+
+    expect(command).toContain("gemini");
+    expect(command).toContain("--output-format stream-json");
+    expect(command).toContain("--approval-mode plan");
+    expect(command).toContain("--resume session-10");
+    expect(command).toContain("-p 'plan migration'");
+  });
+
+  it("builds the Gemini default automation command", () => {
+    const args = buildGeminiCommandArgs({
+      sessionId: "session-11",
+      isNewSession: true,
+      prompt: "implement feature",
+    });
+    const command = buildGeminiCommand(args);
+
+    expect(command).toContain("--approval-mode yolo");
+    expect(command).not.toContain("--resume");
   });
 });
