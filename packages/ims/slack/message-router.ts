@@ -36,6 +36,12 @@ type RouterDeps = {
 
 type WorkspaceAuth = ReturnType<RouterDeps["resolveWorkspaceAuth"]>;
 
+type BotIdentity = {
+  botUserId: string;
+  teamId?: string;
+  enterpriseId?: string;
+};
+
 type IncomingMessageData = {
   channelId: string;
   userId: string;
@@ -157,90 +163,144 @@ async function maybeHandleLauncherCommand(params: {
   return true;
 }
 
+function getCacheKey(teamId?: string, enterpriseId?: string): string {
+  if (teamId) return `team:${teamId}`;
+  if (enterpriseId) return `enterprise:${enterpriseId}`;
+  return "default";
+}
+
+async function getBotIdentity(params: {
+  client: any;
+  cache: Map<string, BotIdentity>;
+  teamId?: string;
+  enterpriseId?: string;
+}): Promise<BotIdentity> {
+  const { client, cache, teamId, enterpriseId } = params;
+  const key = getCacheKey(teamId, enterpriseId);
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const authResult = await client.auth.test();
+  const identity: BotIdentity = {
+    botUserId: (authResult.user_id as string) || "",
+    teamId: (authResult.team_id as string | undefined) ?? teamId,
+    enterpriseId: (authResult.enterprise_id as string | undefined) ?? enterpriseId,
+  };
+
+  cache.set(key, identity);
+  return identity;
+}
+
 export function registerSlackMessageRouter(deps: RouterDeps): void {
   const slackApp = deps.app;
+  const botIdentityCache = new Map<string, BotIdentity>();
 
-  slackApp.message(async ({ message, say, client }: any) => {
-    const incoming = extractIncomingMessageData(message);
-    if (!incoming) return;
+  slackApp.message(async ({ message, say, client, context, body }: any) => {
+    let contextData: IncomingMessageData | null = null;
 
-    const { channelId, userId, text, threadId, messageId } = incoming;
+    try {
+      const incoming = extractIncomingMessageData(message);
+      if (!incoming) return;
+      contextData = incoming;
 
-    const authResult = await client.auth.test();
-    const currentBotUserId = authResult.user_id as string;
-    const workspaceAuth = syncWorkspaceAuth(
-      deps,
-      channelId,
-      authResult.team_id,
-      authResult.enterprise_id ?? undefined
-    );
-
-    if (userId === currentBotUserId) {
-      log.debug("[DROP] Message from bot user", { channelId, userId });
-      return;
-    }
-
-    const isMention = currentBotUserId ? text.includes(`<@${currentBotUserId}>`) : false;
-    await maybeRefreshWorkspaceForMention({
-      deps,
-      channelId,
-      isMention,
-      workspaceAuth,
-    });
-
-    if (await maybeHandleStopCommand(deps, text, channelId, threadId, say)) {
-      return;
-    }
-    const threadActive = deps.isThreadActive(channelId, threadId);
-
-    if (shouldDropForThreadContext(isMention, threadActive)) {
-      log.debug("[DROP] Not mentioned and thread inactive", { channelId, threadId });
-      return;
-    }
-
-    if (shouldDropForOtherMentions(text, isMention)) {
-      log.info("[DROP] Mentions other user", { channelId, threadId });
-      return;
-    }
-
-    deps.markThreadActive(channelId, threadId);
-
-    const cleanText = stripBotMention(text, currentBotUserId);
-
-    if (await maybeHandleLauncherCommand({
-      deps,
-      cleanText,
-      isMention,
-      channelId,
-      userId,
-      client,
-    })) {
-      return;
-    }
-
-    if (await maybeNotifySettingsIssues(deps, channelId, threadId, userId, client, say)) {
-      return;
-    }
-
-    const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
-    if (!cleanText) {
-      await say({
-        text: "Hi! How can I help you? Just ask me anything.",
-        thread_ts: threadId,
+      const { channelId, userId, text, threadId, messageId } = incoming;
+      const identity = await getBotIdentity({
+        client,
+        cache: botIdentityCache,
+        teamId: (context?.teamId as string | undefined) ?? (body?.team_id as string | undefined),
+        enterpriseId: (context?.enterpriseId as string | undefined) ?? (body?.enterprise_id as string | undefined),
       });
-      return;
-    }
 
-    await deps.handleIncomingMessage(
-      {
+      const currentBotUserId = identity.botUserId;
+      const workspaceAuth = syncWorkspaceAuth(
+        deps,
         channelId,
-        replyThreadId: threadId,
-        threadId,
+        identity.teamId,
+        identity.enterpriseId
+      );
+
+      if (userId === currentBotUserId) {
+        log.debug("[DROP] Message from bot user", { channelId, userId });
+        return;
+      }
+
+      const isMention = currentBotUserId ? text.includes(`<@${currentBotUserId}>`) : false;
+      await maybeRefreshWorkspaceForMention({
+        deps,
+        channelId,
+        isMention,
+        workspaceAuth,
+      });
+
+      if (await maybeHandleStopCommand(deps, text, channelId, threadId, say)) {
+        return;
+      }
+      const threadActive = deps.isThreadActive(channelId, threadId);
+
+      if (shouldDropForThreadContext(isMention, threadActive)) {
+        log.debug("[DROP] Not mentioned and thread inactive", { channelId, threadId });
+        return;
+      }
+
+      if (shouldDropForOtherMentions(text, isMention)) {
+        log.info("[DROP] Mentions other user", { channelId, threadId });
+        return;
+      }
+
+      deps.markThreadActive(channelId, threadId);
+
+      const cleanText = stripBotMention(text, currentBotUserId);
+
+      if (await maybeHandleLauncherCommand({
+        deps,
+        cleanText,
+        isMention,
+        channelId,
         userId,
-        messageId,
-        workspaceName,
-      },
-      cleanText
-    );
+        client,
+      })) {
+        return;
+      }
+
+      if (await maybeNotifySettingsIssues(deps, channelId, threadId, userId, client, say)) {
+        return;
+      }
+
+      const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
+      if (!cleanText) {
+        await say({
+          text: "Hi! How can I help you? Just ask me anything.",
+          thread_ts: threadId,
+        });
+        return;
+      }
+
+      await deps.handleIncomingMessage(
+        {
+          channelId,
+          replyThreadId: threadId,
+          threadId,
+          userId,
+          messageId,
+          workspaceName,
+        },
+        cleanText
+      );
+    } catch (error) {
+      log.error("Slack message router failed", {
+        channelId: contextData?.channelId,
+        threadId: contextData?.threadId,
+        messageId: contextData?.messageId,
+        error: String(error),
+      });
+      if (contextData) {
+        await say({
+          text: "I hit an internal error while handling that message. Please try again.",
+          thread_ts: contextData.threadId,
+        });
+      }
+    }
   });
 }
