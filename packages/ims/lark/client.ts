@@ -194,10 +194,22 @@ function stripLarkMentionMarkup(text: string): string {
 function parseLarkText(content: string | undefined): string {
   if (!content) return "";
   try {
-    const parsed = JSON.parse(content) as { text?: string };
-    return typeof parsed.text === "string" ? parsed.text : "";
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      if (typeof record.text === "string") {
+        return record.text;
+      }
+      if (typeof record.content === "string") {
+        return record.content;
+      }
+    }
+    return content;
   } catch {
-    return "";
+    return content;
   }
 }
 
@@ -206,7 +218,8 @@ function isStopCommand(text: string): boolean {
 }
 
 function isSettingsCommand(text: string): boolean {
-  return /^\/setting\b/i.test(text.trim());
+  const normalized = text.trim().replace(/^／/, "/");
+  return /^\/?setting(?:\s|$)/i.test(normalized);
 }
 
 function getLocalSettingsUrl(): string {
