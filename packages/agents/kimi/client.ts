@@ -19,7 +19,7 @@ export type SessionEnvironment = RuntimeSessionEnvironment;
 
 type KimiJsonRecord = {
   role?: string;
-  content?: string | Array<{ type?: string; text?: string }>;
+  content?: string | { type?: string; text?: string; think?: string } | Array<{ type?: string; text?: string; think?: string }>;
 };
 
 const runtime = new CliAgentRuntime("Kimi");
@@ -74,36 +74,68 @@ function publishKimiEvent(sessionId: string, record: KimiJsonRecord): void {
 
 function contentToText(content: KimiJsonRecord["content"]): string {
   if (typeof content === "string") return content;
+  if (content && typeof content === "object" && !Array.isArray(content)) {
+    return [content.text, content.think].filter((value): value is string => typeof value === "string").join("\n");
+  }
   if (!Array.isArray(content)) return "";
   return content
-    .map((part) => (part && typeof part.text === "string" ? part.text : ""))
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      if (typeof part.text === "string") return part.text;
+      if (typeof part.think === "string") return part.think;
+      return "";
+    })
     .join("");
 }
 
-function parseKimiResponse(output: string): string {
+export function parseKimiResponse(output: string): string {
   const lines = output
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 
   const assistantMessages: string[] = [];
+  const fallbackMessages: string[] = [];
+  const rawTextLines: string[] = [];
 
   for (const line of lines) {
     try {
       const record = JSON.parse(line) as KimiJsonRecord;
-      if (record.role !== "assistant") continue;
       const text = contentToText(record.content).trim();
-      if (text) assistantMessages.push(text);
+      if (!text) continue;
+      if (record.role === "assistant") {
+        assistantMessages.push(text);
+      } else {
+        fallbackMessages.push(text);
+      }
     } catch {
-      // ignore non-json lines
+      if (!line.startsWith("{")) {
+        rawTextLines.push(line);
+      }
     }
   }
 
-  const text = assistantMessages.join("\n\n").trim();
-  if (!text) {
-    throw new Error("Kimi returned empty response");
+  const assistantText = assistantMessages.join("\n\n").trim();
+  if (assistantText) return assistantText;
+
+  const fallbackText = fallbackMessages.join("\n\n").trim();
+  if (fallbackText) {
+    log.warn("Kimi returned no assistant role output; using fallback text", {
+      fallbackCount: fallbackMessages.length,
+    });
+    return fallbackText;
   }
-  return text;
+
+  const rawText = rawTextLines.join("\n").trim();
+  if (rawText) {
+    log.warn("Kimi returned non-JSON output; using raw fallback text", {
+      rawLineCount: rawTextLines.length,
+    });
+    return rawText;
+  }
+
+  log.warn("Kimi returned empty output; emitting placeholder response");
+  return "Kimi completed without textual output.";
 }
 
 export async function createSession(workingPath: string, env?: SessionEnvironment): Promise<string> {

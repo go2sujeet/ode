@@ -1,16 +1,23 @@
 # Live Status Harness Report - kimi
 
-Generated: 2026-02-22T11:06:45.423Z
+Generated: 2026-02-22T11:59:24.127Z
 Provider: kimi
 Working directory: /root/ode-new/.worktree/ode_1771752635.512539
 
-- Run ID: (not completed)
+- Run ID: kimi_1771761560555_6067515f
 - Events captured: 0
 - Status updates rendered: 0
-- Error: Error: Kimi returned empty response
-    at parseKimiResponse (/root/ode-new/.worktree/ode_1771752635.512539/packages/agents/kimi/client.ts:104:15)
-    at <anonymous> (/root/ode-new/.worktree/ode_1771752635.512539/packages/agents/kimi/client.ts:190:20)
-    at async withSessionLock (/root/ode-new/.worktree/ode_1771752635.512539/packages/agents/runtime/base.ts:176:20)
-    at async sendMessage (/root/ode-new/.worktree/ode_1771752635.512539/packages/agents/kimi/client.ts:158:26)
-    at async main (/root/ode-new/.worktree/ode_1771752635.512539/packages/live-status-harness/scripts/capture-stream.ts:328:40)
-    at processTicksAndRejections (native:7:39)
+
+## Final Live Status Message
+
+```text
+(empty)
+```
+
+## Result Message
+
+```text
+Error code: 402 - {'error': {'message': "We're unable to verify your membership
+benefits at this time. Please ensure your membership is active.", 'type':
+'invalid_request_error'}}
+```
