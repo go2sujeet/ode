@@ -1,57 +1,60 @@
 # Live Status Harness Report - kilo
 
-Generated: 2026-02-09T04:15:42.863Z
+Generated: 2026-02-22T11:06:45.423Z
 Provider: kilo
-Working directory: /root/ode-new/.worktree/ode_1770598921.253029
+Working directory: /root/ode-new/.worktree/ode_1771752635.512539
 
-- Run ID: kilo_1770610319201_34071d67
-- Events captured: 77
-- Status updates rendered: 77
+- Run ID: kilo_1771757203411_292f1613
+- Events captured: 8
+- Status updates rendered: 8
 
 ## Final Live Status Message
 
 ```text
-*packages/ims/slack/client.ts* (2m 14s)
+*Explore Ode repo structure* (6m 6s)
 _Working_
 
-*Tool execution (Last 6 items in 36)*
-- `bash` grep -n "catch" packages/core/runtime.ts packages/core/runtime/open-request.ts
-- `bash` grep -A 2 "catch" packages/core/runtime/open-request.ts | head -30
-- `read` packages/core/runtime/open-request.ts (offset 180, limit 30)
-- `bash` grep -n "catch" packages/ims/slack/client.ts
-- `read` packages/ims/slack/client.ts (offset 385, limit 20)
-- `read` packages/ims/slack/client.ts (offset 515, limit 20)
+*Tool execution*
+- `task` Explore Ode repo structure
 ```
 
 ## Result Message
 
 ```text
-## Most Important Issue: Silent Error Handling
+Based on my exploration, here's my assessment:
 
-**Problem:** Errors are being caught and silently ignored in multiple places throughout the codebase, making debugging difficult and hiding critical failures from users.
+---
 
-**Locations:**
-- `packages/ims/slack/commands.ts:425-432, 542-551` - Server startup failures are silently swallowed
-- `packages/ims/slack/client.ts:526` - Message delete failures are ignored
-- Multiple `catch {}` blocks without error logging or user notification
+## Most Important Change: *Missing Circuit Breaker for Agent Calls*
 
-**Impact:** Users don't get feedback when servers fail to start or operations fail silently, leading to confusion and debugging difficulties.
+Your bot bridges Slack → AI agents, but when an agent fails (API timeout, rate limit, crash), there's **no protection against cascading failures**. The runtime will keep hammering a failing agent, threads get stuck in "processing" state, and users see no feedback.
 
-## Fix Plan
+---
 
-* 🚫 cancelled Not fixing any items
+## Plan to Fix It
 
-I will systematically fix all silent error handling by:
-1. Add error logging to all `catch` blocks
-2. Add user feedback when critical operations fail
-3. Ensure errors are visible in logs
-4. Provide appropriate fallback behavior when errors are non-critical
+**1. Create a circuit breaker utility**
+- Add `packages/utils/circuit-breaker.ts`
+- States: closed → open → half-open
+- Configurable failure threshold and reset timeout
+- Per-provider breaker instance
 
-**Tasks:**
-* Not started Adding error logging to server startup catch blocks
-* Not started Adding error logging to message delete catch block
-* Not started Ensuring all catch blocks log errors
-* Not started Adding user feedback for critical failures
-* Not started Testing error handling path
-* Not started Verifying error logs are visible in production
+**2. Wrap agent adapter calls**
+- In `packages/agents/adapter.ts`, wrap `runAgent()` calls
+- Return structured error when circuit is open
+- Include retry-after hint for user feedback
+
+**3. Update state machine**
+- In `packages/core/state-machine.ts`, handle `CircuitOpenError`
+- Transition to `failed` state with actionable message
+- Rate limit retries while circuit is open
+
+**4. Add health monitoring**
+- Expose breaker status via web API (`/api/health`)
+- Log breaker state transitions
+- Optional: auto-disable channels for failing providers
+
+---
+
+Want me to implement this?
 ```

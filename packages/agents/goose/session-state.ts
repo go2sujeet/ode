@@ -4,7 +4,9 @@ import {
   applyAssistantBlocks,
   applyUserToolResults,
   extractPrefixedRecord,
+  parseTodosFromToolInput,
   extractSessionTitle,
+  tryParseObject,
   type StreamStateMaps,
   type StreamToolState,
   updateTool,
@@ -57,34 +59,13 @@ export type GooseInspectorToolState = StreamToolState;
 
 export type GooseStreamStateMaps = StreamStateMaps<GooseInspectorToolState>;
 
-function normalizeTodoStatus(status: unknown): string {
-  if (typeof status !== "string") return "pending";
-  const normalized = status.trim().toLowerCase();
-  if (!normalized) return "pending";
-  if (normalized === "in progress") return "in_progress";
-  return normalized.replace(/\s+/g, "_");
-}
-
 function parseTodosFromGooseToolInput(toolName: string, input: Record<string, unknown> | undefined): SessionTodo[] | undefined {
-  if (!input) return undefined;
-  if (!toolName.toLowerCase().includes("todo")) return undefined;
-
-  const todoListCandidate = input.todos ?? input.items ?? input.tasks;
-  if (!Array.isArray(todoListCandidate)) return undefined;
-
-  const todos = todoListCandidate
-    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
-    .map((entry) => {
-      const contentCandidate = entry.content ?? entry.text ?? entry.title ?? entry.task;
-      const content = typeof contentCandidate === "string" ? contentCandidate.trim() : "";
-      return {
-        content,
-        status: normalizeTodoStatus(entry.status),
-      };
-    })
-    .filter((todo) => todo.content.length > 0);
-
-  return todos;
+  const direct = parseTodosFromToolInput(toolName, input);
+  if (direct) return direct;
+  const content = typeof input?.content === "string" ? input.content : "";
+  if (!content) return undefined;
+  const parsed = tryParseObject(content);
+  return parsed ? parseTodosFromToolInput(toolName, parsed) : undefined;
 }
 
 export function extractGooseRecord(

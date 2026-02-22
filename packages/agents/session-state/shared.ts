@@ -1,4 +1,4 @@
-import type { SessionMessageState, SessionTool } from "@/utils/session-inspector";
+import type { SessionMessageState, SessionTodo, SessionTool } from "@/utils/session-inspector";
 
 type StreamEventRecord = {
   event?: {
@@ -51,6 +51,39 @@ export function tryParseObject(input: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function normalizeTodoStatus(status: unknown): SessionTodo["status"] {
+  if (typeof status !== "string") return "pending";
+  const normalized = status.trim().toLowerCase();
+  if (!normalized) return "pending";
+  if (normalized === "in progress") return "in_progress";
+  return normalized.replace(/\s+/g, "_");
+}
+
+export function parseTodosFromToolInput(
+  toolName: string,
+  input: Record<string, unknown> | undefined
+): SessionTodo[] | undefined {
+  if (!input) return undefined;
+  if (!toolName.toLowerCase().includes("todo")) return undefined;
+
+  const todoListCandidate = input.todos ?? input.items ?? input.tasks;
+  if (!Array.isArray(todoListCandidate)) return undefined;
+
+  const todos = todoListCandidate
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object" && !Array.isArray(entry))
+    .map((entry) => {
+      const contentCandidate = entry.content ?? entry.text ?? entry.title ?? entry.task;
+      const content = typeof contentCandidate === "string" ? contentCandidate.trim() : "";
+      return {
+        content,
+        status: normalizeTodoStatus(entry.status),
+      };
+    })
+    .filter((todo) => todo.content.length > 0);
+
+  return todos;
 }
 
 export function composeIndexedText(parts: Map<number, string>): string {
@@ -154,6 +187,10 @@ export function applyAssistantBlocks<TTool extends StreamToolState>(
       title: existing?.title,
       metadata: existing?.metadata,
     } as TTool;
+    const parsedTodos = parseTodosFromToolInput(toolName, input);
+    if (parsedTodos) {
+      state.todos = parsedTodos;
+    }
     toolById.set(toolId, tool);
     updateTool(state, tool);
     if (tool.status === "running") {
@@ -229,6 +266,10 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
           status: "running",
           input,
         } as TTool;
+        const parsedTodos = parseTodosFromToolInput(toolName, input);
+        if (parsedTodos) {
+          state.todos = parsedTodos;
+        }
         toolById.set(toolId, tool);
         if (typeof index === "number") {
           toolByIndex.set(index, tool);
@@ -285,6 +326,10 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
           const parsedInput = tryParseObject(tool.inputBuffer);
           if (parsedInput) {
             tool.input = parsedInput;
+            const parsedTodos = parseTodosFromToolInput(tool.name, tool.input);
+            if (parsedTodos) {
+              state.todos = parsedTodos;
+            }
           }
         }
         tool.status = "running";
