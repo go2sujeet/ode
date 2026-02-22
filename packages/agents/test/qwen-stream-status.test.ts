@@ -109,4 +109,37 @@ describe("qwen stream status parsing", () => {
     expect(text).toContain("`list_directory` packages");
   });
 
+  it("hydrates todos from todo_write input_json_delta", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "todo-1",
+            name: "todo_write",
+          },
+        },
+      }),
+      rawEvent(now + 1, {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "input_json_delta",
+            partial_json: '{"todos":[{"content":"Capture regression","status":"in progress"}]}',
+          },
+        },
+      }),
+    ]);
+
+    expect(state.todos).toEqual([
+      { content: "Capture regression", status: "in_progress" },
+    ]);
+  });
+
 });

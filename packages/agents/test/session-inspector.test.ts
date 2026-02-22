@@ -288,4 +288,30 @@ describe("session inspector", () => {
     expect(text).toContain("build");
     expect(text).not.toContain("cost 0");
   });
+
+  it("parses todo.updated aliases from wrapped payload events", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: now,
+        type: "todo.updated",
+        data: {
+          payload: {
+            type: "todo.updated",
+            properties: {
+              items: [
+                { title: "Check status rendering", status: "in progress" },
+                { content: "Keep final waiting state", status: "completed" },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.todos).toEqual([
+      { content: "Check status rendering", status: "in_progress" },
+      { content: "Keep final waiting state", status: "completed" },
+    ]);
+  });
 });

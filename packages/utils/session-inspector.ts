@@ -221,11 +221,21 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
 }
 
 function applyTodoUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
-  const todos = ((eventProps as { todos?: unknown }).todos as any[]) || [];
-  state.todos = todos.map((todo: any) => ({
-    content: todo.content || todo.text || "",
-    status: todo.status || "pending",
-  }));
+  const listCandidate = (eventProps as { todos?: unknown; items?: unknown; tasks?: unknown }).todos
+    ?? (eventProps as { items?: unknown }).items
+    ?? (eventProps as { tasks?: unknown }).tasks;
+  const todoList = Array.isArray(listCandidate) ? listCandidate : [];
+  state.todos = todoList
+    .filter((todo): todo is Record<string, unknown> => !!todo && typeof todo === "object" && !Array.isArray(todo))
+    .map((todo) => ({
+      content: typeof (todo.content ?? todo.text ?? todo.title ?? todo.task) === "string"
+        ? String(todo.content ?? todo.text ?? todo.title ?? todo.task).trim()
+        : "",
+      status: typeof todo.status === "string" && todo.status.trim()
+        ? todo.status.trim().replace(/\s+/g, "_")
+        : "pending",
+    }))
+    .filter((todo) => todo.content.length > 0);
 }
 
 function unwrapEventData(data: unknown): Record<string, unknown> {

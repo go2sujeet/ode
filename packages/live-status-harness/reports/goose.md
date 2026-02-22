@@ -1,158 +1,142 @@
 # Live Status Harness Report - goose
 
-Generated: 2026-02-18T08:47:02.913Z
+Generated: 2026-02-22T11:06:45.423Z
 Provider: goose
-Working directory: /root/ode-new/.worktree/ode_1771345735.694879
+Working directory: /root/ode-new/.worktree/ode_1771752635.512539
 
-- Run ID: goose_1771348841252_331d0042
-- Events captured: 1136
-- Status updates rendered: 31
+- Run ID: goose_1771757884861_7e7c6a15
+- Events captured: 752
+- Status updates rendered: 8
 
 ## Final Live Status Message
 
 ```text
-*Goose Working...* (926m 21s)
+*Goose is running...* (1m 25s)
 _Waiting_
 
-*Tool execution (Last 6 items in 10)*
-- `apps__create_app`
-- `extensionmanager__read_resource`
-- `subagent`
-- `skills__loadSkill`
-- `extensionmanager__read_resource`
+*Tool execution*
 - `todo__todo_write`
+- `subagent`
 ```
 
 ## Result Message
 
 ```text
+## Repository Analysis Complete
+
+Based on my exploration of the Ode codebase, here's what I found:
+
 ---
 
-## Plan to Fix: Global Error Handlers
+## 🎯 The Most Important Change
 
-Here's the complete implementation plan:
+**Add Structured Error Handling & Observability**
 
-### 📁 Files to Modify
-- `src/index.ts` - Add error handlers
-- `src/utils/error-handler.ts` - *New module*
+This Slack bot is a production system bridging users to AI agents, but has **no error tracking, structured logging, or monitoring**. When things fail (and they will), you're flying blind.
 
-### 🔧 Implementation Steps
+---
 
-**Step 1: Create `src/utils/error-handler.ts`**
+## 📋 Implementation Plan
 
+### Phase 1: Foundation (Core Logging)
+**File**: `src/config/logger.ts` (new)
 ` ` `typescript
-import { Logger } from 'winston';
-import { Server } from 'http';
-import { SlackNotifier } from '../slack';
+import pino from 'pino';
 
-interface ShutdownHandlers {
-  storage?: { disconnect: () => Promise<void> };
-  server?: Server;
-}
+export const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  formatters: {
+    level: (label) => ({ level: label }),
+  },
+  serializers: {
+    error: pino.stdSerializers.err,
+  },
+});
+` ` `
+**Impact**: Every log becomes queryable JSON with correlation IDs
 
-export function setupGlobalErrorHandlers(
-  logger: Logger,
-  slack: SlackNotifier,
-  handlers: ShutdownHandlers = {}
-) {
-  // Handle unhandled promise rejections
-  process.on('unhandledRejection', async (reason: unknown, promise: Promise<unknown>) => {
-    const error = reason instanceof Error ? reason : new Error(String(reason));
-    logger.error('Unhandled Promise Rejection', {
-      error: error.message,
-      stack: error.stack,
-      promise
-    });
-    await slack.notifyError(error, 'Unhandled Rejection');
-  });
+### Phase 2: Error Tracking
+**File**: `src/config/sentry.ts` (new)
+` ` `typescript
+import * as Sentry from "@sentry/node";
 
-  // Handle uncaught exceptions
-  process.on('uncaughtException', async (error: Error) => {
-    logger.error('Uncaught Exception', {
-      error: error.message,
-      stack: error.stack
-    });
-    await slack.notifyError(error, 'Uncaught Exception');
-    await gracefulShutdown(logger, handlers, 1);
-  });
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+  tracesSampleRate: 0.1,
+});
+` ` `
+**Impact**: Automatic error aggregation with stack traces & context
 
-  // Handle termination signals
-  process.on('SIGTERM', () => gracefulShutdown(logger, handlers, 0));
-  process.on('SIGINT', () => gracefulShutdown(logger, handlers, 0));
-}
+### Phase 3: Request Context
+**File**: `src/middleware/context.ts` (new)
+` ` `typescript
+import { AsyncLocalStorage } from 'async_hooks';
 
-async function gracefulShutdown(
-  logger: Logger,
-  handlers: ShutdownHandlers,
-  exitCode: number
-) {
-  logger.info('Starting graceful shutdown...');
+export type RequestContext = {
+  correlationId: string;
+  channelId: string;
+  userId?: string;
+  startTime: number;
+};
+
+export const contextStorage = new AsyncLocalStorage<RequestContext>();
+` ` `
+**Impact**: Trace any request from Slack → Ode → OpenCode end-to-end
+
+### Phase 4: Health Endpoint
+**File**: `src/health.ts` (new)
+` ` `typescript
+app.get('/health', async (req, res) => {
+  const checks = {
+    slack: await checkSlackConnection(),
+    opencode: await checkOpenCodeConnection(),
+    storage: await checkStorageAccess(),
+    redis: await checkRedisConnection(),
+  };
   
-  try {
-    // Close HTTP server
-    if (handlers.server) {
-      await new Promise<void>((resolve) => {
-        handlers.server!.close(() => resolve());
-        setTimeout(() => resolve(), 10000); // Force close after 10s
-      });
-    }
+  const healthy = Object.values(checks).every(c => c.ok);
+  res.status(healthy ? 200 : 503).json(checks);
+});
+` ` `
+**Impact**: Infrastructure monitoring & automated alerts
 
-    // Close storage connections
-    if (handlers.storage) {
-      await handlers.storage.disconnect();
-    }
+### Phase 5: Integration
+- Wrap `src/slack/` command handlers with error boundaries
+- Add timing logs to `src/agents/opencode/` SDK calls
+- Correlate status messages with request traces
+- Add error reactions to failed Slack messages (🚫 or ⚠️)
 
-    logger.info('Shutdown complete');
-    process.exit(exitCode);
-  } catch (error) {
-    logger.error('Error during shutdown', error);
-    process.exit(1);
-  }
-}
+---
+
+## 🚀 Quick Start Commands
+
+` ` `bash
+# Install dependencies
+bun add pino pino-pretty @sentry/node async_hooks
+
+# Add environment variables
+echo "LOG_LEVEL=debug" >> .env
+echo "SENTRY_DSN=..." >> .env
+
+# Test logging
+bun run src/test-logger.ts
 ` ` `
 
-**Step 2: Modify `src/index.ts`**
+---
 
-Add this after the logger and slackNotifier initialization:
+## 💬 Why This Matters Most
 
-` ` `typescript
-import { setupGlobalErrorHandlers } from './utils/error-handler';
+Without observability, you can't:
+- Debug production failures without SSH access
+- Detect when OpenCode API is down
+- Track error rates per channel
+- Measure agent response times
+- Proactively fix issues before users notice
 
-// ... after logger and slackNotifier are initialized ...
+This is foundational infrastructure. Everything else (features, UX, optimizations) builds on reliable observability.
 
-// Setup global error handlers BEFORE starting server
-setupGlobalErrorHandlers(logger, slackNotifier, {
-  storage,
-  server: null  // Will be set after app.listen()
-});
+---
 
-// ... start server ...
-const server = app.listen(PORT, () => {
-  logger.info(`ODE Core System started on port ${PORT}`);
-  slackNotifier.notify('ODE System started successfully');
-});
-
-// Update the handlers reference with the server instance
-// (You may need to refactor this to pass the server after creation)
-` ` `
-
-### ✅ Testing Checklist
-
-- [ ] Create test route `/test/unhandled-rejection` that throws in async without catch
-- [ ] Create test route `/test/uncaught-exception` that throws synchronously
-- [ ] Verify Slack notifications are sent for both
-- [ ] Verify logs capture error details
-- [ ] Send SIGTERM to process and verify graceful shutdown
-- [ ] Verify no "hanging" connections after shutdown
-
-### 🎯 Expected Outcome
-
-| Before Fix | After Fix |
-|------------|-----------|
-| Process crashes on unhandled errors | Errors logged + Slack alert + graceful shutdown |
-| No diagnostic information | Full stack traces captured |
-| In-flight requests dropped | Connections closed cleanly |
-| Silent failures | Team notified immediately |
-
-This is a 30-minute fix that prevents production outages. Want me to implement it now?
+Want me to implement this? I can create the files and integrate logging into the existing codebase.
 ```

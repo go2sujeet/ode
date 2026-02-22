@@ -123,4 +123,111 @@ describe("live status harness renderer", () => {
     expect(joined).toContain("Gemini is running...");
     expect(joined).toContain("Running tool: read_file");
   });
+
+  it("renders todos and waiting status from wrapped payload events", () => {
+    const now = Date.now();
+    const meta: HarnessRunMeta = {
+      runId: "run-qwen-todo-test",
+      provider: "qwen",
+      prompt: "test",
+      promptHash: "hash",
+      cwd: "/tmp/repo",
+      channelId: "C1",
+      threadId: "T1",
+      sessionId: "qwen_s1",
+      startedAt: now,
+      eventCount: 4,
+    };
+
+    const events: HarnessCapturedEvent[] = [
+      {
+        runId: "run-qwen-todo-test",
+        sessionId: "qwen_s1",
+        provider: "qwen",
+        timestamp: now,
+        index: 0,
+        event: {
+          payload: {
+            type: "session.status",
+            properties: {
+              status: { type: "busy" },
+            },
+          },
+        },
+      },
+      {
+        runId: "run-qwen-todo-test",
+        sessionId: "qwen_s1",
+        provider: "qwen",
+        timestamp: now + 1,
+        index: 1,
+        event: {
+          payload: {
+            type: "qwen.raw.stream_event",
+            properties: {
+              record: {
+                type: "stream_event",
+                event: {
+                  type: "content_block_start",
+                  index: 0,
+                  content_block: {
+                    type: "tool_use",
+                    id: "todo-1",
+                    name: "todo_write",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        runId: "run-qwen-todo-test",
+        sessionId: "qwen_s1",
+        provider: "qwen",
+        timestamp: now + 2,
+        index: 2,
+        event: {
+          payload: {
+            type: "qwen.raw.stream_event",
+            properties: {
+              record: {
+                type: "stream_event",
+                event: {
+                  type: "content_block_delta",
+                  index: 0,
+                  delta: {
+                    type: "input_json_delta",
+                    partial_json: '{"todos":[{"content":"Verify harness parser","status":"in progress"}]}',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        runId: "run-qwen-todo-test",
+        sessionId: "qwen_s1",
+        provider: "qwen",
+        timestamp: now + 3,
+        index: 3,
+        event: {
+          payload: {
+            type: "session.status",
+            properties: {
+              status: { type: "idle" },
+            },
+          },
+        },
+      },
+    ];
+
+    const statuses = renderStatusesFromRun(meta, events);
+    const finalText = statuses[statuses.length - 1]?.text || "";
+
+    expect(finalText).toContain("*Tasks*");
+    expect(finalText).toContain("`in progress` Verify harness parser");
+    expect(finalText).toContain("_Waiting_");
+  });
 });
