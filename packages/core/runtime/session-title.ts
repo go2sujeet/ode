@@ -1,7 +1,7 @@
 import type { SessionMessageState } from "@/utils";
 import { log } from "@/utils";
 
-const SILICONFLOW_API_URL = "https://api.siliconflow.cn/v1/chat/completions";
+const SILICONFLOW_API_URL = "https://api.siliconflow.com/v1/chat/completions";
 const SILICONFLOW_MODEL = "Qwen/Qwen2.5-7B-Instruct";
 const SILICONFLOW_API_KEY = "sk-avkivvbgozinofsnrfuazmsfhiuxlyimewadbfmvghilfkax";
 const REQUEST_TIMEOUT_MS = 6000;
