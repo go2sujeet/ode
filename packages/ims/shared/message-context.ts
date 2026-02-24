@@ -16,6 +16,8 @@ export type UnifiedMessageContext = {
   normalizedText: string;
 };
 
+export type IncomingDropReason = "not_mentioned_and_inactive";
+
 export function shouldProcessIncomingMessage(
   context: Pick<UnifiedMessageContext, "isTopLevel" | "mentionedBot" | "activeThread">
 ): boolean {
@@ -23,6 +25,19 @@ export function shouldProcessIncomingMessage(
     return context.mentionedBot;
   }
   return context.mentionedBot || context.activeThread;
+}
+
+export function getIncomingDropReason(
+  context: Pick<UnifiedMessageContext, "isTopLevel" | "mentionedBot" | "activeThread">
+): IncomingDropReason | null {
+  return shouldProcessIncomingMessage(context) ? null : "not_mentioned_and_inactive";
+}
+
+export function formatIncomingDropMessage(reason: IncomingDropReason): string {
+  switch (reason) {
+    case "not_mentioned_and_inactive":
+      return "[DROP] Not mentioned and thread inactive";
+  }
 }
 
 export function toCoreMessageContext(

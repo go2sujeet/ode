@@ -16,7 +16,7 @@ import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
 import {
-  shouldProcessIncomingMessage,
+  getIncomingDropReason,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
@@ -705,11 +705,13 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (!shouldProcessIncomingMessage(messageContext)) {
+  const dropReason = getIncomingDropReason(messageContext);
+  if (dropReason) {
     logLarkEvent("Lark inbound ignored: not mentioned and thread inactive", {
       channelId,
       threadId,
       messageId,
+      reason: dropReason,
       isTopLevel: topLevelMessage,
       isMentioned,
       activeThread: active,

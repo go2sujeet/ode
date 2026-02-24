@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { shouldProcessIncomingMessage } from "./message-context";
+import { formatIncomingDropMessage, getIncomingDropReason, shouldProcessIncomingMessage } from "./message-context";
 
 describe("shouldProcessIncomingMessage", () => {
   it("requires mention for top-level messages", () => {
@@ -11,5 +11,11 @@ describe("shouldProcessIncomingMessage", () => {
     expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: true, activeThread: false })).toBe(true);
     expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: false, activeThread: true })).toBe(true);
     expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: false, activeThread: false })).toBe(false);
+  });
+
+  it("returns a shared drop reason and message", () => {
+    const reason = getIncomingDropReason({ isTopLevel: false, mentionedBot: false, activeThread: false });
+    expect(reason).toBe("not_mentioned_and_inactive");
+    expect(formatIncomingDropMessage("not_mentioned_and_inactive")).toBe("[DROP] Not mentioned and thread inactive");
   });
 });

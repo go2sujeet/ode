@@ -47,7 +47,8 @@ import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
 import {
-  shouldProcessIncomingMessage,
+  formatIncomingDropMessage,
+  getIncomingDropReason,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
@@ -1027,7 +1028,19 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               rawText: text,
               normalizedText: mentioned ? cleanBotMention(text, client.user.id) : text,
             };
-            if (!shouldProcessIncomingMessage(messageContext)) return;
+            const dropReason = getIncomingDropReason(messageContext);
+            if (dropReason) {
+              log.debug(formatIncomingDropMessage(dropReason), {
+                platform: "discord",
+                channelId: parentId,
+                threadId,
+                messageId: message.id,
+                isTopLevel: false,
+                mentioned,
+                activeThread: active,
+              });
+              return;
+            }
             if (!messageContext.normalizedText) {
               if (mentioned) {
                 await message.reply("Please include a request after mentioning me.");
@@ -1081,7 +1094,19 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             rawText: message.content,
             normalizedText: cleanBotMention(message.content, client.user.id),
           };
-          if (!shouldProcessIncomingMessage(topLevelContext)) return;
+          const topLevelDropReason = getIncomingDropReason(topLevelContext);
+          if (topLevelDropReason) {
+            log.debug(formatIncomingDropMessage(topLevelDropReason), {
+              platform: "discord",
+              channelId: parentId,
+              threadId: message.id,
+              messageId: message.id,
+              isTopLevel: true,
+              mentioned: topLevelContext.mentionedBot,
+              activeThread: false,
+            });
+            return;
+          }
 
           const cleanedLauncherCommand = parseLauncherCommand(topLevelContext.normalizedText);
           if (cleanedLauncherCommand) {

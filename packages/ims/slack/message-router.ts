@@ -1,7 +1,8 @@
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
 import {
-  shouldProcessIncomingMessage,
+  formatIncomingDropMessage,
+  getIncomingDropReason,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
@@ -272,8 +273,9 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         normalizedText: cleanText,
       };
 
-      if (!shouldProcessIncomingMessage(messageContext)) {
-        log.debug("[DROP] Not mentioned and thread inactive", { channelId, threadId });
+      const dropReason = getIncomingDropReason(messageContext);
+      if (dropReason) {
+        log.debug(formatIncomingDropMessage(dropReason), { channelId, threadId });
         return;
       }
 
