@@ -1,3 +1,9 @@
+import {
+  DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
+  parseStatusMessageFrequencyMs,
+  type StatusMessageFrequencyMs,
+} from "./status-message-frequency";
+
 export type DashboardConfig = {
   completeOnboarding: boolean;
   user: {
@@ -8,7 +14,7 @@ export type DashboardConfig = {
     gitStrategy: "default" | "worktree";
     defaultStatusMessageFormat: "aggressive" | "medium" | "minimum";
     defaultMessageFrequency?: "aggressive" | "medium" | "minimum";
-    statusMessageFrequencyMs?: 2000 | 5000 | 10000;
+    statusMessageFrequencyMs?: StatusMessageFrequencyMs;
   };
   updates: {
     autoUpgrade: boolean;
@@ -91,7 +97,7 @@ export const defaultDashboardConfig: DashboardConfig = {
     email: "",
     gitStrategy: "worktree",
     defaultStatusMessageFormat: "medium",
-    statusMessageFrequencyMs: 2000,
+    statusMessageFrequencyMs: DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
   },
   updates: {
     autoUpgrade: true,
@@ -135,10 +141,8 @@ const asFrequency = (
   return "medium";
 };
 
-const asStatusMessageFrequencyMs = (value: unknown): 2000 | 5000 | 10000 => {
-  if (value === 5000 || value === 10000) return value;
-  return 2000;
-};
+const asStatusMessageFrequencyMs = (value: unknown): StatusMessageFrequencyMs =>
+  parseStatusMessageFrequencyMs(value);
 
 const asGitStrategy = (
   value: unknown

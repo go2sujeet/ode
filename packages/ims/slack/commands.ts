@@ -19,6 +19,10 @@ import {
   setGitHubInfoForUser,
   getUserGeneralSettings,
   setUserGeneralSettings,
+  parseStatusMessageFrequencyValue,
+  parseStatusMessageFrequencyMs,
+  STATUS_MESSAGE_FREQUENCY_OPTIONS,
+  type StatusMessageFrequencyMs,
 } from "@/config";
 import { startServer as startOpenCodeServer } from "@/agents/opencode";
 import { startServer as startCodexServer } from "@/agents/codex";
@@ -57,7 +61,6 @@ const GENERAL_AUTO_UPDATE_ACTION = "general_auto_update_select";
 type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
-type StatusMessageFrequencyMs = 2000 | 5000 | 10000;
 
 type SlackActionBody = {
   actions?: Array<{
@@ -108,11 +111,10 @@ const STATUS_MESSAGE_FORMAT_OPTIONS: Array<{ label: string; value: StatusMessage
   { label: "Minimum", value: "minimum" },
 ];
 
-const STATUS_MESSAGE_FREQUENCY_OPTIONS: Array<{ label: string; value: "2000" | "5000" | "10000" }> = [
-  { label: "2 seconds", value: "2000" },
-  { label: "5 seconds", value: "5000" },
-  { label: "10 seconds", value: "10000" },
-];
+const STATUS_MESSAGE_FREQUENCY_ITEMS = STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => ({
+  label: option.label,
+  value: option.value,
+}));
 
 const GIT_STRATEGY_OPTIONS: Array<{ label: string; value: GitStrategy }> = [
   { label: "Worktree", value: "worktree" },
@@ -432,7 +434,7 @@ function buildGeneralSettingsModal(params: {
     text: { type: "plain_text" as const, text: option.label },
     value: option.value,
   }));
-  const statusMessageFrequencyOptions = STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => ({
+  const statusMessageFrequencyOptions = STATUS_MESSAGE_FREQUENCY_ITEMS.map((option) => ({
     text: { type: "plain_text" as const, text: option.label },
     value: option.value,
   }));
@@ -813,11 +815,12 @@ export function setupInteractiveHandlers(): void {
         ? selectedStatusMessageFormat
         : "medium";
     const gitStrategy: GitStrategy = selectedGitStrategy === "default" ? "default" : "worktree";
-    const statusMessageFrequencyMs: StatusMessageFrequencyMs = selectedStatusMessageFrequency === "5000"
-      ? 5000
-      : selectedStatusMessageFrequency === "10000"
-        ? 10000
-        : 2000;
+    const parsedStatusMessageFrequency = selectedStatusMessageFrequency
+      ? parseStatusMessageFrequencyValue(selectedStatusMessageFrequency)
+      : null;
+    const statusMessageFrequencyMs: StatusMessageFrequencyMs = parseStatusMessageFrequencyMs(
+      parsedStatusMessageFrequency ? Number(parsedStatusMessageFrequency) : undefined
+    );
     const autoUpdate = selectedAutoUpdate !== "off";
 
     await ack();

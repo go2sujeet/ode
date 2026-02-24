@@ -86,6 +86,10 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
     stateKey: statusMessageKey,
     liveParsedState: state.liveParsedState,
     startedAt: request.startedAt,
+    onTitleGenerated: async (title) => {
+      if (!deps.im.renameThread) return;
+      await deps.im.renameThread(channelId, threadId, title);
+    },
   });
 
   const session = loadSession(channelId, threadId);

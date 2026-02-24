@@ -147,10 +147,17 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     const statusFormat = resolveStatusMessageFormat();
     const finalChunks = splitResultMessage(text);
     const singleChunk = finalChunks[0] ?? text;
+    const statusRateLimited = runtimeDeps.im.wasRateLimited?.(channelId, statusTs) ?? false;
 
     if (finalChunks.length > 1) {
-      if (statusFormat !== "aggressive") {
+      if (statusFormat !== "aggressive" && !statusRateLimited) {
         await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.", false);
+      } else if (statusRateLimited) {
+        log.warn("Skipping final status update due to prior 429; posting final chunks as new messages", {
+          channelId,
+          threadId,
+          statusTs,
+        });
       }
 
       for (const chunk of finalChunks) {
@@ -160,6 +167,16 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     }
 
     if (statusFormat === "aggressive") {
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
+      return;
+    }
+
+    if (statusRateLimited) {
+      log.warn("Skipping final status edit due to prior 429; posting final result as new message", {
+        channelId,
+        threadId,
+        statusTs,
+      });
       await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
       return;
     }

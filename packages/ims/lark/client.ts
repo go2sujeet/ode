@@ -260,6 +260,11 @@ async function sendMessage(
 
 async function sendSettingsCard(channelId: string, threadId: string): Promise<string | undefined> {
   const settingsUrl = getLocalSettingsUrl();
+  logLarkEvent("Lark settings UI launcher triggered", {
+    channelId,
+    threadId,
+    settingsUrl,
+  });
   const card = {
     config: {
       wide_screen_mode: true,
@@ -294,13 +299,23 @@ async function sendSettingsCard(channelId: string, threadId: string): Promise<st
   };
 
   try {
-    return await sendLarkMessage({
+    const messageId = await sendLarkMessage({
       channelId,
       threadId,
       msgType: "interactive",
       content: card as unknown as Record<string, unknown>,
     });
+    logLarkEvent("Lark settings card sent", {
+      channelId,
+      threadId,
+      messageId: messageId ?? "",
+    });
+    return messageId;
   } catch {
+    logLarkEvent("Lark settings card failed, sending fallback text", {
+      channelId,
+      threadId,
+    });
     const fallbackText = [
       "Ode settings",
       `Open: ${settingsUrl}`,
@@ -332,6 +347,15 @@ async function updateMessage(
     );
   } catch (error) {
     const patchMessage = error instanceof Error ? error.message : String(error);
+    const patchNormalized = patchMessage.toLowerCase();
+    if (patchNormalized.includes("429") || patchNormalized.includes("rate limit") || patchNormalized.includes("ratelimit")) {
+      log.warn("Lark message update rate limited", {
+        channelId,
+        messageId,
+        error: patchMessage,
+      });
+      throw error;
+    }
     if (!patchMessage.includes("400")) {
       log.warn("Failed to update Lark message", {
         channelId,
@@ -353,10 +377,20 @@ async function updateMessage(
       );
       return;
     } catch (fallbackError) {
+      const fallbackMessage = String(fallbackError);
+      const fallbackNormalized = fallbackMessage.toLowerCase();
+      if (fallbackNormalized.includes("429") || fallbackNormalized.includes("rate limit") || fallbackNormalized.includes("ratelimit")) {
+        log.warn("Lark message update fallback rate limited", {
+          channelId,
+          messageId,
+          error: fallbackMessage,
+        });
+        throw fallbackError;
+      }
       log.warn("Failed to update Lark message with PATCH/POST fallback", {
         channelId,
         messageId,
-        error: String(fallbackError),
+        error: fallbackMessage,
       });
     }
 
@@ -646,6 +680,8 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
       channelId,
       threadId,
       messageId,
+      topLevelMessage,
+      isMentioned,
     });
     await sendSettingsCard(channelId, threadId);
     return;

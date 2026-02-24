@@ -93,8 +93,9 @@ export async function maybeGenerateSessionTitle(params: {
   stateKey: string;
   liveParsedState: Map<string, SessionMessageState>;
   startedAt: number;
+  onTitleGenerated?: (title: string) => Promise<void> | void;
 }): Promise<void> {
-  const { prompt, stateKey, liveParsedState, startedAt } = params;
+  const { prompt, stateKey, liveParsedState, startedAt, onTitleGenerated } = params;
   if (!prompt.trim()) return;
   if (inFlight.has(stateKey)) return;
 
@@ -111,10 +112,30 @@ export async function maybeGenerateSessionTitle(params: {
       if (!nextState.sessionTitle) {
         nextState.sessionTitle = title;
       }
+      if (onTitleGenerated) {
+        try {
+          await onTitleGenerated(title);
+        } catch (error) {
+          log.debug("Session title hook failed", {
+            stateKey,
+            error: String(error),
+          });
+        }
+      }
       return;
     }
 
     liveParsedState.set(stateKey, createTitleOnlyState(title, startedAt));
+    if (onTitleGenerated) {
+      try {
+        await onTitleGenerated(title);
+      } catch (error) {
+        log.debug("Session title hook failed", {
+          stateKey,
+          error: String(error),
+        });
+      }
+    }
   } finally {
     inFlight.delete(stateKey);
   }

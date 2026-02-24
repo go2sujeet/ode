@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { spawn } from "child_process";
-import { closeSync, openSync, readSync, statSync } from "fs";
 import packageJson from "../../package.json" with { type: "json" };
 import { getWebHost, getWebPort } from "@/config";
 import { runDaemon } from "@/core/daemon/manager";
@@ -21,8 +20,6 @@ const READY_POLL_MS = 500;
 const STOP_WAIT_MS = 30 * 1000;
 const STOP_POLL_MS = 500;
 const DAEMON_SPAWN_THROTTLE_MS = 3000;
-const LOG_TAIL_BYTES = 200_000;
-const LOG_TAIL_LINES = 40;
 let lastDaemonSpawnAttemptAt = 0;
 
 const foregroundRequested = rawArgs.includes("--foreground");
@@ -159,27 +156,6 @@ async function startBackground(): Promise<void> {
   console.log(`Ode daemon is still starting. Follow logs at ${getDaemonLogPath()}`);
 }
 
-function tailLogs(maxLines: number): string[] {
-  const logPath = getDaemonLogPath();
-  try {
-    const stats = statSync(logPath);
-    if (stats.size === 0) return [];
-    const bytes = Math.min(LOG_TAIL_BYTES, stats.size);
-    const buffer = Buffer.alloc(Number(bytes));
-    const fd = openSync(logPath, "r");
-    try {
-      readSync(fd, buffer, 0, Number(bytes), stats.size - bytes);
-    } finally {
-      closeSync(fd);
-    }
-    const content = buffer.toString("utf-8");
-    const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    return lines.slice(-maxLines);
-  } catch {
-    return [];
-  }
-}
-
 function formatTimestamp(value: number | null): string {
   if (!value) return "n/a";
   return new Date(value).toLocaleString();
@@ -187,24 +163,20 @@ function formatTimestamp(value: number | null): string {
 
 async function showStatus(): Promise<void> {
   const state = daemonState();
-  const daemonStatus = managerRunning(state) ? `running (pid ${state.managerPid})` : "stopped";
-  const runtimeStatus = runtimeRunning(state) ? `running (pid ${state.runtimePid})` : "stopped";
-  console.log(`Daemon: ${daemonStatus}`);
-  console.log(`Runtime: ${runtimeStatus}`);
-  console.log(`Last start: ${formatTimestamp(state.lastStartAt)}`);
-  console.log(`Last ready: ${formatTimestamp(state.lastReadyAt)}`);
+  const daemonIsRunning = managerRunning(state);
+  console.log(`Daemon: ${daemonIsRunning ? "running" : "stopped"}`);
   if (state.pendingUpgradeRestart) {
     console.log(
-      `Pending upgrade restart since ${formatTimestamp(state.pendingUpgradeRestart.scheduledAt)} (${state.pendingUpgradeRestart.reason})`,
+      `Upgrade: pending restart since ${formatTimestamp(state.pendingUpgradeRestart.scheduledAt)} (${state.pendingUpgradeRestart.reason})`,
     );
+  } else {
+    console.log("Upgrade: none pending");
   }
-  const logs = tailLogs(LOG_TAIL_LINES);
-  if (logs.length === 0) {
-    console.log(`No logs yet. Log file: ${getDaemonLogPath()}`);
+  if (daemonIsRunning) {
+    console.log("ode is running, setting UI is running on localhost:9293...");
     return;
   }
-  console.log(`Recent logs (${getDaemonLogPath()}):`);
-  console.log(logs.join("\n"));
+  console.log("ode is installed but not running, can run it with ode");
 }
 
 async function restartDaemonCommand(): Promise<void> {

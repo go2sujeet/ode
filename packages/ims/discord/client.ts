@@ -37,6 +37,11 @@ import {
   getUserGeneralSettings,
   setGitHubInfoForUser,
   setUserGeneralSettings,
+  STATUS_MESSAGE_FREQUENCY_OPTIONS,
+  parseStatusMessageFrequencyValue,
+  parseStatusMessageFrequencyMs,
+  toStatusMessageFrequencyValue,
+  type StatusMessageFrequencyValue,
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
@@ -48,7 +53,8 @@ const DISCORD_THREAD_RENAME_LIMIT = 90;
 const DISCORD_MODAL_CHANNEL = "ode:modal:channel_details";
 const DISCORD_MODAL_GITHUB = "ode:modal:github";
 const STATUS_FORMAT_OPTIONS = ["aggressive", "medium", "minimum"] as const;
-const STATUS_FREQUENCY_OPTIONS = ["2000", "5000", "10000"] as const;
+const STATUS_FREQUENCY_OPTIONS: StatusMessageFrequencyValue[] =
+  STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => option.value);
 const GIT_STRATEGY_OPTIONS = ["worktree", "default"] as const;
 const AUTO_UPDATE_OPTIONS = ["on", "off"] as const;
 const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"] as const;
@@ -65,10 +71,11 @@ const DISCORD_LAUNCHER_COMMANDS = [
 
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
+let discordStartPromise: Promise<boolean> | null = null;
 const channelSettingsDrafts = new Map<string, { provider: typeof PROVIDERS[number]; model: string }>();
 const generalSettingsDrafts = new Map<string, {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
-  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
+  statusFrequencyMs: StatusMessageFrequencyValue;
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
   autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 }>();
@@ -157,13 +164,28 @@ async function updateMessage(
     const channel = await resolveTextChannel(threadId);
     const message = await channel.messages.fetch(messageId);
     await message.edit(splitForDiscord(text)[0] ?? text);
+    const statusTitle = extractStatusTitleForDiscord(text);
+    if (statusTitle && typeof (channel as any).setName === "function" && (channel as any).name !== statusTitle) {
+      await (channel as any).setName(statusTitle);
+      log.debug("Discord thread renamed from live status title", {
+        channelId,
+        threadId,
+        messageId,
+        statusTitle,
+      });
+    }
   } catch (error) {
+    const message = String(error);
     log.warn("Failed to update Discord message", {
       messageId,
       channelId,
       resolvedChannelId: statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || channelId,
-      error: String(error),
+      error: message,
     });
+    const normalized = message.toLowerCase();
+    if (normalized.includes("429") || normalized.includes("rate limit") || normalized.includes("ratelimit")) {
+      throw error;
+    }
   }
 }
 
@@ -251,12 +273,34 @@ function formatThreadNameFromBranch(branchName: string): string {
   return normalized.slice(0, DISCORD_THREAD_RENAME_LIMIT);
 }
 
+function formatThreadNameFromStatusTitle(title: string): string {
+  const normalized = title
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[`*_~>#]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  return normalized.slice(0, DISCORD_THREAD_RENAME_LIMIT).trim();
+}
+
+function extractStatusTitleForDiscord(text: string): string | null {
+  const firstLine = text.split(/\r?\n/, 1)[0]?.trim() || "";
+  if (!firstLine.startsWith("*")) return null;
+  const matched = firstLine.match(/^\*([^*]+)\*\s*(?:\(|$)/);
+  if (!matched?.[1]) return null;
+  const title = formatThreadNameFromStatusTitle(matched[1]);
+  return title || null;
+}
+
 async function renameDiscordThread(
   channelId: string,
   threadId: string,
-  branchName: string
+  name: string
 ): Promise<void> {
-  const targetName = formatThreadNameFromBranch(branchName);
+  const looksLikeBranch = /^[a-z0-9._\/-]+$/i.test(name.trim());
+  const targetName = looksLikeBranch
+    ? formatThreadNameFromBranch(name)
+    : formatThreadNameFromStatusTitle(name);
   if (!targetName) return;
 
   try {
@@ -269,7 +313,7 @@ async function renameDiscordThread(
     log.warn("Failed to rename Discord thread", {
       channelId,
       threadId,
-      branchName,
+      name,
       error: String(error),
     });
   }
@@ -332,6 +376,12 @@ async function sendLauncherReplyForMessage(params: {
     command: params.command,
     userId: params.message.author.id,
     channelId: params.channelId,
+  });
+  log.info("Discord settings launcher triggered from message", {
+    channelId: params.channelId,
+    threadId: params.message.channel?.id,
+    command: params.command,
+    userId: params.message.author.id,
   });
   await params.message.reply(payload);
 }
@@ -450,12 +500,8 @@ function parseGitStrategy(value: string): "default" | "worktree" | null {
   return null;
 }
 
-function parseStatusFrequency(value: string): "2000" | "5000" | "10000" | null {
-  const normalized = value.trim();
-  if (normalized === "2000" || normalized === "5000" || normalized === "10000") {
-    return normalized;
-  }
-  return null;
+function parseStatusFrequency(value: string): StatusMessageFrequencyValue | null {
+  return parseStatusMessageFrequencyValue(value);
 }
 
 function parseAutoUpdate(value: string): "on" | "off" | null {
@@ -466,14 +512,14 @@ function parseAutoUpdate(value: string): "on" | "off" | null {
 
 function getInitialGeneralDraft(): {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
-  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
+  statusFrequencyMs: StatusMessageFrequencyValue;
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
   autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 } {
   const settings = getUserGeneralSettings();
   return {
     statusFormat: settings.defaultStatusMessageFormat,
-    statusFrequencyMs: String(settings.statusMessageFrequencyMs) as typeof STATUS_FREQUENCY_OPTIONS[number],
+    statusFrequencyMs: toStatusMessageFrequencyValue(settings.statusMessageFrequencyMs),
     gitStrategy: settings.gitStrategy,
     autoUpdate: settings.autoUpdate ? "on" : "off",
   };
@@ -481,7 +527,7 @@ function getInitialGeneralDraft(): {
 
 function getGeneralDraftOrInitial(userId: string, channelId: string): {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
-  statusFrequencyMs: typeof STATUS_FREQUENCY_OPTIONS[number];
+  statusFrequencyMs: StatusMessageFrequencyValue;
   gitStrategy: typeof GIT_STRATEGY_OPTIONS[number];
   autoUpdate: typeof AUTO_UPDATE_OPTIONS[number];
 } {
@@ -646,6 +692,11 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<void> 
   if (!channelId) return;
 
   if (action === "general") {
+    log.info("Discord settings launcher button clicked", {
+      action,
+      channelId,
+      userId: interaction.user.id,
+    });
     const payload = buildGeneralSettingsPickerPayload({
       channelId,
       userId: interaction.user.id,
@@ -655,6 +706,11 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<void> 
   }
 
   if (action === "channel") {
+    log.info("Discord settings launcher button clicked", {
+      action,
+      channelId,
+      userId: interaction.user.id,
+    });
     const payload = buildChannelSettingsPickerPayload({
       channelId,
       userId: interaction.user.id,
@@ -664,6 +720,11 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<void> 
   }
 
   if (action === "github") {
+    log.info("Discord settings launcher button clicked", {
+      action,
+      channelId,
+      userId: interaction.user.id,
+    });
     await interaction.showModal(buildGitHubSettingsModal(channelId, interaction.user.id));
   }
 }
@@ -789,11 +850,7 @@ async function handleGeneralSettingsComponentInteraction(interaction: any): Prom
     setUserGeneralSettings({
       defaultStatusMessageFormat: draft.statusFormat,
       gitStrategy: draft.gitStrategy,
-      statusMessageFrequencyMs: draft.statusFrequencyMs === "5000"
-        ? 5000
-        : draft.statusFrequencyMs === "10000"
-          ? 10000
-          : 2000,
+      statusMessageFrequencyMs: parseStatusMessageFrequencyMs(Number(draft.statusFrequencyMs)),
       autoUpdate: draft.autoUpdate !== "off",
     });
     generalSettingsDrafts.delete(key);
@@ -886,8 +943,7 @@ async function registerDiscordCommands(client: Client): Promise<void> {
   }
 }
 
-export async function startDiscordRuntime(reason: string): Promise<boolean> {
-  if (discordClients.size > 0) return true;
+async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
   const configuredTokens = getDiscordBotTokens();
   const envToken = process.env.DISCORD_BOT_TOKEN?.trim() || "";
   const tokens = Array.from(new Set([
@@ -901,6 +957,10 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
   }
 
   let startedCount = 0;
+  log.debug("Discord runtime starting", {
+    reason,
+    tokenCount: tokens.length,
+  });
 
   for (const token of tokens) {
     try {
@@ -1045,15 +1105,28 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
           const commandName = String(interaction.commandName || "").toLowerCase();
           if (commandName !== "setting" && commandName !== "settings") return;
 
+          const resolvedChannelId = getResolvedChannelId(interaction);
+          log.info("Discord slash settings command received", {
+            commandName,
+            channelId: resolvedChannelId,
+            interactionChannelId: interaction.channelId,
+            userId: interaction.user.id,
+          });
+
           const payload = buildLauncherReplyPayload({
             command: "setting",
             userId: interaction.user.id,
-            channelId: getResolvedChannelId(interaction),
+            channelId: resolvedChannelId,
           });
 
           await interaction.reply({
             ...payload,
             flags: MessageFlags.Ephemeral,
+          });
+          log.info("Discord slash settings command replied", {
+            commandName,
+            channelId: resolvedChannelId,
+            userId: interaction.user.id,
           });
         } catch (error) {
           log.error("Discord interaction handler failed", { error: String(error) });
@@ -1076,7 +1149,28 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
   return startedCount > 0;
 }
 
+export async function startDiscordRuntime(reason: string): Promise<boolean> {
+  if (discordClients.size > 0) {
+    log.debug("Discord runtime start skipped; already running", {
+      reason,
+      clientCount: discordClients.size,
+    });
+    return true;
+  }
+  if (discordStartPromise) {
+    log.debug("Discord runtime start already in progress; waiting", { reason });
+    return discordStartPromise;
+  }
+
+  discordStartPromise = startDiscordRuntimeInternal(reason)
+    .finally(() => {
+      discordStartPromise = null;
+    });
+  return discordStartPromise;
+}
+
 export async function stopDiscordRuntime(reason: string): Promise<void> {
+  discordStartPromise = null;
   if (discordClients.size === 0) return;
   for (const client of discordClients.values()) {
     client.destroy();

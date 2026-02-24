@@ -135,6 +135,12 @@ async function maybeNotifySettingsIssues(
     text: `Channel settings need attention:\n- ${settingsIssues.join("\n- ")}`,
     thread_ts: threadId,
   });
+  log.info("Slack settings launcher triggered by configuration issues", {
+    channelId,
+    threadId,
+    userId,
+    issuesCount: settingsIssues.length,
+  });
   await deps.postGeneralSettingsLauncher(channelId, userId, client);
   return true;
 }
@@ -159,7 +165,18 @@ async function maybeHandleLauncherCommand(params: {
   const handler = commandHandlers.find((entry) => entry.matches(cleanText));
   if (!handler) return false;
   if (isMention) {
+    log.info("Slack settings launcher command matched", {
+      channelId,
+      userId,
+      cleanText,
+    });
     await handler.launch(channelId, userId, client);
+  } else {
+    log.debug("Slack settings command ignored because bot was not mentioned", {
+      channelId,
+      userId,
+      cleanText,
+    });
   }
   return true;
 }
