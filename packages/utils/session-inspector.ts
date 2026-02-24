@@ -81,42 +81,88 @@ function applySessionUpdatedEvent(state: SessionMessageState, eventProps: Record
   state.sessionTitle = sessionTitle;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function extractMessageInfo(eventProps: Record<string, unknown>): Record<string, unknown> | undefined {
+  const direct = asRecord(eventProps.info);
+  if (direct) return direct;
+
+  const message = asRecord(eventProps.message);
+  if (!message) return undefined;
+
+  const nestedInfo = asRecord(message.info);
+  if (nestedInfo) return nestedInfo;
+  return message;
+}
+
 function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
-  const info = eventProps.info as
-    | {
-        modelID?: unknown;
-        agent?: unknown;
-        tokens?: {
-          total?: unknown;
-          input?: unknown;
-          output?: unknown;
-          reasoning?: unknown;
-          cache?: { read?: unknown; write?: unknown };
-        };
-        cost?: unknown;
-      }
-    | undefined;
-  if (typeof info?.modelID === "string" && info.modelID.trim()) {
-    state.model = info.modelID;
+  const info = extractMessageInfo(eventProps);
+  if (!info) return;
+
+  const modelCandidate =
+    (typeof info.modelID === "string" ? info.modelID : undefined)
+    ?? (typeof info.modelId === "string" ? info.modelId : undefined)
+    ?? (typeof info.model === "string" ? info.model : undefined);
+  if (typeof modelCandidate === "string" && modelCandidate.trim()) {
+    state.model = modelCandidate;
   }
 
-  if (typeof info?.agent === "string" && info.agent.trim()) {
-    state.agent = info.agent;
+  const agentCandidate =
+    (typeof info.agent === "string" ? info.agent : undefined)
+    ?? (typeof info.agentName === "string" ? info.agentName : undefined)
+    ?? (typeof info.assistant === "string" ? info.assistant : undefined);
+  if (typeof agentCandidate === "string" && agentCandidate.trim()) {
+    state.agent = agentCandidate;
   }
 
-  const tokens = info?.tokens;
+  const tokenContainer =
+    asRecord(info.tokens)
+    ?? asRecord(info.tokenUsage)
+    ?? asRecord(info.usage);
+  const cacheContainer =
+    asRecord(tokenContainer?.cache)
+    ?? asRecord(tokenContainer?.cache_tokens)
+    ?? asRecord(tokenContainer?.cacheTokens);
+
+  const tokens = tokenContainer;
   if (tokens && typeof tokens === "object") {
-    const input = Number(tokens.input ?? 0) || 0;
-    const output = Number(tokens.output ?? 0) || 0;
-    const reasoning = Number(tokens.reasoning ?? 0) || 0;
-    const cacheRead = Number(tokens.cache?.read ?? 0) || 0;
-    const cacheWrite = Number(tokens.cache?.write ?? 0) || 0;
-    const reportedTotal = Number(tokens.total);
-    const total = Number.isFinite(reportedTotal)
+    const hasTokenSignal = [
+      tokens.input,
+      tokens.input_tokens,
+      tokens.output,
+      tokens.output_tokens,
+      tokens.reasoning,
+      tokens.reasoning_tokens,
+      tokens.total,
+      tokens.total_tokens,
+      cacheContainer?.read,
+      cacheContainer?.write,
+      cacheContainer?.input_tokens,
+      cacheContainer?.output_tokens,
+    ].some((value) => value !== undefined && value !== null);
+    if (!hasTokenSignal) {
+      return;
+    }
+
+    const input = asNumber(tokens.input ?? tokens.input_tokens) ?? 0;
+    const output = asNumber(tokens.output ?? tokens.output_tokens) ?? 0;
+    const reasoning = asNumber(tokens.reasoning ?? tokens.reasoning_tokens) ?? 0;
+    const cacheRead = asNumber(cacheContainer?.read ?? cacheContainer?.input_tokens) ?? 0;
+    const cacheWrite = asNumber(cacheContainer?.write ?? cacheContainer?.output_tokens) ?? 0;
+    const reportedTotal = asNumber(tokens.total ?? tokens.total_tokens);
+    const total = typeof reportedTotal === "number" && Number.isFinite(reportedTotal)
       ? reportedTotal
       : input + output + reasoning + cacheRead + cacheWrite;
-    const parsedCost = Number(info?.cost);
-    const cost = Number.isFinite(parsedCost) ? parsedCost : undefined;
+    const cost = asNumber(info.cost ?? tokens.cost);
     state.tokenUsage = {
       input,
       output,

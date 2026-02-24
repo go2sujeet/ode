@@ -4,6 +4,7 @@ import { evaluateIncomingMessage, formatIncomingDropMessage } from "@/ims/shared
 import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
 import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
 import { parseIncomingCommand } from "@/ims/shared/command-router";
+import type { AgentProviderId } from "@/shared/agent-provider";
 import {
   toCoreMessageContext,
   type UnifiedMessageContext,
@@ -30,7 +31,7 @@ type RouterDeps = {
   markThreadActive: (channelId: string, threadId: string) => void;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
-  getChannelAgentProvider: (channelId: string) => "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+  getChannelAgentProvider: (channelId: string) => AgentProviderId;
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;

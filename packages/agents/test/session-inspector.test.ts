@@ -289,6 +289,90 @@ describe("session inspector", () => {
     expect(text).not.toContain("cost 0");
   });
 
+  it("hydrates OpenCode token usage from nested message info shape", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              message: {
+                info: {
+                  title: "Refactor live status parser",
+                  modelId: "gpt-5.3-codex",
+                  agentName: "build",
+                  usage: {
+                    total_tokens: 1024,
+                    input_tokens: 200,
+                    output_tokens: 120,
+                    reasoning_tokens: 4,
+                    cache_tokens: {
+                      input_tokens: 700,
+                      output_tokens: 0,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.sessionTitle).toBeUndefined();
+    expect(state.model).toBe("gpt-5.3-codex");
+    expect(state.agent).toBe("build");
+    expect(state.tokenUsage?.total).toBe(1024);
+    expect(state.tokenUsage?.cacheRead).toBe(700);
+  });
+
+  it("does not clear token usage when later message.updated has empty usage object", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                modelID: "gpt-5.3-codex",
+                tokens: {
+                  total: 2048,
+                  input: 500,
+                  output: 200,
+                  reasoning: 10,
+                  cache: { read: 1338, write: 0 },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: startedAt + 1,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                tokens: {},
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.tokenUsage?.total).toBe(2048);
+    expect(state.tokenUsage?.input).toBe(500);
+  });
+
   it("parses todo.updated aliases from wrapped payload events", () => {
     const now = Date.now();
     const state = buildSessionMessageState([

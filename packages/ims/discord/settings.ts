@@ -9,6 +9,17 @@ import {
   TextInputStyle,
 } from "discord.js";
 import {
+  findMatchingModel,
+  getProviderModelList,
+  resolveStoredModelForProvider,
+  type ProviderModelLists,
+} from "@/shared/channel-settings";
+import {
+  AGENT_PROVIDERS,
+  isAgentProviderId,
+  type AgentProviderId,
+} from "@/shared/agent-provider";
+import {
   getChannelSystemMessage,
   getChannelAgentProvider,
   getChannelModel,
@@ -42,9 +53,9 @@ const STATUS_FREQUENCY_OPTIONS: StatusMessageFrequencyValue[] =
   STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => option.value);
 const GIT_STRATEGY_OPTIONS = ["worktree", "default"] as const;
 const AUTO_UPDATE_OPTIONS = ["on", "off"] as const;
-const PROVIDERS = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"] as const;
+const PROVIDERS = AGENT_PROVIDERS;
 
-const channelSettingsDrafts = new Map<string, { provider: typeof PROVIDERS[number]; model: string }>();
+const channelSettingsDrafts = new Map<string, { provider: AgentProviderId; model: string }>();
 const generalSettingsDrafts = new Map<string, {
   statusFormat: typeof STATUS_FORMAT_OPTIONS[number];
   statusFrequencyMs: StatusMessageFrequencyValue;
@@ -122,33 +133,28 @@ function getModalValue(interaction: any, fieldId: string): string {
   return interaction.fields.getTextInputValue(fieldId) || "";
 }
 
-function parseProvider(value: string): typeof PROVIDERS[number] | null {
+function parseProvider(value: string): AgentProviderId | null {
   const normalized = value.trim().toLowerCase();
-  if (!PROVIDERS.includes(normalized as typeof PROVIDERS[number])) return null;
-  return normalized as typeof PROVIDERS[number];
-}
-
-function normalizeModel(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function hasModel(models: string[], selected: string): boolean {
-  const target = normalizeModel(selected);
-  return models.some((model) => normalizeModel(model) === target);
+  return isAgentProviderId(normalized) ? normalized : null;
 }
 
 function getProviderModels(provider: typeof PROVIDERS[number]): string[] {
-  if (provider === "opencode") return getOpenCodeModels();
-  if (provider === "codex") return getCodexModels();
-  if (provider === "kilo") return getKiloModels();
-  return [];
+  return getProviderModelList(provider, getProviderModelLists());
+}
+
+function getProviderModelLists(): ProviderModelLists {
+  return {
+    opencode: getOpenCodeModels(),
+    codex: getCodexModels(),
+    kilo: getKiloModels(),
+  };
 }
 
 function draftKey(userId: string, channelId: string): string {
   return `${userId}:${channelId}`;
 }
 
-function getInitialChannelDraft(channelId: string): { provider: typeof PROVIDERS[number]; model: string } {
+function getInitialChannelDraft(channelId: string): { provider: AgentProviderId; model: string } {
   const provider = getChannelAgentProvider(channelId);
   return {
     provider,
@@ -156,7 +162,7 @@ function getInitialChannelDraft(channelId: string): { provider: typeof PROVIDERS
   };
 }
 
-function getDraftOrInitial(userId: string, channelId: string): { provider: typeof PROVIDERS[number]; model: string } {
+function getDraftOrInitial(userId: string, channelId: string): { provider: AgentProviderId; model: string } {
   return channelSettingsDrafts.get(draftKey(userId, channelId)) ?? getInitialChannelDraft(channelId);
 }
 
@@ -186,7 +192,7 @@ function buildChannelSettingsPickerPayload(params: {
 
   const models = getProviderModels(draft.provider);
   if (models.length > 0) {
-    const selectedModel = draft.model && hasModel(models, draft.model) ? draft.model : models[0]!;
+    const selectedModel = findMatchingModel(models, draft.model) ?? models[0]!;
     const modelOptions = models.slice(0, 25).map((model) => ({
       label: model.slice(0, 100),
       value: model,
@@ -617,7 +623,7 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
     const models = getProviderModels(parsed);
     const nextDraft = {
       provider: parsed,
-      model: models.length > 0 ? (hasModel(models, draft.model) ? draft.model : models[0]!) : "",
+      model: models.length > 0 ? (findMatchingModel(models, draft.model) ?? models[0]!) : "",
     };
     channelSettingsDrafts.set(key, nextDraft);
     await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId }));
@@ -638,24 +644,17 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
 
   if (action === "save") {
     const models = getProviderModels(draft.provider);
-    if (models.length > 0 && draft.model && !hasModel(models, draft.model)) {
+    if (models.length > 0 && draft.model && !findMatchingModel(models, draft.model)) {
       await interaction.reply({ content: "Selected model is no longer available.", flags: MessageFlags.Ephemeral });
       return true;
     }
 
     setChannelAgentProvider(channelId, draft.provider);
-    if (
-      draft.provider === "claudecode" ||
-      draft.provider === "kimi" ||
-      draft.provider === "kiro" ||
-      draft.provider === "qwen" ||
-      draft.provider === "goose" ||
-      draft.provider === "gemini"
-    ) {
-      setChannelModel(channelId, "");
-    } else {
-      setChannelModel(channelId, draft.model);
-    }
+    setChannelModel(channelId, resolveStoredModelForProvider({
+      provider: draft.provider,
+      selectedModel: draft.model,
+      lists: getProviderModelLists(),
+    }));
     channelSettingsDrafts.delete(key);
     await interaction.reply({ content: "Channel provider/model updated.", flags: MessageFlags.Ephemeral });
     return true;

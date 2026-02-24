@@ -5,6 +5,7 @@ import type {
   OpenCodeSessionInfo,
 } from "@/agents";
 import type { StatusMessageFormat } from "@/config/status-message-format";
+import type { AgentProviderId } from "@/shared/agent-provider";
 import type { SessionMessageState } from "@/utils/session-inspector";
 
 export type CoreMessageContext = {
@@ -68,7 +69,7 @@ export interface IMAdapter {
 
 export interface AgentAdapter {
   supportsEventStream: boolean;
-  getProviderForSession(sessionId: string): "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+  getProviderForSession(sessionId: string): AgentProviderId;
   getDisplayNameForSession(sessionId: string): string;
   getOrCreateSession(
     channelId: string,
