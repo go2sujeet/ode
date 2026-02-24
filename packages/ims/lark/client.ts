@@ -731,6 +731,22 @@ function extractFormValues(payload: unknown): Record<string, string> {
   return normalized;
 }
 
+function pickFormValue(
+  formValues: Record<string, string>,
+  key: string
+): { exists: boolean; value: string } {
+  if (Object.prototype.hasOwnProperty.call(formValues, key)) {
+    return {
+      exists: true,
+      value: formValues[key] ?? "",
+    };
+  }
+  return {
+    exists: false,
+    value: "",
+  };
+}
+
 async function processLarkCardAction(payload: unknown): Promise<void> {
   if (!payload || typeof payload !== "object") return;
   const envelope = payload as LarkCardActionEnvelope;
@@ -809,10 +825,15 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
   }
 
   if (action === "set_channel_settings") {
+    const formValues = extractFormValues(payload);
     const selected = pickActionSelectedOption(payload);
     const field = firstNonEmptyString(
       pickValueField(value, "field")
     );
+    const formModel = pickFormValue(formValues, "model");
+    const formWorkingDirectory = pickFormValue(formValues, "workingDirectory");
+    const formBaseBranch = pickFormValue(formValues, "baseBranch");
+    const formSystemMessage = pickFormValue(formValues, "channelSystemMessage");
     const provider = firstNonEmptyString(
       pickValueField(value, "provider"),
       field === "provider" ? selected : ""
@@ -831,31 +852,39 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
       setChannelAgentProvider(channelId, provider);
     }
 
-    const model = firstNonEmptyString(
-      pickValueField(value, "model"),
-      field === "model" ? selected : ""
-    );
+    const model = formModel.exists
+      ? formModel.value
+      : firstNonEmptyString(
+        pickValueField(value, "model"),
+        field === "model" ? selected : ""
+      );
     setChannelModel(channelId, model);
 
-    const workingDirectory = firstNonEmptyString(
-      pickValueField(value, "working_directory"),
-      pickValueField(value, "workingDirectory"),
-      field === "workingDirectory" ? selected : ""
-    );
+    const workingDirectory = formWorkingDirectory.exists
+      ? formWorkingDirectory.value
+      : firstNonEmptyString(
+        pickValueField(value, "working_directory"),
+        pickValueField(value, "workingDirectory"),
+        field === "workingDirectory" ? selected : ""
+      );
     setChannelWorkingDirectory(channelId, workingDirectory || null);
 
-    const baseBranch = firstNonEmptyString(
-      pickValueField(value, "base_branch"),
-      pickValueField(value, "baseBranch"),
-      field === "baseBranch" ? selected : ""
-    );
+    const baseBranch = formBaseBranch.exists
+      ? formBaseBranch.value
+      : firstNonEmptyString(
+        pickValueField(value, "base_branch"),
+        pickValueField(value, "baseBranch"),
+        field === "baseBranch" ? selected : ""
+      );
     setChannelBaseBranch(channelId, baseBranch || null);
 
-    const channelSystemMessage = firstNonEmptyString(
-      pickValueField(value, "channel_system_message"),
-      pickValueField(value, "channelSystemMessage"),
-      field === "channelSystemMessage" ? selected : ""
-    );
+    const channelSystemMessage = formSystemMessage.exists
+      ? formSystemMessage.value
+      : firstNonEmptyString(
+        pickValueField(value, "channel_system_message"),
+        pickValueField(value, "channelSystemMessage"),
+        field === "channelSystemMessage" ? selected : ""
+      );
     setChannelSystemMessage(channelId, channelSystemMessage || null);
   }
 
@@ -863,28 +892,34 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
     const formValues = extractFormValues(payload);
     const selected = pickActionSelectedOption(payload);
     const field = firstNonEmptyString(pickValueField(value, "field"));
-    const token = firstNonEmptyString(
-      pickValueField(value, "github_token"),
-      pickValueField(value, "githubToken"),
-      formValues.githubToken,
-      field === "githubToken" ? selected : ""
-    );
-    const gitName = firstNonEmptyString(
-      pickValueField(value, "git_name"),
-      pickValueField(value, "github_name"),
-      pickValueField(value, "gitName"),
-      pickValueField(value, "githubName"),
-      formValues.githubName,
-      field === "githubName" ? selected : ""
-    );
-    const gitEmail = firstNonEmptyString(
-      pickValueField(value, "git_email"),
-      pickValueField(value, "github_email"),
-      pickValueField(value, "gitEmail"),
-      pickValueField(value, "githubEmail"),
-      formValues.githubEmail,
-      field === "githubEmail" ? selected : ""
-    );
+    const formGithubToken = pickFormValue(formValues, "githubToken");
+    const formGithubName = pickFormValue(formValues, "githubName");
+    const formGithubEmail = pickFormValue(formValues, "githubEmail");
+    const token = formGithubToken.exists
+      ? formGithubToken.value
+      : firstNonEmptyString(
+        pickValueField(value, "github_token"),
+        pickValueField(value, "githubToken"),
+        field === "githubToken" ? selected : ""
+      );
+    const gitName = formGithubName.exists
+      ? formGithubName.value
+      : firstNonEmptyString(
+        pickValueField(value, "git_name"),
+        pickValueField(value, "github_name"),
+        pickValueField(value, "gitName"),
+        pickValueField(value, "githubName"),
+        field === "githubName" ? selected : ""
+      );
+    const gitEmail = formGithubEmail.exists
+      ? formGithubEmail.value
+      : firstNonEmptyString(
+        pickValueField(value, "git_email"),
+        pickValueField(value, "github_email"),
+        pickValueField(value, "gitEmail"),
+        pickValueField(value, "githubEmail"),
+        field === "githubEmail" ? selected : ""
+      );
     setGitHubInfoForUser(userId || "", {
       token,
       gitName,

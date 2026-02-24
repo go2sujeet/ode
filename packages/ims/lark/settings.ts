@@ -330,26 +330,6 @@ export function buildLarkSettingsDetailCard(params: {
         text: { tag: "plain_text", content: item },
         value: item,
       }));
-    const workingDirectoryOptions = Array.from(new Set([
-      cwd === "(not set)" ? "" : cwd,
-      "/root/ode-new",
-      "/root",
-    ])).map((item) => ({
-      text: { tag: "plain_text", content: item || "(empty)" },
-      value: item,
-    }));
-    const baseBranchOptions = ["main", "master", "develop", "dev"].map((item) => ({
-      text: { tag: "plain_text", content: item },
-      value: item,
-    }));
-    const channelSystemMessageOptions = [
-      { label: "(empty)", value: "" },
-      { label: "concise", value: "Please keep responses concise and actionable." },
-      { label: "detailed", value: "Please provide detailed reasoning and include implementation notes." },
-    ].map((item) => ({
-      text: { tag: "plain_text", content: item.label },
-      value: item.value,
-    }));
     const settingsBaseValue = {
       action: "set_channel_settings",
       channelId,
@@ -430,54 +410,30 @@ export function buildLarkSettingsDetailCard(params: {
           content: "Working directory",
         },
         {
-          tag: "action",
-          actions: [
-            {
-              tag: "select_static",
-              placeholder: { tag: "plain_text", content: "Select working directory" },
-              options: workingDirectoryOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "workingDirectory",
-              },
-            },
-          ],
+          tag: "input",
+          name: "workingDirectory",
+          placeholder: { tag: "plain_text", content: "Enter working directory" },
+          value: cwd === "(not set)" ? "" : cwd,
         },
         {
           tag: "markdown",
           content: "Base branch",
         },
         {
-          tag: "action",
-          actions: [
-            {
-              tag: "select_static",
-              placeholder: { tag: "plain_text", content: "Select base branch" },
-              options: baseBranchOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "baseBranch",
-              },
-            },
-          ],
+          tag: "input",
+          name: "baseBranch",
+          placeholder: { tag: "plain_text", content: "Enter base branch" },
+          value: baseBranch,
         },
         {
           tag: "markdown",
           content: "Channel system message",
         },
         {
-          tag: "action",
-          actions: [
-            {
-              tag: "select_static",
-              placeholder: { tag: "plain_text", content: "Select system message preset" },
-              options: channelSystemMessageOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "channelSystemMessage",
-              },
-            },
-          ],
+          tag: "input",
+          name: "channelSystemMessage",
+          placeholder: { tag: "plain_text", content: "Enter channel system message" },
+          value: systemMessage === "(none)" ? "" : systemMessage,
         },
         {
           tag: "action",
@@ -485,10 +441,10 @@ export function buildLarkSettingsDetailCard(params: {
             {
               tag: "button",
               type: "primary",
-              text: { tag: "plain_text", content: "Refresh" },
+              text: { tag: "plain_text", content: "Save channel setting" },
               value: {
                 ...settingsBaseValue,
-                field: "refresh",
+                field: "save",
               },
             },
             {
@@ -550,65 +506,30 @@ export function buildLarkSettingsDetailCard(params: {
         content: "GitHub token",
       },
       {
-        tag: "action",
-        actions: [
-          {
-            tag: "select_static",
-            placeholder: { tag: "plain_text", content: "Token action" },
-            options: [
-              { text: { tag: "plain_text", content: "Keep current" }, value: githubToken },
-              { text: { tag: "plain_text", content: "Clear token" }, value: "" },
-            ],
-            value: {
-              ...githubBaseValue,
-              field: "githubToken",
-            },
-          },
-        ],
+        tag: "input",
+        name: "githubToken",
+        placeholder: { tag: "plain_text", content: "Enter GitHub token" },
+        value: githubToken,
       },
       {
         tag: "markdown",
         content: "Git name",
       },
       {
-        tag: "action",
-        actions: [
-          {
-            tag: "select_static",
-            placeholder: { tag: "plain_text", content: "Select git name" },
-            options: [
-              { text: { tag: "plain_text", content: githubName || "(not set)" }, value: githubName },
-              { text: { tag: "plain_text", content: "LIU9293" }, value: "LIU9293" },
-              { text: { tag: "plain_text", content: "(empty)" }, value: "" },
-            ],
-            value: {
-              ...githubBaseValue,
-              field: "githubName",
-            },
-          },
-        ],
+        tag: "input",
+        name: "githubName",
+        placeholder: { tag: "plain_text", content: "Enter git name" },
+        value: githubName,
       },
       {
         tag: "markdown",
         content: "Git email",
       },
       {
-        tag: "action",
-        actions: [
-          {
-            tag: "select_static",
-            placeholder: { tag: "plain_text", content: "Select git email" },
-            options: [
-              { text: { tag: "plain_text", content: githubEmail || "(not set)" }, value: githubEmail },
-              { text: { tag: "plain_text", content: "mylock.kai@gmail.com" }, value: "mylock.kai@gmail.com" },
-              { text: { tag: "plain_text", content: "(empty)" }, value: "" },
-            ],
-            value: {
-              ...githubBaseValue,
-              field: "githubEmail",
-            },
-          },
-        ],
+        tag: "input",
+        name: "githubEmail",
+        placeholder: { tag: "plain_text", content: "Enter git email" },
+        value: githubEmail,
       },
       {
         tag: "action",
@@ -616,10 +537,10 @@ export function buildLarkSettingsDetailCard(params: {
           {
             tag: "button",
             type: "primary",
-            text: { tag: "plain_text", content: "Refresh" },
+            text: { tag: "plain_text", content: "Save GitHub setting" },
             value: {
               ...githubBaseValue,
-              field: "refresh",
+              field: "save",
             },
           },
           {
