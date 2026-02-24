@@ -1,5 +1,10 @@
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
+import {
+  shouldProcessIncomingMessage,
+  toCoreMessageContext,
+  type UnifiedMessageContext,
+} from "@/ims/shared/message-context";
 
 type RouterDeps = {
   app: any;
@@ -83,10 +88,6 @@ function extractIncomingMessageData(message: any): IncomingMessageData | null {
     threadId: message.thread_ts || message.ts,
     messageId: message.ts,
   };
-}
-
-function shouldDropForThreadContext(isMention: boolean, threadActive: boolean): boolean {
-  return !isMention && !threadActive;
 }
 
 function shouldDropForOtherMentions(text: string, isMention: boolean): boolean {
@@ -257,8 +258,21 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         return;
       }
       const threadActive = deps.isThreadActive(channelId, threadId);
+      const messageContext: UnifiedMessageContext = {
+        platform: "slack",
+        channelId,
+        threadId,
+        replyThreadId: threadId,
+        messageId,
+        userId,
+        isTopLevel: threadId === messageId,
+        mentionedBot: isMention,
+        activeThread: threadActive,
+        rawText: text,
+        normalizedText: cleanText,
+      };
 
-      if (shouldDropForThreadContext(isMention, threadActive)) {
+      if (!shouldProcessIncomingMessage(messageContext)) {
         log.debug("[DROP] Not mentioned and thread inactive", { channelId, threadId });
         return;
       }
@@ -294,17 +308,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         return;
       }
 
-      await deps.handleIncomingMessage(
-        {
-          channelId,
-          replyThreadId: threadId,
-          threadId,
-          userId,
-          messageId,
-          workspaceName,
-        },
-        cleanText
-      );
+      await deps.handleIncomingMessage(toCoreMessageContext(messageContext, { workspaceName }), cleanText);
     } catch (error) {
       log.error("Slack message router failed", {
         channelId: contextData?.channelId,

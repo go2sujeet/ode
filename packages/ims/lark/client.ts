@@ -15,6 +15,11 @@ import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
+import {
+  shouldProcessIncomingMessage,
+  toCoreMessageContext,
+  type UnifiedMessageContext,
+} from "@/ims/shared/message-context";
 
 let larkRuntimeStarted = false;
 
@@ -662,6 +667,19 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     : false;
   const active = isThreadActive(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
+  const messageContext: UnifiedMessageContext = {
+    platform: "lark",
+    channelId,
+    threadId,
+    replyThreadId: threadId,
+    messageId,
+    userId: senderOpenId,
+    isTopLevel: topLevelMessage,
+    mentionedBot: isMentioned,
+    activeThread: active,
+    rawText,
+    normalizedText: text,
+  };
 
   logLarkEvent("Lark inbound parsed", {
     channelId,
@@ -687,25 +705,19 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (!topLevelMessage) {
-    if (!isMentioned && !active) {
-      logLarkEvent("Lark inbound ignored: thread reply without mention and inactive thread", {
-        channelId,
-        threadId,
-        messageId,
-      });
-      return;
-    }
-  } else if (!isMentioned) {
-    logLarkEvent("Lark inbound ignored: top-level message without mention", {
+  if (!shouldProcessIncomingMessage(messageContext)) {
+    logLarkEvent("Lark inbound ignored: not mentioned and thread inactive", {
       channelId,
       threadId,
       messageId,
+      isTopLevel: topLevelMessage,
+      isMentioned,
+      activeThread: active,
     });
     return;
   }
 
-  if (!text) {
+  if (!messageContext.normalizedText) {
     logLarkEvent("Lark inbound ignored: empty text after mention stripping", {
       channelId,
       messageId,
@@ -713,7 +725,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (isStopCommand(text)) {
+  if (isStopCommand(messageContext.normalizedText)) {
     logLarkEvent("Lark inbound matched stop command", {
       channelId,
       threadId,
@@ -734,14 +746,8 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     userId: senderOpenId,
   });
   await coreRuntime.handleIncomingMessage(
-    {
-      channelId,
-      replyThreadId: threadId,
-      threadId,
-      userId: senderOpenId,
-      messageId,
-    },
-    text
+    toCoreMessageContext(messageContext),
+    messageContext.normalizedText
   );
   logLarkEvent("Lark inbound handled by core runtime", {
     channelId,

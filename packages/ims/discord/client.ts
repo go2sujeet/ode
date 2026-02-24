@@ -46,6 +46,11 @@ import {
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
+import {
+  shouldProcessIncomingMessage,
+  toCoreMessageContext,
+  type UnifiedMessageContext,
+} from "@/ims/shared/message-context";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_THREAD_NAME_LIMIT = 25;
@@ -1009,16 +1014,28 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             }
             const mentioned = isBotMentioned(message, client.user.id);
             const active = isThreadActive(parentId, threadId);
-            if (!mentioned && !active) return;
-            const inputText = mentioned ? cleanBotMention(text, client.user.id) : text;
-            if (!inputText) {
+            const messageContext: UnifiedMessageContext = {
+              platform: "discord",
+              channelId: parentId,
+              threadId,
+              replyThreadId: threadId,
+              messageId: message.id,
+              userId: message.author.id,
+              isTopLevel: false,
+              mentionedBot: mentioned,
+              activeThread: active,
+              rawText: text,
+              normalizedText: mentioned ? cleanBotMention(text, client.user.id) : text,
+            };
+            if (!shouldProcessIncomingMessage(messageContext)) return;
+            if (!messageContext.normalizedText) {
               if (mentioned) {
                 await message.reply("Please include a request after mentioning me.");
               }
               return;
             }
 
-            if (isStopCommand(inputText)) {
+            if (isStopCommand(messageContext.normalizedText)) {
               const stopped = await coreRuntime.handleStopCommand(parentId, threadId);
               if (stopped) {
                 await message.channel.send("Request stopped.");
@@ -1027,13 +1044,10 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             }
 
             markThreadActive(parentId, threadId);
-            await coreRuntime.handleIncomingMessage({
-              channelId: parentId,
-              replyThreadId: threadId,
-              threadId,
-              userId: message.author.id,
-              messageId: message.id,
-            }, inputText);
+            await coreRuntime.handleIncomingMessage(
+              toCoreMessageContext(messageContext),
+              messageContext.normalizedText
+            );
             return;
           }
 
@@ -1054,11 +1068,22 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             return;
           }
 
-          const isMentioned = isBotMentioned(message, client.user.id);
-          if (!isMentioned) return;
+          const topLevelContext: UnifiedMessageContext = {
+            platform: "discord",
+            channelId: parentId,
+            threadId: message.id,
+            replyThreadId: message.id,
+            messageId: message.id,
+            userId: message.author.id,
+            isTopLevel: true,
+            mentionedBot: isBotMentioned(message, client.user.id),
+            activeThread: false,
+            rawText: message.content,
+            normalizedText: cleanBotMention(message.content, client.user.id),
+          };
+          if (!shouldProcessIncomingMessage(topLevelContext)) return;
 
-          const cleaned = cleanBotMention(message.content, client.user.id);
-          const cleanedLauncherCommand = parseLauncherCommand(cleaned);
+          const cleanedLauncherCommand = parseLauncherCommand(topLevelContext.normalizedText);
           if (cleanedLauncherCommand) {
             await sendLauncherReplyForMessage({
               message,
@@ -1071,24 +1096,25 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             });
             return;
           }
-          if (!cleaned) {
+          if (!topLevelContext.normalizedText) {
             await message.reply("Please include a request after mentioning me.");
             return;
           }
 
       const thread = await message.startThread({
-        name: buildMeaningfulThreadName(cleaned),
+        name: buildMeaningfulThreadName(topLevelContext.normalizedText),
         autoArchiveDuration: 60,
       });
 
           markThreadActive(parentId, thread.id);
-          await coreRuntime.handleIncomingMessage({
-            channelId: parentId,
-            replyThreadId: thread.id,
-            threadId: thread.id,
-            userId: message.author.id,
-            messageId: message.id,
-          }, cleaned);
+          await coreRuntime.handleIncomingMessage(
+            toCoreMessageContext({
+              ...topLevelContext,
+              threadId: thread.id,
+              replyThreadId: thread.id,
+            }),
+            topLevelContext.normalizedText
+          );
         } catch (error) {
           log.error("Discord message handler failed", { error: String(error) });
         }
