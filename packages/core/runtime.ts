@@ -152,7 +152,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
 
     if (finalChunks.length > 1) {
       if (statusFormat !== "aggressive" && !statusRateLimited) {
-        await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.", false);
+        await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below in multiple messages.");
       } else if (statusRateLimited) {
         log.warn("Skipping final status update due to prior 429; posting final chunks as new messages", {
           channelId,
@@ -163,13 +163,13 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       }
 
       for (const chunk of finalChunks) {
-        await runtimeDeps.im.sendMessage(channelId, threadId, chunk, true);
+        await runtimeDeps.im.sendMessage(channelId, threadId, chunk);
       }
       return;
     }
 
     if (statusFormat === "aggressive") {
-      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk);
       return;
     }
 
@@ -180,18 +180,18 @@ export function createCoreRuntime(deps: RuntimeDeps) {
         statusTs,
         ...(statusRateLimitError ? { error: statusRateLimitError } : {}),
       });
-      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk);
       return;
     }
 
     const maxEditableMessageChars = runtimeDeps.im.maxEditableMessageChars;
     if (typeof maxEditableMessageChars === "number" && singleChunk.length > maxEditableMessageChars) {
-      await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below.", false);
-      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk, true);
+      await runtimeDeps.im.updateMessage(channelId, statusTs, "Final result posted below.");
+      await runtimeDeps.im.sendMessage(channelId, threadId, singleChunk);
       return;
     }
 
-    await runtimeDeps.im.updateMessage(channelId, statusTs, singleChunk, true);
+    await runtimeDeps.im.updateMessage(channelId, statusTs, singleChunk);
   }
 
   async function handleUserMessageInternal(context: CoreMessageContext, text: string): Promise<void> {

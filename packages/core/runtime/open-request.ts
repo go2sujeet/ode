@@ -60,8 +60,7 @@ export async function runOpenRequest(params: {
   const initialStatusTs = await deps.im.sendMessage(
     context.channelId,
     context.replyThreadId,
-    `${providerLabel} is running...`,
-    false
+    `${providerLabel} is running...`
   );
 
   if (!initialStatusTs) {
@@ -126,7 +125,7 @@ export async function runOpenRequest(params: {
         statusMessageFormat: resolveStatusMessageFormat(),
       });
       if (!request.statusFrozen) {
-        const updatedStatusTs = await deps.im.updateMessage(context.channelId, statusTs, statusText, false);
+        const updatedStatusTs = await deps.im.updateMessage(context.channelId, statusTs, statusText);
         if (typeof updatedStatusTs === "string" && updatedStatusTs !== statusTs) {
           statusTs = updatedStatusTs;
           request.statusMessageTs = updatedStatusTs;

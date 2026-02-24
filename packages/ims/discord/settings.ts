@@ -48,6 +48,7 @@ import { log } from "@/utils";
 
 const DISCORD_MODAL_CHANNEL = "ode:modal:channel_details";
 const DISCORD_MODAL_GITHUB = "ode:modal:github";
+const DISCORD_MODAL_GENERAL = "ode:modal:general";
 const STATUS_FORMAT_OPTIONS = ["aggressive", "medium", "minimum"] as const;
 const STATUS_FREQUENCY_OPTIONS: StatusMessageFrequencyValue[] =
   STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option) => option.value);
@@ -363,6 +364,8 @@ function textInputRow(params: {
 }
 
 function buildChannelSettingsModal(channelId: string): ModalBuilder {
+  const provider = getChannelAgentProvider(channelId);
+  const model = getChannelModel(channelId) || "";
   const baseBranch = getChannelBaseBranch(channelId) || "main";
   const workingDirectory = resolveChannelCwd(channelId).workingDirectory || "";
   const systemMessage = getChannelSystemMessage(channelId) || "";
@@ -371,6 +374,20 @@ function buildChannelSettingsModal(channelId: string): ModalBuilder {
     .setCustomId(`${DISCORD_MODAL_CHANNEL}:${channelId}`)
     .setTitle("Channel Settings")
     .addComponents(
+      textInputRow({
+        id: "agent_provider",
+        label: "Agent provider",
+        required: true,
+        value: provider,
+        placeholder: PROVIDERS.join(", "),
+      }),
+      textInputRow({
+        id: "model",
+        label: "Model",
+        required: false,
+        value: model,
+        placeholder: "Leave empty for provider default",
+      }),
       textInputRow({
         id: "working_directory",
         label: "Working directory",
@@ -420,6 +437,45 @@ function buildGitHubSettingsModal(channelId: string, userId: string): ModalBuild
     );
 }
 
+function buildGeneralSettingsModal(channelId: string): ModalBuilder {
+  const settings = getUserGeneralSettings();
+  const statusFrequencyValue = toStatusMessageFrequencyValue(settings.statusMessageFrequencyMs);
+
+  return new ModalBuilder()
+    .setCustomId(`${DISCORD_MODAL_GENERAL}:${channelId}`)
+    .setTitle("General Settings")
+    .addComponents(
+      textInputRow({
+        id: "status_format",
+        label: "Status format",
+        required: true,
+        value: settings.defaultStatusMessageFormat,
+        placeholder: STATUS_FORMAT_OPTIONS.join(", "),
+      }),
+      textInputRow({
+        id: "status_frequency",
+        label: "Status frequency (ms)",
+        required: true,
+        value: statusFrequencyValue,
+        placeholder: STATUS_FREQUENCY_OPTIONS.join(", "),
+      }),
+      textInputRow({
+        id: "git_strategy",
+        label: "Git strategy",
+        required: true,
+        value: settings.gitStrategy,
+        placeholder: GIT_STRATEGY_OPTIONS.join(", "),
+      }),
+      textInputRow({
+        id: "auto_update",
+        label: "Auto update",
+        required: true,
+        value: settings.autoUpdate ? "on" : "off",
+        placeholder: AUTO_UPDATE_OPTIONS.join(", "),
+      })
+    );
+}
+
 async function handleLauncherButtonInteraction(interaction: any): Promise<boolean> {
   const customId = String(interaction.customId ?? "");
   if (!customId.startsWith("ode:launcher:")) return false;
@@ -435,11 +491,7 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<boolea
       channelId,
       userId: interaction.user.id,
     });
-    const payload = buildGeneralSettingsPickerPayload({
-      channelId,
-      userId: interaction.user.id,
-    });
-    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+    await interaction.showModal(buildGeneralSettingsModal(channelId));
     return true;
   }
 
@@ -449,11 +501,7 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<boolea
       channelId,
       userId: interaction.user.id,
     });
-    const payload = buildChannelSettingsPickerPayload({
-      channelId,
-      userId: interaction.user.id,
-    });
-    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+    await interaction.showModal(buildChannelSettingsModal(channelId));
     return true;
   }
 
@@ -479,14 +527,93 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
   const channelId = parts[3] || getResolvedChannelId(interaction);
 
   if (modalKind === DISCORD_MODAL_CHANNEL) {
+    const providerValue = getModalValue(interaction, "agent_provider").trim();
+    const parsedProvider = parseProvider(providerValue);
+    if (!parsedProvider || !isAgentEnabled(parsedProvider)) {
+      await interaction.reply({
+        content: `Invalid provider. Use one of: ${PROVIDERS.join(", ")}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    const modelInput = getModalValue(interaction, "model").trim();
+    const providerModels = getProviderModels(parsedProvider);
+    if (providerModels.length > 0 && modelInput && !findMatchingModel(providerModels, modelInput)) {
+      await interaction.reply({
+        content: "Model is not available for the selected provider.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
     const workingDirectory = getModalValue(interaction, "working_directory").trim();
     const baseBranch = getModalValue(interaction, "base_branch").trim() || "main";
     const channelSystemMessage = getModalValue(interaction, "channel_system_message");
+
+    setChannelAgentProvider(channelId, parsedProvider);
+    setChannelModel(channelId, resolveStoredModelForProvider({
+      provider: parsedProvider,
+      selectedModel: modelInput,
+      lists: getProviderModelLists(),
+    }));
     setChannelWorkingDirectory(channelId, workingDirectory.length > 0 ? workingDirectory : null);
     setChannelBaseBranch(channelId, baseBranch);
     setChannelSystemMessage(channelId, channelSystemMessage);
 
     await interaction.reply({ content: "Channel settings updated.", flags: MessageFlags.Ephemeral });
+    return true;
+  }
+
+  if (modalKind === DISCORD_MODAL_GENERAL) {
+    const statusFormatRaw = getModalValue(interaction, "status_format");
+    const statusFormat = parseGeneralStatusFormat(statusFormatRaw);
+    if (!statusFormat) {
+      await interaction.reply({
+        content: `Invalid status format. Use one of: ${STATUS_FORMAT_OPTIONS.join(", ")}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    const statusFrequencyRaw = getModalValue(interaction, "status_frequency");
+    const statusFrequency = parseStatusFrequency(statusFrequencyRaw);
+    if (!statusFrequency) {
+      await interaction.reply({
+        content: `Invalid status frequency. Use one of: ${STATUS_FREQUENCY_OPTIONS.join(", ")}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    const gitStrategyRaw = getModalValue(interaction, "git_strategy");
+    const gitStrategy = parseGitStrategy(gitStrategyRaw);
+    if (!gitStrategy) {
+      await interaction.reply({
+        content: `Invalid git strategy. Use one of: ${GIT_STRATEGY_OPTIONS.join(", ")}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    const autoUpdateRaw = getModalValue(interaction, "auto_update");
+    const autoUpdate = parseAutoUpdate(autoUpdateRaw);
+    if (!autoUpdate) {
+      await interaction.reply({
+        content: `Invalid auto update value. Use one of: ${AUTO_UPDATE_OPTIONS.join(", ")}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    setUserGeneralSettings({
+      defaultStatusMessageFormat: statusFormat,
+      gitStrategy,
+      statusMessageFrequencyMs: parseStatusMessageFrequencyMs(Number(statusFrequency)),
+      autoUpdate: autoUpdate !== "off",
+    });
+
+    await interaction.reply({ content: "General settings updated.", flags: MessageFlags.Ephemeral });
     return true;
   }
 

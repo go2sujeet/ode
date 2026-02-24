@@ -33,7 +33,7 @@ export async function handlePendingQuestionReply(params: {
 
   const trimmed = text.trim();
   if (!trimmed) {
-    await deps.im.sendMessage(context.channelId, context.replyThreadId, "Please reply with an answer.", false);
+    await deps.im.sendMessage(context.channelId, context.replyThreadId, "Please reply with an answer.");
     return true;
   }
 
@@ -54,8 +54,7 @@ export async function handlePendingQuestionReply(params: {
     await deps.im.sendMessage(
       context.channelId,
       context.replyThreadId,
-      "Failed to submit your answer. Please try again.",
-      false
+      "Failed to submit your answer. Please try again."
     );
     return true;
   }

@@ -73,7 +73,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
   const providerId = deps.agent.getProviderForSession(sessionId);
   const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
-  const initialStatusTs = await deps.im.sendMessage(channelId, threadId, `${providerLabel} is running...`, false);
+  const initialStatusTs = await deps.im.sendMessage(channelId, threadId, `${providerLabel} is running...`);
   if (!initialStatusTs) {
     log.error("Failed to send status message for button selection");
     return;
@@ -142,7 +142,7 @@ export async function handleSelectionReply(params: HandleSelectionReplyParams): 
         state: state.liveParsedState.get(statusMessageKey),
         statusMessageFormat: resolveStatusMessageFormat(),
       });
-      const updatedStatusTs = await deps.im.updateMessage(channelId, statusTs, statusText, false);
+      const updatedStatusTs = await deps.im.updateMessage(channelId, statusTs, statusText);
       if (typeof updatedStatusTs === "string" && updatedStatusTs !== statusTs) {
         statusTs = updatedStatusTs;
         request.statusMessageTs = updatedStatusTs;

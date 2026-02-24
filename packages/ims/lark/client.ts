@@ -210,9 +210,8 @@ async function sendLarkMessage(params: {
   return messageId;
 }
 
-function buildLarkPostContent(text: string, asMarkdown: boolean): Record<string, unknown> {
-  const tag = asMarkdown ? "md" : "text";
-  const block = [{ tag, text }];
+function buildLarkPostContent(text: string): Record<string, unknown> {
+  const block = [{ tag: "md", text }];
   return {
     zh_cn: {
       title: "",
@@ -223,11 +222,6 @@ function buildLarkPostContent(text: string, asMarkdown: boolean): Record<string,
       content: [block],
     },
   };
-}
-
-function shouldUseLarkMarkdown(text: string, asMarkdown: boolean): boolean {
-  if (asMarkdown) return true;
-  return /`[^`]+`|\*[^*]+\*|_[^_]+_|^\s*[-*]\s+/m.test(text);
 }
 
 function stripLarkMentionMarkup(text: string): string {
@@ -300,15 +294,13 @@ async function buildLarkContext(
 async function sendMessage(
   channelId: string,
   threadId: string,
-  text: string,
-  asMarkdown = true
+  text: string
 ): Promise<string | undefined> {
-  const useMarkdown = shouldUseLarkMarkdown(text, asMarkdown);
   return sendLarkMessage({
     channelId,
     threadId: threadId || "",
     msgType: "post",
-    content: buildLarkPostContent(text, useMarkdown),
+    content: buildLarkPostContent(text),
   });
 }
 
@@ -323,7 +315,7 @@ async function sendSettingsCard(channelId: string, threadId: string): Promise<st
         msgType: "interactive",
         content: card,
       }),
-    sendText: (text) => sendMessage(channelId, threadId, text, true),
+    sendText: (text) => sendMessage(channelId, threadId, text),
     logEvent: logLarkEvent,
   });
 }
@@ -331,8 +323,7 @@ async function sendSettingsCard(channelId: string, threadId: string): Promise<st
 async function updateMessage(
   channelId: string,
   messageId: string,
-  text: string,
-  asMarkdown = true
+  text: string
 ): Promise<string | undefined> {
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return;
@@ -343,7 +334,7 @@ async function updateMessage(
     const trackedThreadId = sentMessageThreadMap.get(messageId)?.threadId || findReplyThreadIdByStatusMessageTs(messageId) || "";
     try {
       await deleteMessage(channelId, messageId);
-      const replacementMessageId = await sendMessage(channelId, trackedThreadId, text, asMarkdown);
+      const replacementMessageId = await sendMessage(channelId, trackedThreadId, text);
       if (replacementMessageId) {
         larkMessageEditCounts.delete(messageId);
         larkMessageEditCounts.set(replacementMessageId, 0);
@@ -370,10 +361,9 @@ async function updateMessage(
     }
   }
 
-  const useMarkdown = shouldUseLarkMarkdown(text, asMarkdown);
   const payload = {
     msg_type: "post",
-    content: JSON.stringify(buildLarkPostContent(text, useMarkdown)),
+    content: JSON.stringify(buildLarkPostContent(text)),
   };
 
   try {
@@ -1124,7 +1114,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     markThreadActive,
     handleStopCommand: (flowChannelId, flowThreadId) => coreRuntime.handleStopCommand(flowChannelId, flowThreadId),
     sendStopAck: async () => {
-      await sendMessage(channelId, threadId, "Request stopped.", true);
+      await sendMessage(channelId, threadId, "Request stopped.");
     },
     onIgnore: (reason) => {
       if (reason === "not_mentioned_and_inactive") {

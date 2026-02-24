@@ -169,8 +169,7 @@ export async function startEventStreamWatcher(
             workingPath,
             state: liveParsedState.get(messageKey),
             statusMessageFormat: resolveStatusMessageFormat(),
-          }),
-          false
+          })
         );
         if (typeof updatedStatusTs === "string" && updatedStatusTs !== request.statusMessageTs) {
           request.statusMessageTs = updatedStatusTs;

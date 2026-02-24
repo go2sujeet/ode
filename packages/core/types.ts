@@ -52,12 +52,11 @@ export type AgentStatusMessageParams = {
 
 export interface IMAdapter {
   maxEditableMessageChars?: number;
-  sendMessage(channelId: string, threadId: string, text: string, asMarkdown?: boolean): Promise<string | undefined>;
+  sendMessage(channelId: string, threadId: string, text: string): Promise<string | undefined>;
   updateMessage(
     channelId: string,
     messageTs: string,
-    text: string,
-    asMarkdown?: boolean
+    text: string
   ): Promise<string | undefined | void>;
   wasRateLimited?(channelId: string, messageTs: string): boolean;
   getRateLimitError?(channelId: string, messageTs: string): string | undefined;

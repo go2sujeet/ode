@@ -89,8 +89,7 @@ async function buildDiscordContext(
 async function sendMessage(
   _channelId: string,
   threadId: string,
-  text: string,
-  _asMarkdown = true
+  text: string
 ): Promise<string | undefined> {
   const channel = await resolveTextChannel(threadId);
   const chunks = splitForDiscord(text);
@@ -106,8 +105,7 @@ async function sendMessage(
 async function updateMessage(
   channelId: string,
   messageId: string,
-  text: string,
-  _asMarkdown = true
+  text: string
 ): Promise<void> {
   try {
     const mappedThreadId = statusMessageThreadMap.get(messageId);

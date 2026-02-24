@@ -33,8 +33,7 @@ export async function recoverPendingRequests(
     await im.updateMessage(
       request.channelId,
       request.statusMessageTs,
-      "_Bot restarted - please resend your message_",
-      false
+      "_Bot restarted - please resend your message_"
     );
 
     clearActiveRequest(session.channelId, session.threadId);

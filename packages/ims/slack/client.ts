@@ -311,11 +311,10 @@ export async function initializeWorkspaceAuth(): Promise<void> {
 export async function sendMessage(
   channelId: string,
   threadId: string,
-  text: string,
-  asMarkdown = true
+  text: string
 ): Promise<string | undefined> {
   const slackApp = getApp();
-  const formattedText = asMarkdown ? markdownToSlack(text) : text;
+  const formattedText = markdownToSlack(text);
   const chunks = splitForSlack(formattedText);
   const workspace = channelWorkspaceMap.get(channelId) || "unknown";
   const botToken = getSlackBotToken(channelId);
@@ -368,12 +367,11 @@ export async function deleteMessage(
 export async function updateMessage(
   channelId: string,
   messageTs: string,
-  text: string,
-  asMarkdown = true
+  text: string
 ): Promise<void> {
   try {
     const slackApp = getApp();
-    const formattedText = asMarkdown ? markdownToSlack(text) : text;
+    const formattedText = markdownToSlack(text);
     const truncatedText = truncateForSlack(formattedText);
     const botToken = getSlackBotToken(channelId);
     if (!botToken) {
@@ -439,8 +437,7 @@ export async function recoverPendingRequests(): Promise<void> {
     await updateMessage(
       pendingRestart.channelId,
       pendingRestart.messageTs,
-      "Restarting Ode complete.",
-      false
+      "Restarting Ode complete."
     );
   }
 

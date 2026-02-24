@@ -6,7 +6,6 @@ type QueuedUpdate = {
   channelId: string;
   messageTs: string;
   text: string;
-  asMarkdown: boolean;
   resolve: (messageTs?: string) => void;
 };
 
@@ -44,7 +43,7 @@ export function createRateLimitedImAdapter(
 
       globalLastUpdateAt = Date.now();
       try {
-        const maybeUpdatedTs = await im.updateMessage(item.channelId, item.messageTs, item.text, item.asMarkdown);
+        const maybeUpdatedTs = await im.updateMessage(item.channelId, item.messageTs, item.text);
         item.resolve(typeof maybeUpdatedTs === "string" ? maybeUpdatedTs : undefined);
       } catch (error) {
         if (isRateLimitError(error)) {
@@ -87,8 +86,7 @@ export function createRateLimitedImAdapter(
     updateMessage: async (
       channelId: string,
       messageTs: string,
-      text: string,
-      asMarkdown = true
+      text: string
     ): Promise<string | undefined> => {
       for (let i = queue.length - 1; i >= 0; i--) {
         const queued = queue[i];
@@ -99,7 +97,7 @@ export function createRateLimitedImAdapter(
       }
 
       return new Promise<string | undefined>((resolve) => {
-        queue.push({ channelId, messageTs, text, asMarkdown, resolve });
+        queue.push({ channelId, messageTs, text, resolve });
         void processQueue();
       });
     },

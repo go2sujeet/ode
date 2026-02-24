@@ -159,7 +159,7 @@ export async function runTrackedRequest(
     liveParsedState.delete(getStatusMessageKey(request));
 
     const errorStatus = `Error: ${message}\n_${suggestion}_`;
-    await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus, false);
+    await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
     onFail(message);
     return { responses: null };
   }
