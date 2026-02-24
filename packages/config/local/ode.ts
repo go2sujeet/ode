@@ -7,6 +7,11 @@ import {
   sanitizeDashboardConfig,
   type DashboardConfig,
 } from "../dashboard-config";
+import {
+  DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
+  parseStatusMessageFrequencyMs,
+  type StatusMessageFrequencyMs,
+} from "../status-message-frequency";
 
 const existsSync = fs.existsSync;
 const mkdirSync = fs.mkdirSync;
@@ -40,7 +45,7 @@ const userSchema = z.object({
     "high",
   ]).optional(),
   messageUpdateIntervalMs: z.number().optional(),
-  IM_MESSAGE_UPDATE_INTERVAL_MS: z.number().optional().default(2000),
+  IM_MESSAGE_UPDATE_INTERVAL_MS: z.number().optional().default(DEFAULT_STATUS_MESSAGE_FREQUENCY_MS),
 });
 
 const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"]);
@@ -103,7 +108,7 @@ const channelDetailSchema = z.object({
 
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
-const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = 2000;
+const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = DEFAULT_STATUS_MESSAGE_FREQUENCY_MS;
 const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 export const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
 
@@ -170,7 +175,7 @@ const EMPTY_TEMPLATE: OdeConfig = {
     avatar: "",
     gitStrategy: "worktree",
     defaultStatusMessageFormat: "medium",
-    IM_MESSAGE_UPDATE_INTERVAL_MS: 2000,
+    IM_MESSAGE_UPDATE_INTERVAL_MS: DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
   },
   githubInfos: {},
   agents: {
@@ -366,10 +371,7 @@ function toDashboardConfig(config: OdeConfig): DashboardConfig {
       avatar: config.user.avatar,
       gitStrategy: config.user.gitStrategy,
       defaultStatusMessageFormat,
-      statusMessageFrequencyMs:
-        config.user.IM_MESSAGE_UPDATE_INTERVAL_MS === 5000 || config.user.IM_MESSAGE_UPDATE_INTERVAL_MS === 10000
-          ? config.user.IM_MESSAGE_UPDATE_INTERVAL_MS
-          : 2000,
+      statusMessageFrequencyMs: parseStatusMessageFrequencyMs(config.user.IM_MESSAGE_UPDATE_INTERVAL_MS),
     },
     updates: {
       autoUpgrade: config.updates.autoUpgrade,
@@ -405,10 +407,7 @@ function mergeDashboardConfig(config: OdeConfig, dashboardConfig: DashboardConfi
     user: {
       ...config.user,
       ...dashboardUser,
-      IM_MESSAGE_UPDATE_INTERVAL_MS:
-        statusMessageFrequencyMs === 5000 || statusMessageFrequencyMs === 10000
-          ? statusMessageFrequencyMs
-          : 2000,
+      IM_MESSAGE_UPDATE_INTERVAL_MS: parseStatusMessageFrequencyMs(statusMessageFrequencyMs),
     },
     updates: {
       ...config.updates,
@@ -630,7 +629,7 @@ export type GitHubInfo = {
 export type UserGeneralSettings = {
   defaultStatusMessageFormat: "minimum" | "medium" | "aggressive";
   gitStrategy: "default" | "worktree";
-  statusMessageFrequencyMs: 2000 | 5000 | 10000;
+  statusMessageFrequencyMs: StatusMessageFrequencyMs;
   autoUpdate: boolean;
 };
 
@@ -658,10 +657,7 @@ export function getUserGeneralSettings(): UserGeneralSettings {
         ? user.defaultStatusMessageFormat
         : "medium",
     gitStrategy: user.gitStrategy === "default" ? "default" : "worktree",
-    statusMessageFrequencyMs:
-      user.IM_MESSAGE_UPDATE_INTERVAL_MS === 5000 || user.IM_MESSAGE_UPDATE_INTERVAL_MS === 10000
-        ? user.IM_MESSAGE_UPDATE_INTERVAL_MS
-        : 2000,
+    statusMessageFrequencyMs: parseStatusMessageFrequencyMs(user.IM_MESSAGE_UPDATE_INTERVAL_MS),
     autoUpdate: updates.autoUpgrade !== false,
   };
 }
@@ -673,10 +669,7 @@ export function setUserGeneralSettings(settings: UserGeneralSettings): void {
       ...config.user,
       defaultStatusMessageFormat: settings.defaultStatusMessageFormat,
       gitStrategy: settings.gitStrategy,
-      IM_MESSAGE_UPDATE_INTERVAL_MS:
-        settings.statusMessageFrequencyMs === 5000 || settings.statusMessageFrequencyMs === 10000
-          ? settings.statusMessageFrequencyMs
-          : 2000,
+      IM_MESSAGE_UPDATE_INTERVAL_MS: parseStatusMessageFrequencyMs(settings.statusMessageFrequencyMs),
     },
     updates: {
       ...config.updates,

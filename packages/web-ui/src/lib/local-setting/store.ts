@@ -1,5 +1,9 @@
 import { get, writable } from "svelte/store";
-import { defaultDashboardConfig, type DashboardConfig } from "../localConfig";
+import {
+  defaultDashboardConfig,
+  parseStatusMessageFrequencyMs,
+  type DashboardConfig,
+} from "../localConfig";
 
 export type CliCheckResult = {
   opencode: boolean;
@@ -138,10 +142,7 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
         input.user.defaultStatusMessageFormat
         ?? input.user.defaultMessageFrequency
         ?? "medium",
-      statusMessageFrequencyMs:
-        input.user.statusMessageFrequencyMs === 5000 || input.user.statusMessageFrequencyMs === 10000
-          ? input.user.statusMessageFrequencyMs
-          : 2000,
+      statusMessageFrequencyMs: parseStatusMessageFrequencyMs(input.user.statusMessageFrequencyMs),
     },
     updates: {
       autoUpgrade: input.updates?.autoUpgrade !== false,

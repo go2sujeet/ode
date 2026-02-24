@@ -86,6 +86,10 @@ export async function runOpenRequest(params: {
     stateKey: statusMessageKey,
     liveParsedState,
     startedAt: request.startedAt,
+    onTitleGenerated: async (title) => {
+      if (!deps.im.renameThread) return;
+      await deps.im.renameThread(context.channelId, context.replyThreadId, title);
+    },
   });
 
   const progressIntervalMs = resolveMessageUpdateIntervalMs();

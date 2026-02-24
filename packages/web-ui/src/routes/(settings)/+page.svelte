@@ -1,9 +1,15 @@
 <script lang="ts">
   import {
+    DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
+    STATUS_MESSAGE_FREQUENCY_OPTIONS,
     TOOL_DISPLAY_CONFIG,
     type DashboardConfig,
     type GitStrategy,
+    type StatusMessageFrequencyMs,
+    type StatusMessageFrequencyValue,
     type StatusMessageFormat,
+    parseStatusMessageFrequencyMs,
+    toStatusMessageFrequencyValue,
   } from "$lib/localConfig";
   import { Button, Card } from "$lib/components/ui";
   import ToggleGroup from "$lib/components/ui/toggle-group.svelte";
@@ -18,20 +24,18 @@
     { value: "worktree", label: "Worktree" },
     { value: "default", label: "Default" },
   ];
-  const statusMessageFrequencyItems: Array<{ value: "2000" | "5000" | "10000"; label: string }> = [
-    { value: "2000", label: "2 seconds" },
-    { value: "5000", label: "5 seconds" },
-    { value: "10000", label: "10 seconds" },
-  ];
+  const statusMessageFrequencyItems: Array<{ value: StatusMessageFrequencyValue; label: string }> =
+    STATUS_MESSAGE_FREQUENCY_OPTIONS.map((option: (typeof STATUS_MESSAGE_FREQUENCY_OPTIONS)[number]) => ({
+      value: option.value,
+      label: option.label,
+    }));
   const autoUpdateItems: Array<{ value: "on" | "off"; label: string }> = [
     { value: "on", label: "On" },
     { value: "off", label: "Off" },
   ];
 
-  function parseStatusMessageFrequencyMs(value: string): 2000 | 5000 | 10000 {
-    if (value === "5000") return 5000;
-    if (value === "10000") return 10000;
-    return 2000;
+  function parseStatusMessageFrequencySelection(value: string): StatusMessageFrequencyMs {
+    return parseStatusMessageFrequencyMs(Number(value));
   }
 
   function parseStatusMessageFormat(value: string): StatusMessageFormat {
@@ -52,7 +56,7 @@
   }
 
   function handleStatusFrequencyChange(nextValue: string): void {
-    const nextMs = parseStatusMessageFrequencyMs(nextValue);
+    const nextMs = parseStatusMessageFrequencySelection(nextValue);
     localSettingStore.updateConfig((config: DashboardConfig) => ({
       ...config,
       user: { ...config.user, statusMessageFrequencyMs: nextMs },
@@ -105,7 +109,7 @@
       <div class="inline-block w-fit">
         <ToggleGroup
           items={statusMessageFrequencyItems}
-          value={String($localSettingStore.config.user.statusMessageFrequencyMs ?? 2000)}
+          value={toStatusMessageFrequencyValue($localSettingStore.config.user.statusMessageFrequencyMs ?? DEFAULT_STATUS_MESSAGE_FREQUENCY_MS)}
           onValueChange={handleStatusFrequencyChange}
         />
       </div>

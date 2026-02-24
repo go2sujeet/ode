@@ -484,7 +484,12 @@ export async function updateMessage(
       token: botToken,
     });
   } catch (err) {
-    log.debug("Failed to update message", { error: String(err) });
+    const message = String(err);
+    log.debug("Failed to update message", { error: message });
+    const normalized = message.toLowerCase();
+    if (normalized.includes("429") || normalized.includes("rate_limited") || normalized.includes("rate limit")) {
+      throw err;
+    }
   }
 }
 

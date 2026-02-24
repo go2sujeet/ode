@@ -68,6 +68,18 @@ export {
   type StatusMessageFormat,
 } from "./status-message-format";
 
+export {
+  STATUS_MESSAGE_FREQUENCY_OPTIONS,
+  DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
+  isStatusMessageFrequencyMs,
+  parseStatusMessageFrequencyMs,
+  isStatusMessageFrequencyValue,
+  parseStatusMessageFrequencyValue,
+  toStatusMessageFrequencyValue,
+  type StatusMessageFrequencyMs,
+  type StatusMessageFrequencyValue,
+} from "./status-message-frequency";
+
 export { resolveMessageUpdateIntervalMs } from "./message-update-interval";
 
 export { resolveGitStrategy, type GitStrategy } from "./git-strategy";

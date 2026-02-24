@@ -1,6 +1,7 @@
 import { loadOdeConfig } from "./local/ode";
+import { DEFAULT_STATUS_MESSAGE_FREQUENCY_MS } from "./status-message-frequency";
 
-const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = 2000;
+const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = DEFAULT_STATUS_MESSAGE_FREQUENCY_MS;
 const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 
 export function resolveMessageUpdateIntervalMs(): number {
