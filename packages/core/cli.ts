@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { spawn } from "child_process";
+import { existsSync, readFileSync } from "fs";
 import packageJson from "../../package.json" with { type: "json" };
 import { getWebHost, getWebPort } from "@/config";
 import { runDaemon } from "@/core/daemon/manager";
@@ -37,6 +38,7 @@ function printHelp(): void {
       "Usage:",
       "  ode [--foreground]",
       "  ode status",
+      "  ode log [--info|--error] [--tail [N]]",
       "  ode restart",
       "  ode stop",
       "  ode onboard",
@@ -48,6 +50,8 @@ function printHelp(): void {
       "Examples:",
       "  ode",
       "  ode status",
+      "  ode log --error",
+      "  ode log --tail 200",
       "  ode restart",
       "  ode stop",
       "  ode onboard",
@@ -144,7 +148,7 @@ async function waitForStopped(timeoutMs: number): Promise<boolean> {
 async function startBackground(): Promise<void> {
   const state = daemonState();
   if (state.status === "ready" && state.readyMessage && managerRunning(state)) {
-    console.log(state.readyMessage);
+    console.log(fallbackReadyMessage());
     return;
   }
   ensureDaemonRunning();
@@ -161,6 +165,83 @@ function formatTimestamp(value: number | null): string {
   return new Date(value).toLocaleString();
 }
 
+type LogFilterLevel = "all" | "info" | "error";
+
+function parseLogFilterLevel(commandArgs: string[]): LogFilterLevel {
+  if (commandArgs.includes("--error")) return "error";
+  if (commandArgs.includes("--info")) return "info";
+  return "all";
+}
+
+function parseLogTailLimit(commandArgs: string[]): number | null {
+  const tailWithValue = commandArgs.find((arg) => arg.startsWith("--tail="));
+  if (tailWithValue) {
+    const rawValue = tailWithValue.slice("--tail=".length).trim();
+    const parsed = Number(rawValue);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
+  }
+
+  const tailIndex = commandArgs.indexOf("--tail");
+  if (tailIndex < 0) return null;
+
+  const nextArg = commandArgs[tailIndex + 1];
+  if (!nextArg || nextArg.startsWith("--")) return 200;
+
+  const parsed = Number(nextArg);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
+}
+
+function lineMatchesLogLevel(line: string, level: LogFilterLevel): boolean {
+  if (level === "all") return true;
+
+  if (line.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(line) as { level?: unknown };
+      if (typeof parsed.level === "number") {
+        if (level === "error") return parsed.level >= 50;
+        return parsed.level >= 30;
+      }
+    } catch {
+      // Ignore malformed JSON and use fallback matching.
+    }
+  }
+
+  if (level === "error") {
+    return line.toLowerCase().includes("error")
+      || line.includes("Unhandled rejection")
+      || line.includes("Uncaught exception");
+  }
+
+  return true;
+}
+
+function showLogs(commandArgs: string[]): void {
+  const logPath = getDaemonLogPath();
+  if (!existsSync(logPath)) {
+    console.log(`No daemon logs found yet at ${logPath}`);
+    return;
+  }
+
+  const filterLevel = parseLogFilterLevel(commandArgs);
+  const tailLimit = parseLogTailLimit(commandArgs);
+  const content = readFileSync(logPath, "utf8");
+  if (content.length === 0) {
+    console.log(`Daemon log is empty at ${logPath}`);
+    return;
+  }
+
+  const lines = content.split(/\r?\n/).filter((line) => line.length > 0);
+  const filtered = lines.filter((line) => lineMatchesLogLevel(line, filterLevel));
+  const output = tailLimit === null ? filtered : filtered.slice(-tailLimit);
+
+  if (output.length === 0) {
+    console.log(`No ${filterLevel} logs found in ${logPath}`);
+    return;
+  }
+
+  console.log(output.join("\n"));
+}
+
 async function showStatus(): Promise<void> {
   const state = daemonState();
   const daemonIsRunning = managerRunning(state);
@@ -173,7 +254,7 @@ async function showStatus(): Promise<void> {
     console.log("Upgrade: none pending");
   }
   if (daemonIsRunning) {
-    console.log("ode is running, setting UI is running on localhost:9293...");
+    console.log(`ode is running, setting UI is accessible at ${getLocalSettingsUrl()}`);
     return;
   }
   console.log("ode is installed but not running, can run it with ode");
@@ -268,6 +349,11 @@ if (isOnboardingCommand) {
 
 if (command === "status") {
   await showStatus();
+  process.exit(0);
+}
+
+if (command === "log") {
+  showLogs(args.slice(1));
   process.exit(0);
 }
 

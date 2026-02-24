@@ -225,6 +225,11 @@ function buildLarkPostContent(text: string, asMarkdown: boolean): Record<string,
   };
 }
 
+function shouldUseLarkMarkdown(text: string, asMarkdown: boolean): boolean {
+  if (asMarkdown) return true;
+  return /`[^`]+`|\*[^*]+\*|_[^_]+_|^\s*[-*]\s+/m.test(text);
+}
+
 function stripLarkMentionMarkup(text: string): string {
   return text
     .replace(/<at\b[^>]*>.*?<\/at>/g, " ")
@@ -298,11 +303,12 @@ async function sendMessage(
   text: string,
   asMarkdown = true
 ): Promise<string | undefined> {
+  const useMarkdown = shouldUseLarkMarkdown(text, asMarkdown);
   return sendLarkMessage({
     channelId,
     threadId: threadId || "",
     msgType: "post",
-    content: buildLarkPostContent(text, asMarkdown),
+    content: buildLarkPostContent(text, useMarkdown),
   });
 }
 
@@ -364,9 +370,10 @@ async function updateMessage(
     }
   }
 
+  const useMarkdown = shouldUseLarkMarkdown(text, asMarkdown);
   const payload = {
     msg_type: "post",
-    content: JSON.stringify(buildLarkPostContent(text, asMarkdown)),
+    content: JSON.stringify(buildLarkPostContent(text, useMarkdown)),
   };
 
   try {
