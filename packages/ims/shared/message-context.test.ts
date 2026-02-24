@@ -1,21 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { formatIncomingDropMessage, getIncomingDropReason, shouldProcessIncomingMessage } from "./message-context";
+import { toCoreMessageContext } from "./message-context";
 
-describe("shouldProcessIncomingMessage", () => {
-  it("requires mention for top-level messages", () => {
-    expect(shouldProcessIncomingMessage({ isTopLevel: true, mentionedBot: true, activeThread: false })).toBe(true);
-    expect(shouldProcessIncomingMessage({ isTopLevel: true, mentionedBot: false, activeThread: true })).toBe(false);
-  });
+describe("toCoreMessageContext", () => {
+  it("maps unified context to core context", () => {
+    const result = toCoreMessageContext(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        replyThreadId: "T2",
+        messageId: "M1",
+        userId: "U1",
+      },
+      { workspaceName: "workspace" }
+    );
 
-  it("accepts thread replies when mentioned or thread is active", () => {
-    expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: true, activeThread: false })).toBe(true);
-    expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: false, activeThread: true })).toBe(true);
-    expect(shouldProcessIncomingMessage({ isTopLevel: false, mentionedBot: false, activeThread: false })).toBe(false);
-  });
-
-  it("returns a shared drop reason and message", () => {
-    const reason = getIncomingDropReason({ isTopLevel: false, mentionedBot: false, activeThread: false });
-    expect(reason).toBe("not_mentioned_and_inactive");
-    expect(formatIncomingDropMessage("not_mentioned_and_inactive")).toBe("[DROP] Not mentioned and thread inactive");
+    expect(result).toEqual({
+      channelId: "C1",
+      threadId: "T1",
+      replyThreadId: "T2",
+      messageId: "M1",
+      userId: "U1",
+      workspaceName: "workspace",
+    });
   });
 });

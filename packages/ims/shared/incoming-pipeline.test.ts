@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { evaluateIncomingMessage } from "./incoming-pipeline";
+import { evaluateIncomingMessage, formatIncomingDropMessage } from "./incoming-pipeline";
 import { isStopCommand } from "./stop-command";
 
 describe("evaluateIncomingMessage", () => {
@@ -58,5 +58,10 @@ describe("evaluateIncomingMessage", () => {
     );
 
     expect(result).toEqual({ type: "forward", text: "stop" });
+  });
+
+  it("formats drop log messages", () => {
+    expect(formatIncomingDropMessage("not_mentioned_and_inactive")).toBe("[DROP] Not mentioned and thread inactive");
+    expect(formatIncomingDropMessage("empty_text")).toBe("[DROP] Empty text after normalization");
   });
 });

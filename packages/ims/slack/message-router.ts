@@ -1,8 +1,7 @@
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
-import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
+import { evaluateIncomingMessage, formatIncomingDropMessage } from "@/ims/shared/incoming-pipeline";
 import {
-  formatIncomingDropMessage,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";

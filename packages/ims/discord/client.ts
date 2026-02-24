@@ -46,9 +46,8 @@ import {
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
-import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
+import { evaluateIncomingMessage, formatIncomingDropMessage } from "@/ims/shared/incoming-pipeline";
 import {
-  formatIncomingDropMessage,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
