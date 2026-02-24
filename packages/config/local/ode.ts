@@ -1,7 +1,3 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { normalizeCwd } from "../paths";
 import {
   sanitizeDashboardConfig,
   type DashboardConfig,
@@ -12,16 +8,19 @@ import {
   type StatusMessageFrequencyMs,
 } from "../status-message-frequency";
 import {
-  odeConfigSchema,
-  type ChannelDetail,
   type WorkspaceConfig,
   type AgentProvider,
   type AgentsConfig,
   type UpdateConfig,
   type OdeConfig,
-  type UserConfig,
 } from "./ode-schema";
-import { isAgentProviderId } from "@/shared/agent-provider";
+import {
+  ODE_CONFIG_FILE,
+  loadOdeConfig,
+  saveOdeConfig,
+  updateOdeConfig,
+  invalidateOdeConfigCache,
+} from "./ode-store";
 
 export type {
   ChannelDetail,
@@ -32,214 +31,28 @@ export type {
   OdeConfig,
   UserConfig,
 } from "./ode-schema";
-
-const existsSync = fs.existsSync;
-const mkdirSync = fs.mkdirSync;
-const readFileSync = fs.readFileSync;
-const writeFileSync = fs.writeFileSync;
-const join = typeof path.join === "function" ? path.join : (...parts: string[]) => parts.join("/");
-const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
-
-const XDG_CONFIG_HOME = join(homedir(), ".config");
-const ODE_CONFIG_DIR = join(XDG_CONFIG_HOME, "ode");
-export const ODE_CONFIG_FILE = join(ODE_CONFIG_DIR, "ode.json");
+export { ODE_CONFIG_FILE } from "./ode-store";
+export { invalidateOdeConfigCache, loadOdeConfig, saveOdeConfig, updateOdeConfig } from "./ode-store";
+export {
+  getDefaultCwd,
+  getChannelDetails,
+  resolveChannelCwd,
+  setChannelCwd,
+  setChannelWorkingDirectory,
+  getChannelBaseBranch,
+  setChannelBaseBranch,
+  getChannelSystemMessage,
+  setChannelSystemMessage,
+  getChannelModel,
+  getChannelAgentProvider,
+  setChannelModel,
+  setChannelAgentProvider,
+  type ChannelCwdInfo,
+} from "./ode-channel";
 
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
-const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = DEFAULT_STATUS_MESSAGE_FREQUENCY_MS;
-const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 export const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
-
-let cachedConfig: OdeConfig | null = null;
-
-const EMPTY_TEMPLATE: OdeConfig = {
-  user: {
-    name: "",
-    email: "",
-    initials: "",
-    avatar: "",
-    gitStrategy: "worktree",
-    defaultStatusMessageFormat: "medium",
-    IM_MESSAGE_UPDATE_INTERVAL_MS: DEFAULT_STATUS_MESSAGE_FREQUENCY_MS,
-  },
-  githubInfos: {},
-  agents: {
-    opencode: { enabled: true, models: [] },
-    claudecode: { enabled: true },
-    codex: { enabled: true, models: [] },
-    kimi: { enabled: true },
-    kiro: { enabled: true },
-    kilo: { enabled: true, models: [] },
-    qwen: { enabled: true },
-    goose: { enabled: true },
-    gemini: { enabled: true },
-  },
-  completeOnboarding: false,
-  workspaces: [],
-  updates: {
-    autoUpgrade: true,
-    checkIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
-  },
-};
-
-function ensureConfigDir(): void {
-  if (!existsSync(ODE_CONFIG_DIR)) {
-    mkdirSync(ODE_CONFIG_DIR, { recursive: true });
-  }
-}
-
-function ensureConfigFile(): void {
-  if (existsSync(ODE_CONFIG_FILE)) return;
-  ensureConfigDir();
-  writeFileSync(ODE_CONFIG_FILE, JSON.stringify(EMPTY_TEMPLATE, null, 2));
-}
-
-function normalizeBaseBranch(baseBranch: string | null | undefined): string {
-  const normalized = baseBranch?.trim();
-  return normalized && normalized.length > 0 ? normalized : "main";
-}
-
-function normalizeConfig(config: OdeConfig): OdeConfig {
-  const {
-    defaultMessageFrequency: _deprecatedMessageFrequency,
-    messageUpdateIntervalMs: _deprecatedMessageUpdateIntervalMs,
-    ...normalizedUser
-  } = config.user;
-  const statusMessageFormat = config.user.defaultStatusMessageFormat
-    ?? config.user.defaultMessageFrequency
-    ?? "medium";
-  const normalizedFrequency =
-    statusMessageFormat === "low"
-      ? "minimum"
-      : statusMessageFormat === "high"
-        ? "aggressive"
-        : statusMessageFormat;
-  const normalizedGitStrategy =
-    config.user.gitStrategy === "default" ? "default" : "worktree";
-  const messageUpdateIntervalCandidate =
-    config.user.IM_MESSAGE_UPDATE_INTERVAL_MS
-    ?? config.user.messageUpdateIntervalMs
-    ?? DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
-  const normalizedMessageUpdateInterval =
-    Number.isFinite(messageUpdateIntervalCandidate) && messageUpdateIntervalCandidate > 0
-      ? Math.max(messageUpdateIntervalCandidate, MIN_MESSAGE_UPDATE_INTERVAL_MS)
-      : DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
-  const intervalCandidate = config.updates?.checkIntervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
-  const normalizedInterval =
-    Number.isFinite(intervalCandidate) && intervalCandidate > 0
-      ? Math.max(intervalCandidate, MIN_UPDATE_INTERVAL_MS)
-      : DEFAULT_UPDATE_INTERVAL_MS;
-  const autoUpgrade = config.updates?.autoUpgrade ?? true;
-  const opencodeModels = Array.from(new Set((config.agents?.opencode?.models ?? [])
-    .map((model) => model.trim())
-    .filter(Boolean)));
-  const codexModels = Array.from(new Set((config.agents?.codex?.models ?? [])
-    .map((model) => model.trim())
-    .filter(Boolean)));
-  const kiloModels = Array.from(new Set((config.agents?.kilo?.models ?? [])
-    .map((model) => model.trim())
-    .filter(Boolean)));
-  const completeOnboarding = config.completeOnboarding === true;
-  const workspaces = config.workspaces.map((workspace) => ({
-    ...workspace,
-    type:
-      workspace.type === "discord"
-        ? "discord" as const
-        : workspace.type === "lark"
-          ? "lark" as const
-          : "slack" as const,
-    channelDetails: workspace.channelDetails.map((channel) => ({
-      ...channel,
-      baseBranch: normalizeBaseBranch(channel.baseBranch),
-    })),
-  }));
-  return {
-    ...config,
-    user: {
-      ...normalizedUser,
-      gitStrategy: normalizedGitStrategy,
-      defaultStatusMessageFormat: normalizedFrequency,
-      IM_MESSAGE_UPDATE_INTERVAL_MS: normalizedMessageUpdateInterval,
-    },
-    updates: {
-      autoUpgrade,
-      checkIntervalMs: normalizedInterval,
-    },
-    agents: {
-      opencode: {
-        enabled: config.agents?.opencode?.enabled ?? true,
-        models: opencodeModels,
-      },
-      claudecode: {
-        enabled: config.agents?.claudecode?.enabled ?? true,
-      },
-      codex: {
-        enabled: config.agents?.codex?.enabled ?? true,
-        models: codexModels,
-      },
-      kimi: {
-        enabled: config.agents?.kimi?.enabled ?? true,
-      },
-      kiro: {
-        enabled: config.agents?.kiro?.enabled ?? true,
-      },
-      kilo: {
-        enabled: config.agents?.kilo?.enabled ?? true,
-        models: kiloModels,
-      },
-      qwen: {
-        enabled: config.agents?.qwen?.enabled ?? true,
-      },
-      goose: {
-        enabled: config.agents?.goose?.enabled ?? true,
-      },
-      gemini: {
-        enabled: config.agents?.gemini?.enabled ?? true,
-      },
-    },
-    completeOnboarding,
-    workspaces,
-  };
-}
-
-export function loadOdeConfig(): OdeConfig {
-  if (cachedConfig) return cachedConfig;
-
-  ensureConfigFile();
-
-  if (!existsSync(ODE_CONFIG_FILE)) {
-    cachedConfig = normalizeConfig(EMPTY_TEMPLATE);
-    return cachedConfig;
-  }
-
-  try {
-    const raw = readFileSync(ODE_CONFIG_FILE, "utf-8");
-    const parsedJson = JSON.parse(raw) as Record<string, unknown>;
-    const parsed = odeConfigSchema.safeParse(parsedJson);
-    const base = parsed.success ? parsed.data : EMPTY_TEMPLATE;
-    cachedConfig = normalizeConfig(base);
-    return cachedConfig;
-  } catch {
-    cachedConfig = normalizeConfig(EMPTY_TEMPLATE);
-    return cachedConfig;
-  }
-}
-
-export function invalidateOdeConfigCache(): void {
-  cachedConfig = null;
-}
-
-export function saveOdeConfig(config: OdeConfig): void {
-  ensureConfigDir();
-  cachedConfig = normalizeConfig(config);
-  writeFileSync(ODE_CONFIG_FILE, JSON.stringify(cachedConfig, null, 2));
-}
-
-export function updateOdeConfig(updater: (config: OdeConfig) => OdeConfig): OdeConfig {
-  const next = updater(structuredClone(loadOdeConfig()));
-  saveOdeConfig(next);
-  return loadOdeConfig();
-}
 
 function toDashboardConfig(config: OdeConfig): DashboardConfig {
   const defaultStatusMessageFormat =
@@ -493,18 +306,6 @@ export function getLarkTargetChannels(): string[] | null {
   return ids.length > 0 ? ids : null;
 }
 
-export function getDefaultCwd(): string {
-  return normalizeCwd(process.cwd());
-}
-
-export function getChannelDetails(channelId: string): ChannelDetail | null {
-  for (const workspace of getWorkspaces()) {
-    const match = workspace.channelDetails.find((channel) => channel.id === channelId);
-    if (match) return match;
-  }
-  return null;
-}
-
 export type GitHubInfo = {
   token?: string;
   gitName?: string;
@@ -587,108 +388,5 @@ export function clearGitHubInfoForUser(userId: string): void {
     const githubInfos = { ...(config.githubInfos ?? {}) };
     delete githubInfos[userId];
     return { ...config, githubInfos };
-  });
-}
-
-export type ChannelCwdInfo = {
-  cwd: string;
-  workingDirectory: string | null;
-  hasCustomCwd: boolean;
-};
-
-export function resolveChannelCwd(channelId: string): ChannelCwdInfo {
-  const channel = getChannelDetails(channelId);
-  const workingDirectory = channel?.workingDirectory?.trim();
-  const normalized = workingDirectory && workingDirectory.length > 0
-    ? normalizeCwd(workingDirectory)
-    : null;
-  return {
-    cwd: normalized ?? getDefaultCwd(),
-    workingDirectory: normalized,
-    hasCustomCwd: Boolean(normalized),
-  };
-}
-
-export function setChannelCwd(channelId: string, cwd: string): void {
-  updateChannel(channelId, (channel) => ({
-    ...channel,
-    workingDirectory: normalizeCwd(cwd),
-  }));
-}
-
-export function setChannelWorkingDirectory(channelId: string, workingDirectory: string | null): void {
-  const normalized = workingDirectory && workingDirectory.trim().length > 0
-    ? normalizeCwd(workingDirectory)
-    : "";
-  updateChannel(channelId, (channel) => ({
-    ...channel,
-    workingDirectory: normalized,
-  }));
-}
-
-export function getChannelBaseBranch(channelId: string): string {
-  return normalizeBaseBranch(getChannelDetails(channelId)?.baseBranch);
-}
-
-export function setChannelBaseBranch(channelId: string, baseBranch: string | null): void {
-  const normalized = normalizeBaseBranch(baseBranch);
-  updateChannel(channelId, (channel) => ({
-    ...channel,
-    baseBranch: normalized,
-  }));
-}
-
-export function getChannelSystemMessage(channelId: string): string | null {
-  return getChannelDetails(channelId)?.channelSystemMessage ?? null;
-}
-
-export function setChannelSystemMessage(channelId: string, channelSystemMessage: string | null): void {
-  const normalized = channelSystemMessage?.trim() ?? "";
-  updateChannel(channelId, (channel) => ({
-    ...channel,
-    channelSystemMessage: normalized,
-  }));
-}
-
-export function getChannelModel(channelId: string): string | null {
-  return getChannelDetails(channelId)?.model ?? null;
-}
-
-export function getChannelAgentProvider(channelId: string): AgentProvider {
-  const provider = getChannelDetails(channelId)?.agentProvider;
-  return isAgentProviderId(provider) ? provider : "opencode";
-}
-
-export function setChannelModel(channelId: string, model: string): void {
-  updateChannel(channelId, (channel) => ({ ...channel, model }));
-}
-
-export function setChannelAgentProvider(
-  channelId: string,
-  agentProvider: AgentProvider
-): void {
-  updateChannel(channelId, (channel) => ({ ...channel, agentProvider }));
-}
-
-function updateChannel(
-  channelId: string,
-  updater: (channel: ChannelDetail) => ChannelDetail
-): void {
-  let updated = false;
-  updateOdeConfig((config) => {
-    const workspaces = config.workspaces.map((workspace) => {
-      const channelDetails = workspace.channelDetails.map((channel) => {
-        if (channel.id !== channelId) return channel;
-        updated = true;
-        return updater(channel);
-      });
-      return { ...workspace, channelDetails };
-    });
-
-    if (!updated) {
-      throw new Error("Channel not found in ~/.config/ode/ode.json");
-    }
-
-    return { ...config, workspaces };
   });
 }
