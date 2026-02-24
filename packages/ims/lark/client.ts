@@ -216,7 +216,7 @@ function parseLarkText(content: string | undefined): string {
 
 function isSettingsCommand(text: string): boolean {
   const normalized = text.trim().replace(/^／/, "/");
-  return /^\/?setting(?:\s|$)/i.test(normalized);
+  return /^\/?settings?(?:\s|$)/i.test(normalized);
 }
 
 function getLocalSettingsUrl(): string {

@@ -57,6 +57,10 @@ const DISCORD_LAUNCHER_COMMANDS = [
     name: "setting",
     description: "Open Ode settings",
   },
+  {
+    name: "settings",
+    description: "Open Ode settings",
+  },
 ] as const;
 
 const discordClients = new Map<string, Client>();
@@ -273,7 +277,7 @@ async function renameDiscordThread(
 
 function parseLauncherCommand(text: string): "setting" | null {
   const trimmed = text.trim().toLowerCase();
-  if (/^\/setting\b/.test(trimmed)) return "setting";
+  if (/^\/?settings?\b/.test(trimmed)) return "setting";
   return null;
 }
 
@@ -317,6 +321,19 @@ function buildLauncherReplyPayload(params: {
     content: command === "setting" ? "Choose what to configure in Discord:" : "Choose settings action:",
     components: buildSettingsChooserRows(channelId),
   };
+}
+
+async function sendLauncherReplyForMessage(params: {
+  message: any;
+  command: LauncherCommand;
+  channelId: string;
+}): Promise<void> {
+  const payload = buildLauncherReplyPayload({
+    command: params.command,
+    userId: params.message.author.id,
+    channelId: params.channelId,
+  });
+  await params.message.reply(payload);
 }
 
 function getModalValue(interaction: any, fieldId: string): string {
@@ -913,7 +930,12 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
             const text = message.content.trim();
             const launcherCommand = parseLauncherCommand(text);
             if (launcherCommand) {
-              log.debug("Ignoring Discord message command in thread; slash command handles it", {
+              await sendLauncherReplyForMessage({
+                message,
+                command: launcherCommand,
+                channelId: parentId,
+              });
+              log.debug("Handled Discord message settings command in thread", {
                 command: launcherCommand,
                 threadId,
               });
@@ -948,7 +970,12 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
           const parentLauncherCommand = parseLauncherCommand(message.content);
           if (parentLauncherCommand) {
-            log.debug("Ignoring Discord message command in parent channel; slash command handles it", {
+            await sendLauncherReplyForMessage({
+              message,
+              command: parentLauncherCommand,
+              channelId: parentId,
+            });
+            log.debug("Handled Discord message settings command in parent channel", {
               command: parentLauncherCommand,
               channelId: parentId,
             });
@@ -961,7 +988,12 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
           const cleaned = cleanBotMention(message.content, client.user.id);
           const cleanedLauncherCommand = parseLauncherCommand(cleaned);
           if (cleanedLauncherCommand) {
-            log.debug("Ignoring Discord mention command; slash command handles it", {
+            await sendLauncherReplyForMessage({
+              message,
+              command: cleanedLauncherCommand,
+              channelId: parentId,
+            });
+            log.debug("Handled Discord mention settings command", {
               command: cleanedLauncherCommand,
               channelId: parentId,
             });
@@ -1011,10 +1043,10 @@ export async function startDiscordRuntime(reason: string): Promise<boolean> {
 
           if (!interaction.isChatInputCommand || !interaction.isChatInputCommand()) return;
           const commandName = String(interaction.commandName || "").toLowerCase();
-          if (commandName !== "setting") return;
+          if (commandName !== "setting" && commandName !== "settings") return;
 
           const payload = buildLauncherReplyPayload({
-            command: commandName as LauncherCommand,
+            command: "setting",
             userId: interaction.user.id,
             channelId: getResolvedChannelId(interaction),
           });
