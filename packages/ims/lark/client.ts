@@ -23,6 +23,7 @@ import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
 import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
 import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
 import { parseIncomingCommand } from "@/ims/shared/command-router";
+import { createRuntimeController } from "@/ims/shared/runtime-controller";
 
 let larkRuntimeStarted = false;
 
@@ -849,32 +850,43 @@ export async function handleLarkEventPayload(payload: unknown): Promise<{ status
 }
 
 export async function startLarkRuntime(reason: string): Promise<boolean> {
-  if (larkRuntimeStarted) return true;
-  const workspaces = getLarkAppCredentials();
-  if (workspaces.length === 0) {
-    log.debug("Lark runtime skipped (Lark app credentials missing)", { reason });
-    return false;
+  if (larkRuntimeStarted) {
+    log.debug("Lark runtime start skipped; already running", { reason });
   }
-  larkRuntimeStarted = true;
-  tenantTokenCache.clear();
-  botOpenIdCache.clear();
-  sentMessageThreadMap.clear();
-  log.debug("Lark runtime started", {
-    reason,
-    workspaceCount: workspaces.length,
-  });
-  await startLarkLongConnections(reason);
-  return true;
+  return larkRuntimeController.start(reason);
 }
 
 export async function stopLarkRuntime(reason: string): Promise<void> {
-  if (!larkRuntimeStarted) return;
-  larkRuntimeStarted = false;
-  await stopLarkLongConnections(reason);
-  tenantTokenCache.clear();
-  botOpenIdCache.clear();
-  sentMessageThreadMap.clear();
-  log.debug("Lark runtime stopped", { reason });
+  await larkRuntimeController.stop(reason);
 }
+
+const larkRuntimeController = createRuntimeController({
+  isRunning: () => larkRuntimeStarted,
+  startInternal: async (reason: string): Promise<boolean> => {
+    const workspaces = getLarkAppCredentials();
+    if (workspaces.length === 0) {
+      log.debug("Lark runtime skipped (Lark app credentials missing)", { reason });
+      return false;
+    }
+    larkRuntimeStarted = true;
+    tenantTokenCache.clear();
+    botOpenIdCache.clear();
+    sentMessageThreadMap.clear();
+    log.debug("Lark runtime started", {
+      reason,
+      workspaceCount: workspaces.length,
+    });
+    await startLarkLongConnections(reason);
+    return true;
+  },
+  stopInternal: async (reason: string): Promise<void> => {
+    larkRuntimeStarted = false;
+    await stopLarkLongConnections(reason);
+    tenantTokenCache.clear();
+    botOpenIdCache.clear();
+    sentMessageThreadMap.clear();
+    log.debug("Lark runtime stopped", { reason });
+  },
+});
 
 export const recoverPendingRequests = coreRuntime.recoverPendingRequests;
