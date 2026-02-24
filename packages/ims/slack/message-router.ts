@@ -1,8 +1,8 @@
 import { log } from "@/utils";
 import { isStopCommand } from "@/ims/shared/stop-command";
+import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
 import {
   formatIncomingDropMessage,
-  getIncomingDropReason,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
@@ -93,21 +93,6 @@ function extractIncomingMessageData(message: any): IncomingMessageData | null {
 
 function shouldDropForOtherMentions(text: string, isMention: boolean): boolean {
   return /<@U[A-Z0-9]+>/g.test(text) && !isMention;
-}
-
-async function maybeHandleStopCommand(
-  deps: RouterDeps,
-  cleanText: string,
-  channelId: string,
-  threadId: string,
-  say: any
-): Promise<boolean> {
-  if (!isStopCommand(cleanText)) return false;
-  const stopped = await deps.handleStopCommand(channelId, threadId);
-  if (!stopped) return false;
-
-  await say({ text: "Request stopped.", thread_ts: threadId });
-  return true;
 }
 
 async function maybeRefreshWorkspaceForMention(params: {
@@ -255,9 +240,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
-      if (await maybeHandleStopCommand(deps, cleanText, channelId, threadId, say)) {
-        return;
-      }
       const threadActive = deps.isThreadActive(channelId, threadId);
       const messageContext: UnifiedMessageContext = {
         platform: "slack",
@@ -272,15 +254,23 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         rawText: text,
         normalizedText: cleanText,
       };
+      const flowResult = evaluateIncomingMessage(messageContext, isStopCommand);
 
-      const dropReason = getIncomingDropReason(messageContext);
-      if (dropReason) {
-        log.debug(formatIncomingDropMessage(dropReason), { channelId, threadId });
+      if (flowResult.type === "ignore" && flowResult.reason === "not_mentioned_and_inactive") {
+        log.debug(formatIncomingDropMessage("not_mentioned_and_inactive"), { channelId, threadId });
         return;
       }
 
       if (shouldDropForOtherMentions(text, isMention)) {
         log.info("[DROP] Mentions other user", { channelId, threadId });
+        return;
+      }
+
+      if (flowResult.type === "stop") {
+        const stopped = await deps.handleStopCommand(channelId, threadId);
+        if (stopped) {
+          await say({ text: "Request stopped.", thread_ts: threadId });
+        }
         return;
       }
 
@@ -302,7 +292,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
 
       const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
-      if (!cleanText) {
+      if (flowResult.type === "ignore" && flowResult.reason === "empty_text") {
         await say({
           text: "Hi! How can I help you? Just ask me anything.",
           thread_ts: threadId,
@@ -310,7 +300,9 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         return;
       }
 
-      await deps.handleIncomingMessage(toCoreMessageContext(messageContext, { workspaceName }), cleanText);
+      if (flowResult.type !== "forward") return;
+
+      await deps.handleIncomingMessage(toCoreMessageContext(messageContext, { workspaceName }), flowResult.text);
     } catch (error) {
       log.error("Slack message router failed", {
         channelId: contextData?.channelId,

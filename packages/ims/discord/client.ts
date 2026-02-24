@@ -46,9 +46,9 @@ import {
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { log } from "@/utils";
+import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
 import {
   formatIncomingDropMessage,
-  getIncomingDropReason,
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
@@ -1028,9 +1028,9 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               rawText: text,
               normalizedText: mentioned ? cleanBotMention(text, client.user.id) : text,
             };
-            const dropReason = getIncomingDropReason(messageContext);
-            if (dropReason) {
-              log.debug(formatIncomingDropMessage(dropReason), {
+            const flowResult = evaluateIncomingMessage(messageContext, isStopCommand);
+            if (flowResult.type === "ignore" && flowResult.reason === "not_mentioned_and_inactive") {
+              log.debug(formatIncomingDropMessage("not_mentioned_and_inactive"), {
                 platform: "discord",
                 channelId: parentId,
                 threadId,
@@ -1041,14 +1041,14 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               });
               return;
             }
-            if (!messageContext.normalizedText) {
+            if (flowResult.type === "ignore" && flowResult.reason === "empty_text") {
               if (mentioned) {
                 await message.reply("Please include a request after mentioning me.");
               }
               return;
             }
 
-            if (isStopCommand(messageContext.normalizedText)) {
+            if (flowResult.type === "stop") {
               const stopped = await coreRuntime.handleStopCommand(parentId, threadId);
               if (stopped) {
                 await message.channel.send("Request stopped.");
@@ -1057,9 +1057,10 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             }
 
             markThreadActive(parentId, threadId);
+            if (flowResult.type !== "forward") return;
             await coreRuntime.handleIncomingMessage(
               toCoreMessageContext(messageContext),
-              messageContext.normalizedText
+              flowResult.text
             );
             return;
           }
@@ -1094,9 +1095,9 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             rawText: message.content,
             normalizedText: cleanBotMention(message.content, client.user.id),
           };
-          const topLevelDropReason = getIncomingDropReason(topLevelContext);
-          if (topLevelDropReason) {
-            log.debug(formatIncomingDropMessage(topLevelDropReason), {
+          const topLevelFlow = evaluateIncomingMessage(topLevelContext, isStopCommand, { detectStop: false });
+          if (topLevelFlow.type === "ignore" && topLevelFlow.reason === "not_mentioned_and_inactive") {
+            log.debug(formatIncomingDropMessage("not_mentioned_and_inactive"), {
               platform: "discord",
               channelId: parentId,
               threadId: message.id,
@@ -1107,8 +1108,13 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             });
             return;
           }
+          if (topLevelFlow.type === "ignore" && topLevelFlow.reason === "empty_text") {
+            await message.reply("Please include a request after mentioning me.");
+            return;
+          }
+          if (topLevelFlow.type !== "forward") return;
 
-          const cleanedLauncherCommand = parseLauncherCommand(topLevelContext.normalizedText);
+          const cleanedLauncherCommand = parseLauncherCommand(topLevelFlow.text);
           if (cleanedLauncherCommand) {
             await sendLauncherReplyForMessage({
               message,
@@ -1121,13 +1127,9 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             });
             return;
           }
-          if (!topLevelContext.normalizedText) {
-            await message.reply("Please include a request after mentioning me.");
-            return;
-          }
 
       const thread = await message.startThread({
-        name: buildMeaningfulThreadName(topLevelContext.normalizedText),
+        name: buildMeaningfulThreadName(topLevelFlow.text),
         autoArchiveDuration: 60,
       });
 
@@ -1138,7 +1140,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               threadId: thread.id,
               replyThreadId: thread.id,
             }),
-            topLevelContext.normalizedText
+            topLevelFlow.text
           );
         } catch (error) {
           log.error("Discord message handler failed", { error: String(error) });

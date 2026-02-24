@@ -20,6 +20,7 @@ import {
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
+import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
 
 let larkRuntimeStarted = false;
 
@@ -705,8 +706,9 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  const dropReason = getIncomingDropReason(messageContext);
-  if (dropReason) {
+  const flowResult = evaluateIncomingMessage(messageContext, isStopCommand);
+  if (flowResult.type === "ignore" && flowResult.reason === "not_mentioned_and_inactive") {
+    const dropReason = getIncomingDropReason(messageContext);
     logLarkEvent("Lark inbound ignored: not mentioned and thread inactive", {
       channelId,
       threadId,
@@ -719,7 +721,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (!messageContext.normalizedText) {
+  if (flowResult.type === "ignore" && flowResult.reason === "empty_text") {
     logLarkEvent("Lark inbound ignored: empty text after mention stripping", {
       channelId,
       messageId,
@@ -727,7 +729,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  if (isStopCommand(messageContext.normalizedText)) {
+  if (flowResult.type === "stop") {
     logLarkEvent("Lark inbound matched stop command", {
       channelId,
       threadId,
@@ -740,6 +742,10 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
+  if (flowResult.type !== "forward") {
+    return;
+  }
+
   markThreadActive(channelId, threadId);
   logLarkEvent("Lark inbound accepted: forwarding to core runtime", {
     channelId,
@@ -749,7 +755,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   });
   await coreRuntime.handleIncomingMessage(
     toCoreMessageContext(messageContext),
-    messageContext.normalizedText
+    flowResult.text
   );
   logLarkEvent("Lark inbound handled by core runtime", {
     channelId,
