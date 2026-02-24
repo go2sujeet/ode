@@ -81,12 +81,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
   const statusMessageFormat = config.user.defaultStatusMessageFormat
     ?? config.user.defaultMessageFrequency
     ?? "medium";
-  const normalizedFrequency =
-    statusMessageFormat === "low"
-      ? "minimum"
-      : statusMessageFormat === "high"
-        ? "aggressive"
-        : statusMessageFormat;
+  const normalizedFrequency = statusMessageFormat;
   const normalizedGitStrategy =
     config.user.gitStrategy === "default" ? "default" : "worktree";
   const messageUpdateIntervalCandidate =
