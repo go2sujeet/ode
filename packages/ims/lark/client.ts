@@ -6,6 +6,16 @@ import {
   getGitHubInfoForUser,
   getLarkAppCredentials,
   getLarkTargetChannels,
+  getUserGeneralSettings,
+  parseStatusMessageFrequencyMs,
+  setChannelAgentProvider,
+  setChannelBaseBranch,
+  setChannelModel,
+  setChannelSystemMessage,
+  setChannelWorkingDirectory,
+  setGitHubInfoForUser,
+  setUserGeneralSettings,
+  type StatusMessageFormat,
   getWorkspaces,
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
@@ -23,7 +33,11 @@ import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
 import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
 import { parseIncomingCommand } from "@/ims/shared/command-router";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
-import { sendLarkSettingsCard } from "./settings";
+import {
+  buildLarkSettingsDetailCard,
+  resolveLarkSettingsCardAction,
+  sendLarkSettingsCard,
+} from "./settings";
 
 let larkRuntimeStarted = false;
 
@@ -608,7 +622,385 @@ type LarkIncomingEnvelope = {
   };
 };
 
+type LarkCardActionEnvelope = {
+  action?: {
+    value?: unknown;
+  };
+  open_chat_id?: string;
+  chat_id?: string;
+  open_message_id?: string;
+  message_id?: string;
+  open_id?: string;
+  user_id?: string;
+  event?: {
+    action?: {
+      value?: unknown;
+    };
+    context?: {
+      open_chat_id?: string;
+      chat_id?: string;
+      open_message_id?: string;
+      message_id?: string;
+    };
+    operator?: {
+      open_id?: string;
+      user_id?: string;
+    };
+  };
+};
+
 type LarkIncomingEvent = NonNullable<LarkIncomingEnvelope["event"]>;
+
+function toTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = toTrimmedString(value);
+    if (normalized.length > 0) return normalized;
+  }
+  return "";
+}
+
+function pickValueField(value: unknown, key: string): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  return firstNonEmptyString(record[key], record[key.replace(/_([a-z])/g, (_, s) => s.toUpperCase())]);
+}
+
+function pickActionSelectedOption(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const root = payload as Record<string, unknown>;
+  const event = root.event && typeof root.event === "object" ? root.event as Record<string, unknown> : null;
+  const action = event?.action && typeof event.action === "object" ? event.action as Record<string, unknown> : null;
+  const option = action?.option && typeof action.option === "object" ? action.option as Record<string, unknown> : null;
+  const options = action?.options && Array.isArray(action.options) ? action.options as unknown[] : [];
+
+  const fromOption = firstNonEmptyString(option?.value);
+  if (fromOption) return fromOption;
+
+  for (const item of options) {
+    if (!item || typeof item !== "object") continue;
+    const value = firstNonEmptyString((item as Record<string, unknown>).value);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function extractFormValues(payload: unknown): Record<string, string> {
+  if (!payload || typeof payload !== "object") return {};
+  const root = payload as Record<string, unknown>;
+  const event = root.event && typeof root.event === "object" ? root.event as Record<string, unknown> : null;
+  const action = event?.action && typeof event.action === "object" ? event.action as Record<string, unknown> : null;
+  const form = action?.form_value && typeof action.form_value === "object"
+    ? action.form_value as Record<string, unknown>
+    : root.form_value && typeof root.form_value === "object"
+      ? root.form_value as Record<string, unknown>
+      : {};
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(form)) {
+    if (typeof value === "string") {
+      normalized[key] = value;
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    const record = value as Record<string, unknown>;
+    const directValue = firstNonEmptyString(record.value);
+    if (directValue) {
+      normalized[key] = directValue;
+      continue;
+    }
+    const option = record.option && typeof record.option === "object" ? record.option as Record<string, unknown> : null;
+    const optionValue = firstNonEmptyString(option?.value);
+    if (optionValue) {
+      normalized[key] = optionValue;
+      continue;
+    }
+    const options = Array.isArray(record.options) ? record.options : [];
+    for (const item of options) {
+      if (!item || typeof item !== "object") continue;
+      const itemValue = firstNonEmptyString((item as Record<string, unknown>).value);
+      if (itemValue) {
+        normalized[key] = itemValue;
+        break;
+      }
+    }
+  }
+  return normalized;
+}
+
+function pickFormValue(
+  formValues: Record<string, string>,
+  key: string
+): { exists: boolean; value: string } {
+  if (Object.prototype.hasOwnProperty.call(formValues, key)) {
+    return {
+      exists: true,
+      value: formValues[key] ?? "",
+    };
+  }
+  return {
+    exists: false,
+    value: "",
+  };
+}
+
+async function processLarkCardAction(payload: unknown): Promise<void> {
+  if (!payload || typeof payload !== "object") return;
+  const envelope = payload as LarkCardActionEnvelope;
+  const value = envelope.event?.action?.value ?? envelope.action?.value;
+  const action = resolveLarkSettingsCardAction(value);
+  if (!action) return;
+
+  const channelId = firstNonEmptyString(
+    envelope.event?.context?.open_chat_id,
+    envelope.event?.context?.chat_id,
+    envelope.open_chat_id,
+    envelope.chat_id,
+    pickValueField(value, "channel_id"),
+    pickValueField(value, "channelId")
+  );
+  const sourceMessageId = firstNonEmptyString(
+    envelope.event?.context?.open_message_id,
+    envelope.event?.context?.message_id,
+    envelope.open_message_id,
+    envelope.message_id
+  );
+  const threadId = firstNonEmptyString(
+    pickValueField(value, "thread_id"),
+    pickValueField(value, "threadId"),
+    sourceMessageId
+  );
+  const userId = firstNonEmptyString(
+    envelope.event?.operator?.open_id,
+    envelope.event?.operator?.user_id,
+    envelope.open_id,
+    envelope.user_id
+  );
+
+  if (
+    action === "set_general_status_format"
+    || action === "set_general_status_frequency"
+    || action === "set_general_git_strategy"
+    || action === "set_general_auto_update"
+  ) {
+    const current = getUserGeneralSettings();
+    if (action === "set_general_status_format") {
+      const format = firstNonEmptyString(
+        pickValueField(value, "status_format"),
+        pickValueField(value, "statusFormat"),
+        pickActionSelectedOption(payload)
+      );
+      if (format === "minimum" || format === "medium" || format === "aggressive") {
+        current.defaultStatusMessageFormat = format as StatusMessageFormat;
+      }
+    } else if (action === "set_general_status_frequency") {
+      const raw = firstNonEmptyString(
+        pickValueField(value, "status_frequency_ms"),
+        pickValueField(value, "statusFrequencyMs"),
+        pickActionSelectedOption(payload)
+      );
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        current.statusMessageFrequencyMs = parseStatusMessageFrequencyMs(parsed);
+      }
+    } else if (action === "set_general_git_strategy") {
+      const strategy = firstNonEmptyString(
+        pickValueField(value, "git_strategy"),
+        pickValueField(value, "gitStrategy"),
+        pickActionSelectedOption(payload)
+      );
+      current.gitStrategy = strategy === "default" ? "default" : "worktree";
+    } else if (action === "set_general_auto_update") {
+      const autoUpdate = firstNonEmptyString(
+        pickValueField(value, "auto_update"),
+        pickValueField(value, "autoUpdate"),
+        pickActionSelectedOption(payload)
+      ).toLowerCase();
+      current.autoUpdate = !(autoUpdate === "off" || autoUpdate === "false" || autoUpdate === "0");
+    }
+    setUserGeneralSettings(current);
+  }
+
+  if (action === "set_channel_settings") {
+    const formValues = extractFormValues(payload);
+    const selected = pickActionSelectedOption(payload);
+    const field = firstNonEmptyString(
+      pickValueField(value, "field")
+    );
+    const formModel = pickFormValue(formValues, "model");
+    const formWorkingDirectory = pickFormValue(formValues, "workingDirectory");
+    const formBaseBranch = pickFormValue(formValues, "baseBranch");
+    const formSystemMessage = pickFormValue(formValues, "channelSystemMessage");
+    const provider = firstNonEmptyString(
+      pickValueField(value, "provider"),
+      field === "provider" ? selected : ""
+    );
+    if (
+      provider === "opencode"
+      || provider === "claudecode"
+      || provider === "codex"
+      || provider === "kimi"
+      || provider === "kiro"
+      || provider === "kilo"
+      || provider === "qwen"
+      || provider === "goose"
+      || provider === "gemini"
+    ) {
+      setChannelAgentProvider(channelId, provider);
+    }
+
+    const model = formModel.exists
+      ? formModel.value
+      : firstNonEmptyString(
+        pickValueField(value, "model"),
+        field === "model" ? selected : ""
+      );
+    setChannelModel(channelId, model);
+
+    const workingDirectory = formWorkingDirectory.exists
+      ? formWorkingDirectory.value
+      : firstNonEmptyString(
+        pickValueField(value, "working_directory"),
+        pickValueField(value, "workingDirectory"),
+        field === "workingDirectory" ? selected : ""
+      );
+    setChannelWorkingDirectory(channelId, workingDirectory || null);
+
+    const baseBranch = formBaseBranch.exists
+      ? formBaseBranch.value
+      : firstNonEmptyString(
+        pickValueField(value, "base_branch"),
+        pickValueField(value, "baseBranch"),
+        field === "baseBranch" ? selected : ""
+      );
+    setChannelBaseBranch(channelId, baseBranch || null);
+
+    const channelSystemMessage = formSystemMessage.exists
+      ? formSystemMessage.value
+      : firstNonEmptyString(
+        pickValueField(value, "channel_system_message"),
+        pickValueField(value, "channelSystemMessage"),
+        field === "channelSystemMessage" ? selected : ""
+      );
+    setChannelSystemMessage(channelId, channelSystemMessage || null);
+  }
+
+  if (action === "set_github_info") {
+    const formValues = extractFormValues(payload);
+    const selected = pickActionSelectedOption(payload);
+    const field = firstNonEmptyString(pickValueField(value, "field"));
+    const formGithubToken = pickFormValue(formValues, "githubToken");
+    const formGithubName = pickFormValue(formValues, "githubName");
+    const formGithubEmail = pickFormValue(formValues, "githubEmail");
+    const token = formGithubToken.exists
+      ? formGithubToken.value
+      : firstNonEmptyString(
+        pickValueField(value, "github_token"),
+        pickValueField(value, "githubToken"),
+        field === "githubToken" ? selected : ""
+      );
+    const gitName = formGithubName.exists
+      ? formGithubName.value
+      : firstNonEmptyString(
+        pickValueField(value, "git_name"),
+        pickValueField(value, "github_name"),
+        pickValueField(value, "gitName"),
+        pickValueField(value, "githubName"),
+        field === "githubName" ? selected : ""
+      );
+    const gitEmail = formGithubEmail.exists
+      ? formGithubEmail.value
+      : firstNonEmptyString(
+        pickValueField(value, "git_email"),
+        pickValueField(value, "github_email"),
+        pickValueField(value, "gitEmail"),
+        pickValueField(value, "githubEmail"),
+        field === "githubEmail" ? selected : ""
+      );
+    setGitHubInfoForUser(userId || "", {
+      token,
+      gitName,
+      gitEmail,
+    });
+  }
+
+  if (action === "clear_github_info") {
+    setGitHubInfoForUser(userId || "", {
+      token: "",
+      gitName: "",
+      gitEmail: "",
+    });
+  }
+
+  if (!channelId || !threadId) {
+    logLarkEvent("Lark card action ignored: missing routing ids", {
+      channelId,
+      threadId,
+      sourceMessageId,
+      action,
+    });
+    return;
+  }
+
+  const card = action === "open_settings_launcher"
+    ? null
+    : buildLarkSettingsDetailCard({
+      action: (
+        action === "set_general_status_format"
+        || action === "set_general_status_frequency"
+        || action === "set_general_git_strategy"
+        || action === "set_general_auto_update"
+        || action === "set_channel_settings"
+        || action === "set_github_info"
+        || action === "clear_github_info"
+      )
+        ? (
+          action === "set_channel_settings"
+            ? "open_settings_modal"
+            : action === "set_github_info" || action === "clear_github_info"
+              ? "open_github_token_modal"
+              : "open_general_settings_modal"
+        )
+        : action,
+      channelId,
+      threadId,
+      userId: userId || "",
+      notice: (
+        action === "set_general_status_format"
+        || action === "set_general_status_frequency"
+        || action === "set_general_git_strategy"
+        || action === "set_general_auto_update"
+        || action === "set_channel_settings"
+        || action === "set_github_info"
+        || action === "clear_github_info"
+      )
+        ? (
+          action === "set_channel_settings"
+            ? "Channel settings updated"
+            : action === "set_github_info"
+              ? "GitHub settings updated"
+              : action === "clear_github_info"
+                ? "GitHub settings cleared"
+                : "General settings updated"
+        )
+        : undefined,
+    });
+
+  if (!card) {
+    await sendSettingsCard(channelId, threadId);
+    return;
+  }
+
+  await sendLarkMessage({
+    channelId,
+    threadId,
+    msgType: "interactive",
+    content: card,
+  });
+}
 
 function isLarkLongConnectionEnabled(): boolean {
   const raw = process.env.LARK_LONG_CONNECTION?.trim().toLowerCase();
@@ -798,6 +1190,16 @@ async function startLarkLongConnections(reason: string): Promise<void> {
           });
         }
       },
+      "card.action.trigger": async (data: unknown) => {
+        try {
+          await processLarkCardAction(data);
+        } catch (error) {
+          log.warn("Failed to handle Lark long-connection card action", {
+            appId,
+            error: String(error),
+          });
+        }
+      },
     });
 
     const wsClient = new Lark.WSClient({
@@ -849,7 +1251,34 @@ export async function handleLarkEventPayload(payload: unknown): Promise<{ status
     return { status: 200, body: { challenge: envelope.challenge } };
   }
 
+  const payloadRecord = payload as Record<string, unknown>;
+  const payloadEvent = payloadRecord.event && typeof payloadRecord.event === "object"
+    ? payloadRecord.event as Record<string, unknown>
+    : null;
+  const payloadEventAction = payloadEvent?.action && typeof payloadEvent.action === "object"
+    ? payloadEvent.action as Record<string, unknown>
+    : null;
+  const payloadAction = payloadRecord.action && typeof payloadRecord.action === "object"
+    ? payloadRecord.action as Record<string, unknown>
+    : null;
+  const cardAction = resolveLarkSettingsCardAction(payloadEventAction?.value)
+    || resolveLarkSettingsCardAction(payloadAction?.value)
+    || resolveLarkSettingsCardAction(payloadEventAction)
+    || resolveLarkSettingsCardAction(payloadAction);
+  if (cardAction) {
+    await processLarkCardAction(payload);
+    return { status: 200, body: { code: 0 } };
+  }
+
   if (envelope.header?.event_type !== "im.message.receive_v1") {
+    if (envelope.header?.event_type === "card.action.trigger") {
+      await processLarkCardAction(payload);
+      return {
+        status: 200,
+        body: { code: 0 },
+      };
+    }
+
     logLarkEvent("Lark webhook ignored: unsupported event type", {
       eventType: envelope.header?.event_type ?? "",
     });
