@@ -1,5 +1,20 @@
 import { getApps } from "./client";
 import {
+  findMatchingModel,
+  getProviderModelList,
+  MODEL_DEFAULT_SENTINEL,
+  MODEL_NONE_SENTINEL,
+  resolveStoredModelForProvider,
+  validateProviderModelSelection,
+  type ProviderModelLists,
+} from "@/shared/channel-settings";
+import {
+  AGENT_PROVIDERS,
+  normalizeAgentProviderId,
+  providerSupportsModelSelection,
+  type AgentProviderId,
+} from "@/shared/agent-provider";
+import {
   getChannelAgentProvider,
   getChannelModel,
   resolveChannelCwd,
@@ -58,7 +73,7 @@ const GENERAL_GIT_STRATEGY_ACTION = "general_git_strategy_select";
 const GENERAL_AUTO_UPDATE_BLOCK = "general_auto_update";
 const GENERAL_AUTO_UPDATE_ACTION = "general_auto_update_select";
 
-type AgentProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+type AgentProvider = AgentProviderId;
 type StatusMessageFormat = "aggressive" | "medium" | "minimum";
 type GitStrategy = "default" | "worktree";
 
@@ -90,8 +105,6 @@ type SlackActionBody = {
     text?: string;
   };
 };
-
-const AGENT_PROVIDERS: AgentProvider[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"];
 
 const AGENT_PROVIDER_LABELS: Record<AgentProvider, string> = {
   opencode: "OpenCode",
@@ -127,18 +140,7 @@ const AUTO_UPDATE_OPTIONS: Array<{ label: string; value: "on" | "off" }> = [
 ];
 
 function parseAgentProvider(value: unknown): AgentProvider {
-  if (typeof value !== "string") return "opencode";
-  return AGENT_PROVIDERS.includes(value as AgentProvider) ? value as AgentProvider : "opencode";
-}
-
-function normalizeModel(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function findMatchingModel(models: string[], value: string | null | undefined): string | null {
-  if (!value) return null;
-  const target = normalizeModel(value);
-  return models.find((model) => normalizeModel(model) === target) ?? null;
+  return normalizeAgentProviderId(value);
 }
 
 function getSelectableProviders(): AgentProvider[] {
@@ -146,11 +148,19 @@ function getSelectableProviders(): AgentProvider[] {
     (provider): provider is AgentProvider => AGENT_PROVIDERS.includes(provider as AgentProvider)
   );
   if (enabled.length > 0) return enabled;
-  return AGENT_PROVIDERS;
+  return Array.from(AGENT_PROVIDERS);
 }
 
-function toSelectableProvider(provider: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini"): AgentProvider {
+function toSelectableProvider(provider: AgentProviderId): AgentProvider {
   return parseAgentProvider(provider);
+}
+
+function getProviderModelLists(): ProviderModelLists {
+  return {
+    opencode: getOpenCodeModels(),
+    codex: getCodexModels(),
+    kilo: getKiloModels(),
+  };
 }
 
 function getActionChannelId(body: SlackActionBody): string | undefined {
@@ -213,23 +223,23 @@ function buildSettingsModal(params: {
     text: { type: "plain_text" as const, text: AGENT_PROVIDER_LABELS[provider] },
     value: provider,
   }));
-  const providerModels = selectedProvider === "opencode"
-    ? opencodeModels
-    : selectedProvider === "codex"
-      ? codexModels
-      : selectedProvider === "kilo"
-        ? kiloModels
-        : null;
+  const providerModels = providerSupportsModelSelection(selectedProvider)
+    ? getProviderModelList(selectedProvider, {
+      opencode: opencodeModels,
+      codex: codexModels,
+      kilo: kiloModels,
+    })
+    : null;
   const modelOptions = providerModels && selectedProvider === "opencode"
     ? (opencodeModels.length > 0
       ? opencodeModels.map((model) => ({
           text: { type: "plain_text" as const, text: model },
           value: model,
         }))
-      : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: "__none__" }])
+      : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: MODEL_NONE_SENTINEL }])
     : providerModels && selectedProvider === "codex"
       ? [
-          { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: "__default__" },
+          { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: MODEL_DEFAULT_SENTINEL },
           ...codexModels.map((model) => ({
             text: { type: "plain_text" as const, text: model },
             value: model,
@@ -241,7 +251,7 @@ function buildSettingsModal(params: {
               text: { type: "plain_text" as const, text: model },
               value: model,
             }))
-          : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: "__none__" }])
+          : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: MODEL_NONE_SENTINEL }])
       : [];
 
   const availableModels = selectedProvider === "codex"
@@ -251,10 +261,10 @@ function buildSettingsModal(params: {
   const initialModel = matchedSelectedModel
     ? matchedSelectedModel
     : (selectedProvider === "codex"
-      ? "__default__"
+      ? MODEL_DEFAULT_SENTINEL
       : selectedProvider === "kilo"
-        ? (kiloModels[0] ?? "__none__")
-        : (opencodeModels[0] ?? "__none__"));
+        ? (kiloModels[0] ?? MODEL_NONE_SENTINEL)
+        : (opencodeModels[0] ?? MODEL_NONE_SENTINEL));
   const introText = selectedProvider === "opencode"
     ? "Configure agent, model (OpenCode), working directory, and base branch for this channel."
     : selectedProvider === "codex"
@@ -683,25 +693,34 @@ export function setupInteractiveHandlers(): void {
     }
 
     if (selectedProvider === "opencode") {
-      if (!selectedModel || selectedModel === "__none__") {
+      if (!selectedModel || selectedModel === MODEL_NONE_SENTINEL) {
         errors[MODEL_BLOCK] = "Select a model.";
       }
 
-      const models = getOpenCodeModels();
-      if (selectedModel && !findMatchingModel(models, selectedModel)) {
+      if (!validateProviderModelSelection({
+        provider: "opencode",
+        selectedModel,
+        lists: getProviderModelLists(),
+      })) {
         errors[MODEL_BLOCK] = "Model not available in ~/.config/ode/ode.json agents.opencode.models.";
       }
     } else if (selectedProvider === "codex") {
-      const models = getCodexModels();
-      if (selectedModel && selectedModel !== "__default__" && !findMatchingModel(models, selectedModel)) {
+      if (!validateProviderModelSelection({
+        provider: "codex",
+        selectedModel,
+        lists: getProviderModelLists(),
+      })) {
         errors[MODEL_BLOCK] = "Model not available in local Codex model list.";
       }
     } else if (selectedProvider === "kilo") {
-      if (!selectedModel || selectedModel === "__none__") {
+      if (!selectedModel || selectedModel === MODEL_NONE_SENTINEL) {
         errors[MODEL_BLOCK] = "Select a model.";
       }
-      const models = getKiloModels();
-      if (selectedModel && !findMatchingModel(models, selectedModel)) {
+      if (!validateProviderModelSelection({
+        provider: "kilo",
+        selectedModel,
+        lists: getProviderModelLists(),
+      })) {
         errors[MODEL_BLOCK] = "Model not available in local Kilo model list.";
       }
     }
@@ -715,25 +734,11 @@ export function setupInteractiveHandlers(): void {
 
     try {
       setChannelAgentProvider(channelId, selectedProvider);
-      if (selectedProvider === "opencode" && selectedModel && selectedModel !== "__none__") {
-        const normalizedSelectedModel = findMatchingModel(getOpenCodeModels(), selectedModel) ?? selectedModel;
-        setChannelModel(channelId, normalizedSelectedModel);
-      }
-      if (selectedProvider === "codex") {
-        if (selectedModel && selectedModel !== "__default__") {
-          const normalizedSelectedModel = findMatchingModel(getCodexModels(), selectedModel) ?? selectedModel;
-          setChannelModel(channelId, normalizedSelectedModel);
-        } else {
-          setChannelModel(channelId, "");
-        }
-      }
-      if (selectedProvider === "kilo" && selectedModel && selectedModel !== "__none__") {
-        const normalizedSelectedModel = findMatchingModel(getKiloModels(), selectedModel) ?? selectedModel;
-        setChannelModel(channelId, normalizedSelectedModel);
-      }
-      if (selectedProvider === "claudecode" || selectedProvider === "kimi" || selectedProvider === "kiro" || selectedProvider === "qwen" || selectedProvider === "goose" || selectedProvider === "gemini") {
-        setChannelModel(channelId, "");
-      }
+      setChannelModel(channelId, resolveStoredModelForProvider({
+        provider: selectedProvider,
+        selectedModel,
+        lists: getProviderModelLists(),
+      }));
 
       const workingDirValue = workingDirectory.trim();
       setChannelWorkingDirectory(channelId, workingDirValue.length > 0 ? workingDirValue : null);

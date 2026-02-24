@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { z } from "zod";
 import { normalizeCwd } from "../paths";
 import {
   sanitizeDashboardConfig,
@@ -12,6 +11,27 @@ import {
   parseStatusMessageFrequencyMs,
   type StatusMessageFrequencyMs,
 } from "../status-message-frequency";
+import {
+  odeConfigSchema,
+  type ChannelDetail,
+  type WorkspaceConfig,
+  type AgentProvider,
+  type AgentsConfig,
+  type UpdateConfig,
+  type OdeConfig,
+  type UserConfig,
+} from "./ode-schema";
+import { isAgentProviderId } from "@/shared/agent-provider";
+
+export type {
+  ChannelDetail,
+  WorkspaceConfig,
+  AgentProvider,
+  AgentsConfig,
+  UpdateConfig,
+  OdeConfig,
+  UserConfig,
+} from "./ode-schema";
 
 const existsSync = fs.existsSync;
 const mkdirSync = fs.mkdirSync;
@@ -24,146 +44,11 @@ const XDG_CONFIG_HOME = join(homedir(), ".config");
 const ODE_CONFIG_DIR = join(XDG_CONFIG_HOME, "ode");
 export const ODE_CONFIG_FILE = join(ODE_CONFIG_DIR, "ode.json");
 
-const userSchema = z.object({
-  name: z.string().optional().default(""),
-  email: z.string().optional().default(""),
-  initials: z.string().optional().default(""),
-  avatar: z.string().optional().default(""),
-  gitStrategy: z.enum(["default", "worktree"]).optional().default("worktree"),
-  defaultStatusMessageFormat: z.enum([
-    "minimum",
-    "medium",
-    "aggressive",
-    "low",
-    "high",
-  ]).optional().default("medium"),
-  defaultMessageFrequency: z.enum([
-    "minimum",
-    "medium",
-    "aggressive",
-    "low",
-    "high",
-  ]).optional(),
-  messageUpdateIntervalMs: z.number().optional(),
-  IM_MESSAGE_UPDATE_INTERVAL_MS: z.number().optional().default(DEFAULT_STATUS_MESSAGE_FREQUENCY_MS),
-});
-
-const agentProviderSchema = z.enum(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"]);
-
-const agentsSchema = z.object({
-  opencode: z.object({
-    enabled: z.boolean().optional().default(true),
-    models: z.array(z.string()).optional().default([]),
-  }).optional().default({ enabled: true, models: [] }),
-  claudecode: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-  codex: z.object({
-    enabled: z.boolean().optional().default(true),
-    models: z.array(z.string()).optional().default([]),
-  }).optional().default({ enabled: true, models: [] }),
-  kimi: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-  kiro: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-  kilo: z.object({
-    enabled: z.boolean().optional().default(true),
-    models: z.array(z.string()).optional().default([]),
-  }).optional().default({ enabled: true, models: [] }),
-  qwen: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-  goose: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-  gemini: z.object({
-    enabled: z.boolean().optional().default(true),
-  }).optional().default({ enabled: true }),
-}).optional().default({
-  opencode: { enabled: true, models: [] },
-  claudecode: { enabled: true },
-  codex: { enabled: true, models: [] },
-  kimi: { enabled: true },
-  kiro: { enabled: true },
-  kilo: { enabled: true, models: [] },
-  qwen: { enabled: true },
-  goose: { enabled: true },
-  gemini: { enabled: true },
-});
-
-const channelDetailSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  agentProvider: z.preprocess(
-    (value) => (value === "claude" ? "claudecode" : value),
-    agentProviderSchema.optional().default("opencode")
-  ),
-  model: z.string().optional().default(""),
-  workingDirectory: z.string().optional().default(""),
-  baseBranch: z.string().optional().default("main"),
-  channelSystemMessage: z.string().optional().default(""),
-});
-
 const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_MESSAGE_UPDATE_INTERVAL_MS = DEFAULT_STATUS_MESSAGE_FREQUENCY_MS;
 const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 export const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
-
-const updateSchema = z.object({
-  autoUpgrade: z.boolean().optional().default(true),
-  checkIntervalMs: z.number().optional().default(DEFAULT_UPDATE_INTERVAL_MS),
-});
-
-const workspaceSchema = z.object({
-  id: z.string(),
-  type: z.enum(["slack", "discord", "lark"]).optional().default("slack"),
-  name: z.string().optional().default(""),
-  domain: z.string().optional().default(""),
-  status: z.enum(["active", "paused"]).optional().default("active"),
-  channels: z.number().optional().default(0),
-  members: z.number().optional().default(0),
-  lastSync: z.string().optional().default(""),
-  slackAppToken: z.string().optional().default(""),
-  slackBotToken: z.string().optional().default(""),
-  discordBotToken: z.string().optional().default(""),
-  larkAppKey: z.string().optional().default(""),
-  larkAppId: z.string().optional().default(""),
-  larkAppSecret: z.string().optional().default(""),
-  channelDetails: z.array(channelDetailSchema).optional().default([]),
-});
-
-const odeConfigSchema = z.object({
-  user: userSchema,
-  githubInfos: z
-    .record(
-      z.string(),
-      z.object({
-        token: z.string().optional().default(""),
-        gitName: z.string().optional().default(""),
-        gitEmail: z.string().optional().default(""),
-      })
-    )
-    .optional()
-    .default({}),
-  agents: agentsSchema,
-  completeOnboarding: z.boolean().optional().default(false),
-  workspaces: z.array(workspaceSchema),
-  updates: updateSchema.optional().default({
-    autoUpgrade: true,
-    checkIntervalMs: DEFAULT_UPDATE_INTERVAL_MS,
-  }),
-});
-
-export type ChannelDetail = z.infer<typeof channelDetailSchema>;
-export type WorkspaceConfig = z.infer<typeof workspaceSchema>;
-export type AgentProvider = z.infer<typeof agentProviderSchema>;
-export type AgentsConfig = z.infer<typeof agentsSchema>;
-export type UpdateConfig = z.infer<typeof updateSchema>;
-export type OdeConfig = z.infer<typeof odeConfigSchema>;
-export type UserConfig = z.infer<typeof userSchema>;
 
 let cachedConfig: OdeConfig | null = null;
 
@@ -771,8 +656,7 @@ export function getChannelModel(channelId: string): string | null {
 
 export function getChannelAgentProvider(channelId: string): AgentProvider {
   const provider = getChannelDetails(channelId)?.agentProvider;
-  if (provider === "claudecode" || provider === "codex" || provider === "kimi" || provider === "kiro" || provider === "kilo" || provider === "qwen" || provider === "goose" || provider === "gemini") return provider;
-  return "opencode";
+  return isAgentProviderId(provider) ? provider : "opencode";
 }
 
 export function setChannelModel(channelId: string, model: string): void {

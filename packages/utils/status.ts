@@ -2,6 +2,7 @@ import {
   TOOL_DISPLAY_CONFIG,
   type StatusMessageFormat,
 } from "@/config/web";
+import type { AgentProviderId } from "@/shared/agent-provider";
 import type { SessionMessageState } from "./session-inspector";
 
 export type StatusRequest = {
@@ -13,7 +14,7 @@ export type StatusRequest = {
   statusFrozen?: boolean;
 };
 
-export type AgentStatusProvider = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+export type AgentStatusProvider = AgentProviderId;
 
 const PROVIDER_FALLBACK_TITLES: Record<AgentStatusProvider, string> = {
   opencode: "Opencode is running...",

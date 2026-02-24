@@ -3,6 +3,7 @@ import {
   parseStatusMessageFrequencyMs,
   type StatusMessageFrequencyMs,
 } from "./status-message-frequency";
+import { isAgentProviderId, type AgentProviderId } from "@/shared/agent-provider";
 
 export type DashboardConfig = {
   completeOnboarding: boolean;
@@ -69,7 +70,7 @@ export type DashboardConfig = {
     channelDetails: {
       id: string;
       name: string;
-      agentProvider?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+      agentProvider?: AgentProviderId;
       model: string;
       workingDirectory: string;
       baseBranch: string;
@@ -152,16 +153,10 @@ const asGitStrategy = (
 const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status"] =>
   value === "paused" ? "paused" : "active";
 
-const KNOWN_AGENT_PROVIDERS = new Set<NonNullable<
-  DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]
->>(["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"]);
-
 function isKnownAgentProvider(
   value: string
 ): value is NonNullable<DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]> {
-  return KNOWN_AGENT_PROVIDERS.has(value as NonNullable<
-    DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]
-  >);
+  return isAgentProviderId(value);
 }
 
 const asAgentProvider = (
