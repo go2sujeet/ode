@@ -35,6 +35,8 @@ type StartEventStreamWatcherParams = {
   onStop?: () => void;
 };
 
+const EVENT_STATE_MERGE_INTERVAL_MS = 1000;
+
 export async function startEventStreamWatcher(
   params: StartEventStreamWatcherParams
 ): Promise<() => void> {
@@ -89,8 +91,31 @@ export async function startEventStreamWatcher(
   }
 
   let stopNotified = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function flushStateUpdates(emitUpdate: boolean): void {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    applyStateFromEvents();
+    if (emitUpdate) {
+      onUpdate();
+    }
+  }
+
+  function scheduleStateUpdates(): void {
+    if (flushTimer) return;
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      applyStateFromEvents();
+      onUpdate();
+    }, EVENT_STATE_MERGE_INTERVAL_MS);
+  }
+
   const unsubscribe = deps.agent.subscribeToSession(request.sessionId, (globalEvent: unknown) => {
     const event = (globalEvent as any).payload ?? globalEvent;
+    let shouldNotifyStop = false;
     const eventSessionId = extractEventSessionId(event as Record<string, unknown> | undefined);
     if (eventSessionId && eventSessionId !== request.sessionId) {
       return;
@@ -107,7 +132,7 @@ export async function startEventStreamWatcher(
       const part = (event as any)?.properties?.part;
       if (part?.type === "step-finish" && part?.reason === "stop") {
         stopNotified = true;
-        onStop?.();
+        shouldNotifyStop = true;
       }
     }
 
@@ -117,6 +142,12 @@ export async function startEventStreamWatcher(
       data: event as Record<string, unknown>,
     };
     eventHistory.push(sessionEvent);
+
+    if (shouldNotifyStop) {
+      flushStateUpdates(true);
+      onStop?.();
+      return;
+    }
 
     const pendingQuestion = getPendingQuestion(request.channelId, request.threadId);
 
@@ -128,7 +159,7 @@ export async function startEventStreamWatcher(
         }
         clearPendingQuestion(request.channelId, request.threadId);
         stateMachine.transition("resume_processing");
-        onUpdate();
+        flushStateUpdates(true);
         return;
       }
       if (event.type !== "question.asked") {
@@ -136,9 +167,8 @@ export async function startEventStreamWatcher(
       }
     }
 
-    applyStateFromEvents();
-
     if (event.type === "question.asked") {
+      flushStateUpdates(false);
       const properties = event.properties as {
         id?: string;
         sessionID?: string;
@@ -186,8 +216,11 @@ export async function startEventStreamWatcher(
       return;
     }
 
-    onUpdate();
+    scheduleStateUpdates();
   });
 
-  return unsubscribe;
+  return () => {
+    flushStateUpdates(false);
+    unsubscribe();
+  };
 }
