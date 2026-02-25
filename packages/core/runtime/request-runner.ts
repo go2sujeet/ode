@@ -56,6 +56,8 @@ export async function runTrackedRequest(
 
   const progressIntervalMs = resolveMessageUpdateIntervalMs();
   let progressInFlight = false;
+  let progressTimer: ReturnType<typeof setInterval> | null = null;
+  let stopWatcher: (() => void) | null = null;
 
   const runProgressTick = async (): Promise<void> => {
     if (request.state !== "processing") return;
@@ -68,34 +70,31 @@ export async function runTrackedRequest(
     }
   };
 
-  const progressTimer = setInterval(() => {
-    void runProgressTick();
-  }, progressIntervalMs);
-
   const stopSignal = createDeferred<void>();
-  const stopWatcher = await startEventStreamWatcher({
-    deps,
-    request,
-    workingPath,
-    stateMachine,
-    liveEventHistory,
-    liveParsedState,
-    onUpdate: () => {},
-    onStop: () => {
-      stopSignal.resolve();
-    },
-  });
-
   try {
+    progressTimer = setInterval(() => {
+      void runProgressTick();
+    }, progressIntervalMs);
+
+    stopWatcher = await startEventStreamWatcher({
+      deps,
+      request,
+      workingPath,
+      stateMachine,
+      liveEventHistory,
+      liveParsedState,
+      onUpdate: () => {},
+      onStop: () => {
+        stopSignal.resolve();
+      },
+    });
+
     stateMachine.transition("start_processing");
     const promptPromise = sendPrompt();
     const result = await Promise.race([
       promptPromise.then((responses) => ({ type: "prompt" as const, responses })),
       stopSignal.promise.then(() => ({ type: "stop" as const })),
     ]);
-
-    clearInterval(progressTimer);
-    stopWatcher();
 
     if (isExternallySettled(request)) {
       stateMachine.transition("stop");
@@ -138,9 +137,6 @@ export async function runTrackedRequest(
     onComplete();
     return { responses: result.responses };
   } catch (err) {
-    clearInterval(progressTimer);
-    stopWatcher();
-
     if (isExternallySettled(request)) {
       stateMachine.transition("stop");
       liveEventHistory.delete(getStatusMessageKey(request));
@@ -162,5 +158,14 @@ export async function runTrackedRequest(
     await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
     onFail(message);
     return { responses: null };
+  } finally {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    if (stopWatcher) {
+      stopWatcher();
+      stopWatcher = null;
+    }
   }
 }
