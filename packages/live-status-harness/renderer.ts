@@ -39,6 +39,7 @@ export function renderStatusesFromRun(meta: HarnessRunMeta, events: HarnessCaptu
     const state = buildSessionMessageState(sessionEvents, {
       endIndex: index,
       workingDirectory: meta.cwd,
+      provider: meta.provider,
       baseState: { startedAt: meta.startedAt },
     });
     const text = buildStatusMessageByProvider(meta.provider, request, meta.cwd, state, "medium");

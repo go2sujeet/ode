@@ -340,6 +340,7 @@ function showLogs(commandArgs: string[]): void {
 async function showStatus(): Promise<void> {
   const state = daemonState();
   const daemonIsRunning = managerRunning(state);
+  console.log(`Version: ${CURRENT_VERSION}`);
   console.log(`Daemon: ${daemonIsRunning ? "running" : "stopped"}`);
   if (state.pendingUpgradeRestart) {
     console.log(

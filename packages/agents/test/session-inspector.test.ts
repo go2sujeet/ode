@@ -117,6 +117,69 @@ describe("session inspector", () => {
     expect(state.phaseStatus).toBe("Thinking: Planning repo exploration strategy");
   });
 
+  it("only updates opencode phase when thinking details are present", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: now,
+        type: "message.part.updated",
+        data: {
+          payload: {
+            type: "message.part.updated",
+            properties: {
+              part: {
+                id: "tool_1",
+                sessionID: "ses_1",
+                type: "tool",
+                tool: "Read",
+                state: {
+                  status: "running",
+                  input: { filePath: "/tmp/repo/README.md" },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: now + 1,
+        type: "message.part.updated",
+        data: {
+          payload: {
+            type: "message.part.updated",
+            properties: {
+              part: {
+                id: "reasoning_1",
+                sessionID: "ses_1",
+                type: "reasoning",
+                text: "Planning response sections",
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: now + 2,
+        type: "message.part.updated",
+        data: {
+          payload: {
+            type: "message.part.updated",
+            properties: {
+              part: {
+                id: "text_1",
+                sessionID: "ses_1",
+                type: "text",
+                text: "Draft message body",
+              },
+            },
+          },
+        },
+      },
+    ], { provider: "opencode" });
+
+    expect(state.phaseStatus).toBe("Thinking: Planning response sections");
+  });
+
   it("renders non-empty preview details from wrapped events", () => {
     const startedAt = Date.now();
     const state = buildSessionMessageState([
