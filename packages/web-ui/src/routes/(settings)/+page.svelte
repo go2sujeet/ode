@@ -13,7 +13,12 @@
   } from "$lib/localConfig";
   import { Button, Card } from "$lib/components/ui";
   import ToggleGroup from "$lib/components/ui/toggle-group.svelte";
+  import { locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
+
+  function t(en: string, zh: string): string {
+    return $locale === "zh-CN" ? zh : en;
+  }
 
   const statusMessageFormatOptions = Object.keys(TOOL_DISPLAY_CONFIG) as StatusMessageFormat[];
   const statusMessageFormatItems = statusMessageFormatOptions.map((option) => ({
@@ -85,15 +90,15 @@
 <Card className="p-5">
   <div class="mb-4 flex items-center justify-between gap-2">
     <div>
-      <h2 class="text-lg font-semibold">General</h2>
-      <p class="text-xs text-[hsl(var(--muted-foreground))]">Current version: {$localSettingStore.appVersion || "unknown"}</p>
+      <h2 class="text-lg font-semibold">{t("General", "通用")}</h2>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Current version", "当前版本")}: {$localSettingStore.appVersion || t("unknown", "未知")}</p>
     </div>
   </div>
 
   <div class="grid gap-5">
     <div class="grid gap-2">
-      <p class="text-sm font-medium">Status Message Format</p>
-      <p class="text-xs text-[hsl(var(--muted-foreground))]">Minimum shows concise progress, Medium balances progress and details, Aggressive includes the most detailed live updates.</p>
+      <p class="text-sm font-medium">{t("Status Message Format", "状态消息格式")}</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Minimum shows concise progress, Medium balances progress and details, Aggressive includes the most detailed live updates.", "Minimum 显示简洁进度，Medium 平衡进度与细节，Aggressive 提供最详细的实时更新。")}</p>
       <div class="inline-block w-fit">
         <ToggleGroup
           items={statusMessageFormatItems}
@@ -104,8 +109,8 @@
     </div>
 
     <div class="grid gap-2">
-      <p class="text-sm font-medium">Status Message Frequency</p>
-      <p class="text-xs text-[hsl(var(--muted-foreground))]">Controls how often status messages refresh while a request is running.</p>
+      <p class="text-sm font-medium">{t("Status Message Frequency", "状态消息频率")}</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Controls how often status messages refresh while a request is running.", "控制请求执行时状态消息的刷新频率。")}</p>
       <div class="inline-block w-fit">
         <ToggleGroup
           items={statusMessageFrequencyItems}
@@ -116,8 +121,8 @@
     </div>
 
     <div class="grid gap-2">
-      <p class="text-sm font-medium">Git Strategy</p>
-      <p class="text-xs text-[hsl(var(--muted-foreground))]">Worktree will create different worktree folders under `.worktree` folder for each chat thread.</p>
+      <p class="text-sm font-medium">{t("Git Strategy", "Git 策略")}</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Worktree will create different worktree folders under `.worktree` folder for each chat thread.", "Worktree 会为每个会话线程在 `.worktree` 目录下创建独立工作目录。")}</p>
       <div class="inline-block w-fit">
         <ToggleGroup
           items={gitStrategyItems}
@@ -128,8 +133,8 @@
     </div>
 
     <div class="grid gap-2">
-      <p class="text-sm font-medium">Auto Update</p>
-      <p class="text-xs text-[hsl(var(--muted-foreground))]">Controls whether Ode automatically checks for and applies updates.</p>
+      <p class="text-sm font-medium">{t("Auto Update", "自动更新")}</p>
+      <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Controls whether Ode automatically checks for and applies updates.", "控制 Ode 是否自动检查并应用更新。")}</p>
       <div class="inline-block w-fit">
         <ToggleGroup
           items={autoUpdateItems}
@@ -145,7 +150,7 @@
       on:click={() => void localSettingStore.saveConfig()}
       disabled={$localSettingStore.isLoading || $localSettingStore.isSaving || $localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isCheckingCli}
     >
-      Save
+      {t("Save", "保存")}
     </Button>
   </div>
 </Card>

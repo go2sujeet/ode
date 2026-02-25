@@ -7,7 +7,7 @@
 
   onMount(() => {
     const encoded = encodeURIComponent(decodeURIComponent(workspaceName));
-    void goto(`/slack-bot/${encoded}`, { replaceState: true });
+    void goto(`/workspace/${encoded}`, { replaceState: true });
   });
 </script>
 

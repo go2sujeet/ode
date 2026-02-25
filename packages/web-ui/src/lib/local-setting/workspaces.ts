@@ -10,7 +10,7 @@ export function slugify(value: string): string {
 
 export function getWorkspacePath(workspace: DashboardConfig["workspaces"][number]): string {
   const workspaceName = slugify(workspace.name) || "workspace-1";
-  return `/slack-bot/${encodeURIComponent(workspaceName)}`;
+  return `/workspace/${encodeURIComponent(workspaceName)}`;
 }
 
 export function getSelectedWorkspace(

@@ -2,9 +2,10 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
-  import { Bot, Building2, Plus, Settings2, Trash2 } from "lucide-svelte";
+  import { Building2, Github, Plus, Trash2 } from "lucide-svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import { Button, Card, Input, Label, Select } from "$lib/components/ui";
+  import { initLocale, locale, setLocalePreference, type Locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath } from "$lib/local-setting/workspaces";
 
@@ -15,7 +16,7 @@
   const activeSection = $derived.by<"general" | "agents" | "workspace">(() =>
     normalizedPathname === "/agents"
       ? "agents"
-      : normalizedPathname.startsWith("/slack-bot")
+      : normalizedPathname.startsWith("/workspace")
         ? "workspace"
         : "general"
   );
@@ -70,6 +71,15 @@
     isAddWorkspaceDialogOpen = false;
   }
 
+  function t(en: string, zh: string): string {
+    return $locale === "zh-CN" ? zh : en;
+  }
+
+  function onLanguageChange(event: Event): void {
+    const nextLocale = (event.currentTarget as HTMLSelectElement).value as Locale;
+    setLocalePreference(nextLocale);
+  }
+
   function onPendingSlackAppTokenInput(event: Event): void {
     pendingSlackAppToken = (event.currentTarget as HTMLInputElement).value;
   }
@@ -97,7 +107,10 @@
 
     const workspaceToRemove = workspaces[removingIndex];
     const workspaceLabel = workspaceToRemove?.name?.trim() || workspaceToRemove?.id || workspaceId;
-    if (!window.confirm(`Remove workspace '${workspaceLabel}'?`)) {
+    const removeMessage = $locale === "zh-CN"
+      ? `确认移除工作区「${workspaceLabel}」？`
+      : `Remove workspace '${workspaceLabel}'?`;
+    if (!window.confirm(removeMessage)) {
       return;
     }
 
@@ -127,21 +140,46 @@
   }
 
   onMount(() => {
+    initLocale();
     if (!$localSettingStore.loaded) {
       void localSettingStore.loadConfig();
     }
   });
 </script>
 
-<main class="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-4 px-4 py-6 md:px-8 lg:grid-cols-[18rem_1fr] lg:gap-6">
-  <aside class="space-y-4">
+<div class="min-h-screen">
+  <header class="mx-auto w-full max-w-7xl px-4 pt-6 md:px-8">
+    <nav class="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-xl px-1 py-1">
+      <div>
+        <h1 class="text-xl font-semibold tracking-tight">Ode</h1>
+        <p class="text-sm text-[hsl(var(--muted-foreground))]">{t("Work anywhere with your favourite coding agents connected", "随时随地，连接你喜爱的编码代理")}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <a
+          href="https://github.com/odefun/ode"
+          target="_blank"
+          rel="noreferrer"
+          class="inline-flex h-10 items-center gap-2 rounded-md border border-[hsl(var(--border)/0.7)] px-3 text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--muted)/0.45)]"
+        >
+          <Github class="h-4 w-4" />
+          GitHub
+        </a>
+        <ThemeToggle />
+        <Select value={$locale} on:change={onLanguageChange} className="h-10 w-[120px]">
+          <option value="en">English</option>
+          <option value="zh-CN">中文</option>
+        </Select>
+      </div>
+    </nav>
+  </header>
+
+  <main class="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 pb-6 md:px-8 lg:grid-cols-[18rem_1fr] lg:gap-6">
+    <aside class="space-y-4">
     <Card className="p-4">
       <div class="mb-4 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <Settings2 class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-          <h1 class="text-base font-semibold">Ode Settings</h1>
+          <h1 class="text-base font-semibold">{t("Ode Settings", "Ode 设置")}</h1>
         </div>
-        <ThemeToggle />
       </div>
 
       <div class="space-y-2">
@@ -150,14 +188,14 @@
           className="w-full justify-start"
           on:click={() => goto("/")}
         >
-          General
+          {t("General", "通用")}
         </Button>
         <Button
           variant={activeSection === "agents" ? "default" : "secondary"}
           className="w-full justify-start"
           on:click={() => goto("/agents")}
         >
-          Agents
+          {t("Coding Agents", "Coding工具")}
         </Button>
       </div>
     </Card>
@@ -166,13 +204,13 @@
       <div class="mb-3 flex items-center gap-2">
         <div class="flex items-center gap-2">
           <Building2 class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-          <h2 class="text-sm font-semibold">Workspaces</h2>
+          <h2 class="text-sm font-semibold">{t("Workspaces", "工作区")}</h2>
         </div>
       </div>
 
       <div class="space-y-2">
         {#if $localSettingStore.config.workspaces.length === 0}
-          <p class="rounded-md border border-dashed px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">No workspaces</p>
+          <p class="rounded-md border border-dashed px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">{t("No workspaces", "暂无工作区")}</p>
         {:else}
           {#each $localSettingStore.config.workspaces as workspace}
             <Button
@@ -194,14 +232,14 @@
           disabled={isBusy}
         >
           <Plus class="h-4 w-4" />
-          Add Workspace
+          {t("Add Workspace", "添加工作区")}
         </Button>
       </div>
     </Card>
-  </aside>
+    </aside>
 
-  <section class="space-y-4">
-    {@render children()}
+    <section class="space-y-4">
+      {@render children()}
 
     {#if activeSection === "workspace"}
       <Card className="border-0 bg-transparent p-0 shadow-none backdrop-blur-none">
@@ -214,14 +252,14 @@
               disabled={isBusy}
             >
               <Trash2 class="h-4 w-4" />
-              Remove Workspace
+              {t("Remove Workspace", "移除工作区")}
             </Button>
           {/if}
           <Button
             on:click={() => void localSettingStore.saveConfig()}
             disabled={isBusy}
           >
-            Save
+            {t("Save", "保存")}
           </Button>
         </div>
       </Card>
@@ -230,31 +268,32 @@
     {#if $localSettingStore.message}
       <Card className={`p-3 ${hasErrorMessage ? "border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/0.08)]" : ""}`}>
         <p class={`mb-1 text-xs font-semibold uppercase tracking-wide ${hasErrorMessage ? "text-[hsl(var(--destructive))]" : "text-[hsl(var(--muted-foreground))]"}`}>
-          {hasErrorMessage ? "Error" : "Message"}
+          {hasErrorMessage ? t("Error", "错误") : t("Message", "消息")}
         </p>
         <p class={`text-sm ${hasErrorMessage ? "text-[hsl(var(--destructive))]" : "text-[hsl(var(--muted-foreground))]"}`}>
           {$localSettingStore.message}
         </p>
       </Card>
     {/if}
-  </section>
-</main>
+    </section>
+  </main>
+</div>
 
 {#if isAddWorkspaceDialogOpen}
   <div class="fixed inset-0 z-50 p-4" role="presentation">
     <button
       type="button"
       class="absolute inset-0 bg-[var(--overlay-backdrop)]"
-      aria-label="Close add workspace dialog"
+      aria-label={t("Close add workspace dialog", "关闭添加工作区弹窗")}
       onclick={closeAddWorkspaceDialog}
     ></button>
     <div class="relative">
       <Card className="mx-auto mt-[8vh] w-full max-w-xl p-5" role="dialog" aria-modal="true" aria-labelledby="add-workspace-title">
-        <h2 id="add-workspace-title" class="mb-4 text-lg font-semibold">Add Workspace</h2>
+        <h2 id="add-workspace-title" class="mb-4 text-lg font-semibold">{t("Add Workspace", "添加工作区")}</h2>
 
       <div class="grid gap-4">
         <div class="grid gap-2">
-          <Label for="new-workspace-type">Workspace Type</Label>
+          <Label for="new-workspace-type">{t("Workspace Type", "工作区类型")}</Label>
           <Select id="new-workspace-type" bind:value={pendingWorkspaceType}>
             <option value="slack">Slack</option>
             <option value="discord">Discord</option>
@@ -320,13 +359,13 @@
       </div>
 
         <div class="mt-5 flex justify-end gap-2">
-          <Button variant="outline" type="button" on:click={closeAddWorkspaceDialog}>Cancel</Button>
+          <Button variant="outline" type="button" on:click={closeAddWorkspaceDialog}>{t("Cancel", "取消")}</Button>
           <Button
             type="button"
             on:click={() => void addWorkspace()}
             disabled={isBusy || !canAddWorkspace}
           >
-            {$localSettingStore.isAddingWorkspace ? "Adding..." : "Add Workspace"}
+            {$localSettingStore.isAddingWorkspace ? t("Adding...", "添加中...") : t("Add Workspace", "添加工作区")}
           </Button>
         </div>
       </Card>

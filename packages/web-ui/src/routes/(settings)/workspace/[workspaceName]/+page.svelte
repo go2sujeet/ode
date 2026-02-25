@@ -4,6 +4,7 @@
   import { ChevronDown, RefreshCw } from "lucide-svelte";
   import type { DashboardConfig } from "$lib/localConfig";
   import { Badge, Button, Card, Input, Label, Select, Textarea } from "$lib/components/ui";
+  import { locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath, slugify } from "$lib/local-setting/workspaces";
 
@@ -59,6 +60,10 @@
     duplicateLarkAppKeys
   ));
   const enabledProviders = $derived(agentProviders.filter((provider) => isProviderEnabled(provider)));
+
+  function t(en: string, zh: string): string {
+    return $locale === "zh-CN" ? zh : en;
+  }
 
   $effect(() => {
     maybeCanonicalizeWorkspaceRoute();
@@ -314,8 +319,8 @@
   <Card className="p-5">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h2 class="text-lg font-semibold">{selectedWorkspace.name || "Workspace 1"}</h2>
-        <p class="text-sm text-[hsl(var(--muted-foreground))]">Workspace credentials and channel routing</p>
+        <h2 class="text-lg font-semibold">{selectedWorkspace.name || t("Workspace 1", "工作区 1")}</h2>
+        <p class="text-sm text-[hsl(var(--muted-foreground))]">{t("Workspace credentials and channel routing", "工作区凭据与频道路由配置")}</p>
       </div>
       {#if selectedWorkspace.type === "slack"}
         <Button
@@ -324,7 +329,7 @@
           disabled={$localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isLoading || $localSettingStore.isSaving}
         >
           <RefreshCw class="h-4 w-4" />
-          {$localSettingStore.isSyncingSlack ? "Syncing..." : "Sync"}
+          {$localSettingStore.isSyncingSlack ? t("Syncing...", "同步中...") : t("Sync", "同步")}
         </Button>
       {:else if selectedWorkspace.type === "discord"}
         <Button
@@ -333,7 +338,7 @@
           disabled={$localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isLoading || $localSettingStore.isSaving}
         >
           <RefreshCw class="h-4 w-4" />
-          {$localSettingStore.isSyncingSlack ? "Syncing..." : "Sync"}
+          {$localSettingStore.isSyncingSlack ? t("Syncing...", "同步中...") : t("Sync", "同步")}
         </Button>
       {:else}
         <Button
@@ -342,14 +347,14 @@
           disabled={$localSettingStore.isSyncingSlack || $localSettingStore.isAddingWorkspace || $localSettingStore.isLoading || $localSettingStore.isSaving}
         >
           <RefreshCw class="h-4 w-4" />
-          {$localSettingStore.isSyncingSlack ? "Syncing..." : "Sync"}
+          {$localSettingStore.isSyncingSlack ? t("Syncing...", "同步中...") : t("Sync", "同步")}
         </Button>
       {/if}
     </div>
 
     <div class="grid gap-4 md:grid-cols-2">
       <div class="grid gap-2">
-        <Label for="workspace-name">Workspace Name</Label>
+        <Label for="workspace-name">{t("Workspace Name", "工作区名称")}</Label>
         <Input
           id="workspace-name"
           value={selectedWorkspace.name}
@@ -359,7 +364,7 @@
       </div>
 
       <div class="grid gap-2">
-        <Label for="workspace-domain">Domain</Label>
+        <Label for="workspace-domain">{t("Domain", "域名")}</Label>
         <Input
           id="workspace-domain"
           value={selectedWorkspace.domain}
@@ -434,8 +439,8 @@
 
   <Card className="p-5">
     <div class="mb-3 flex items-center justify-between">
-      <h3 class="text-base font-semibold">Channels</h3>
-      <Badge variant="outline">{selectedWorkspace.channelDetails.length} total</Badge>
+      <h3 class="text-base font-semibold">{t("Channels", "频道")}</h3>
+      <Badge variant="outline">{selectedWorkspace.channelDetails.length} {t("total", "总计")}</Badge>
     </div>
 
     <div class="space-y-2">
@@ -457,7 +462,7 @@
             <div class="grid gap-3 border-t border-[hsl(var(--border)/0.65)] bg-[hsl(var(--background)/0.72)] p-3">
               <div class="grid gap-3 md:grid-cols-2">
                 <div class="grid gap-2">
-                  <Label for={`channel-agent-${channel.id}`}>Agent</Label>
+                  <Label for={`channel-agent-${channel.id}`}>{t("Agent", "代理")}</Label>
                   <Select
                     id={`channel-agent-${channel.id}`}
                     value={ensureAgentEnabled(getChannelProvider(channel))}
@@ -471,18 +476,18 @@
 
                 {#if shouldShowChannelModel(channel)}
                   <div class="grid gap-2">
-                    <Label for={`channel-model-${channel.id}`}>Model</Label>
+                    <Label for={`channel-model-${channel.id}`}>{t("Model", "模型")}</Label>
                     <Select
                       id={`channel-model-${channel.id}`}
                       value={getChannelModelSelectValue(channel)}
                       on:change={(event) => onChannelModelSelect(selectedWorkspace.id, channel.id, event)}
                     >
                       {#if getChannelProvider(channel) === "codex"}
-                        <option value="__default__">Use default (gpt-5.3-codex)</option>
+                        <option value="__default__">{t("Use default (gpt-5.3-codex)", "使用默认值 (gpt-5.3-codex)")}</option>
                       {/if}
                       {#if (getProviderModels(getChannelProvider(channel)) ?? []).length === 0
                         && getChannelProvider(channel) !== "codex"}
-                        <option value="" disabled>No models configured</option>
+                        <option value="" disabled>{t("No models configured", "未配置模型")}</option>
                       {/if}
                       {#if !(getProviderModels(getChannelProvider(channel)) ?? []).includes(channel.model) && channel.model}
                         <option value={channel.model}>{channel.model}</option>
@@ -496,32 +501,32 @@
               </div>
 
               <div class="grid gap-2">
-                <Label for={`channel-working-directory-${channel.id}`}>Working directory</Label>
+                <Label for={`channel-working-directory-${channel.id}`}>{t("Working directory", "工作目录")}</Label>
                 <Input
                   id={`channel-working-directory-${channel.id}`}
                   value={channel.workingDirectory}
-                  placeholder="~/Code/project"
+                  placeholder={t("~/Code/project", "~/Code/project")}
                   on:input={(event) => onChannelWorkingDirectoryInput(selectedWorkspace.id, channel.id, event)}
                 />
               </div>
 
               <div class="grid gap-2">
-                <Label for={`channel-base-branch-${channel.id}`}>Base branch</Label>
+                <Label for={`channel-base-branch-${channel.id}`}>{t("Base branch", "基础分支")}</Label>
                 <Input
                   id={`channel-base-branch-${channel.id}`}
                   value={channel.baseBranch}
-                  placeholder="main"
+                  placeholder={t("main", "main")}
                   on:input={(event) => onChannelBaseBranchInput(selectedWorkspace.id, channel.id, event)}
                 />
               </div>
 
               <div class="grid gap-2">
-                <Label for={`channel-system-message-${channel.id}`}>Channel System Message (optional)</Label>
+                <Label for={`channel-system-message-${channel.id}`}>{t("Channel System Message (optional)", "频道系统消息（可选）")}</Label>
                 <Textarea
                   id={`channel-system-message-${channel.id}`}
                   rows="3"
                   value={channel.channelSystemMessage ?? ""}
-                  placeholder="Appended to the system prompt for this channel"
+                  placeholder={t("Appended to the system prompt for this channel", "将附加到此频道的系统提示词")}
                   on:input={(event) => onChannelSystemMessageInput(selectedWorkspace.id, channel.id, event)}
                 ></Textarea>
               </div>
@@ -533,7 +538,7 @@
   </Card>
 {:else}
   <Card className="p-5">
-    <h2 class="text-lg font-semibold">Workspace</h2>
-    <p class="text-sm text-[hsl(var(--muted-foreground))]">No workspace found yet.</p>
+    <h2 class="text-lg font-semibold">{t("Workspace", "工作区")}</h2>
+    <p class="text-sm text-[hsl(var(--muted-foreground))]">{t("No workspace found yet.", "尚未找到工作区。")}</p>
   </Card>
 {/if}

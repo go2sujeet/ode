@@ -9,6 +9,7 @@
         variant: {
           default: "border-transparent bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]",
           secondary: "border-transparent bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]",
+          success: "border-transparent bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]",
           outline: "text-[hsl(var(--foreground))]",
           destructive: "border-transparent bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
         }
