@@ -114,12 +114,8 @@ function getCurrentBranchName(cwd: string): string | null {
 async function maybeSyncBranchAndThread(params: {
   session: PersistedSession;
   cwd: string;
-  channelId: string;
-  threadId: string;
-  replyThreadId: string;
-  im: IMAdapter;
 }): Promise<void> {
-  const { session, cwd, channelId, threadId, replyThreadId, im } = params;
+  const { session, cwd } = params;
   const branchName = getCurrentBranchName(cwd);
   if (!branchName) return;
 
@@ -127,29 +123,6 @@ async function maybeSyncBranchAndThread(params: {
   if (session.branchName !== branchName) {
     session.branchName = branchName;
     updated = true;
-  }
-
-  const looksDefault = branchName.startsWith("ode_") || branchName === `ode_${threadId}`;
-  if (
-    typeof im.renameThread === "function" &&
-    replyThreadId &&
-    !looksDefault &&
-    session.threadNameSyncedWithBranch !== branchName
-  ) {
-    void im
-      .renameThread(channelId, replyThreadId, branchName)
-      .then(() => {
-        session.threadNameSyncedWithBranch = branchName;
-        saveSession(session);
-      })
-      .catch((error) => {
-        log.warn("Failed to sync thread name with branch", {
-          channelId,
-          threadId,
-          branchName,
-          error: String(error),
-        });
-      });
   }
 
   if (updated) {
@@ -254,10 +227,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     await maybeSyncBranchAndThread({
       session,
       cwd,
-      channelId,
-      threadId,
-      replyThreadId,
-      im: runtimeDeps.im,
     });
 
     const threadHistory = created
