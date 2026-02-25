@@ -39,7 +39,7 @@ function getLocalSettingsUrl(): string {
   return `http://${getWebHost()}:${getWebPort()}/`;
 }
 
-function buildSettingsLauncherCard(channelId: string, threadId: string): Record<string, unknown> {
+function buildSettingsLauncherCard(channelId: string, threadId: string, userId: string): Record<string, unknown> {
   return {
     config: {
       wide_screen_mode: true,
@@ -54,7 +54,7 @@ function buildSettingsLauncherCard(channelId: string, threadId: string): Record<
     elements: [
       {
         tag: "markdown",
-        content: `Choose which settings page to open.\n\nChannel: \`${channelId}\``,
+        content: `Choose which settings page to open.\n\nChannel: \`${channelId}\`\nUser: \`${userId || "(unknown)"}\``,
       },
       {
         tag: "action",
@@ -69,6 +69,7 @@ function buildSettingsLauncherCard(channelId: string, threadId: string): Record<
             action: item.action,
             channelId,
             threadId,
+            userId,
           },
         })),
       },
@@ -237,6 +238,7 @@ export function buildLarkSettingsDetailCard(params: {
               action: "set_general_settings",
               channelId,
               threadId,
+              userId,
             },
             behaviors: [
               {
@@ -245,6 +247,7 @@ export function buildLarkSettingsDetailCard(params: {
                   action: "set_general_settings",
                   channelId,
                   threadId,
+                  userId,
                 },
               },
             ],
@@ -267,7 +270,7 @@ export function buildLarkSettingsDetailCard(params: {
                 behaviors: [
                   {
                     type: "callback",
-                    value: { action: "open_settings_launcher", channelId, threadId },
+                    value: { action: "open_settings_launcher", channelId, threadId, userId },
                   },
                 ],
               },
@@ -322,6 +325,7 @@ export function buildLarkSettingsDetailCard(params: {
       workingDirectory: cwd === "(not set)" ? "" : cwd,
       baseBranch,
       channelSystemMessage: systemMessage === "(none)" ? "" : systemMessage,
+      userId,
     };
 
     return buildCardV2("turquoise", "Channel setting", [
@@ -434,6 +438,7 @@ export function buildLarkSettingsDetailCard(params: {
     githubToken,
     githubName,
     githubEmail,
+    userId,
   };
   return buildCardV2("violet", "GitHub info", [
       ...(notice
@@ -450,7 +455,7 @@ export function buildLarkSettingsDetailCard(params: {
         elements: [
           {
             tag: "markdown",
-            content: "GitHub",
+            content: `Setting git information for user ${userId || "(unknown)"}`,
           },
           {
             tag: "markdown",
@@ -510,19 +515,21 @@ export function buildLarkSettingsDetailCard(params: {
 export async function sendLarkSettingsCard(params: {
   channelId: string;
   threadId: string;
+  userId: string;
   sendInteractive: (card: Record<string, unknown>) => Promise<string | undefined>;
   sendText: (text: string) => Promise<string | undefined>;
   logEvent: (message: string, payload: Record<string, unknown>) => void;
 }): Promise<string | undefined> {
-  const { channelId, threadId, sendInteractive, sendText, logEvent } = params;
+  const { channelId, threadId, userId, sendInteractive, sendText, logEvent } = params;
   const settingsUrl = getLocalSettingsUrl();
   logEvent("Lark settings UI launcher triggered", {
     channelId,
     threadId,
+    userId,
     settingsUrl,
   });
 
-  const card = buildSettingsLauncherCard(channelId, threadId);
+  const card = buildSettingsLauncherCard(channelId, threadId, userId);
 
   try {
     const messageId = await sendInteractive(card as unknown as Record<string, unknown>);

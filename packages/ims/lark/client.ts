@@ -304,11 +304,12 @@ async function sendMessage(
   });
 }
 
-async function sendSettingsCard(channelId: string, threadId: string): Promise<string | undefined> {
+async function sendSettingsCard(channelId: string, threadId: string, userId = ""): Promise<string | undefined> {
   const routeThreadId = threadId || "";
   return sendLarkSettingsCard({
     channelId,
     threadId: routeThreadId,
+    userId,
     sendInteractive: (card) =>
       sendLarkMessage({
         channelId,
@@ -775,7 +776,9 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
     envelope.event?.operator?.open_id,
     envelope.event?.operator?.user_id,
     envelope.open_id,
-    envelope.user_id
+    envelope.user_id,
+    pickValueField(value, "user_id"),
+    pickValueField(value, "userId")
   );
 
   if (
@@ -1020,7 +1023,7 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
     });
 
   if (!card) {
-    await sendSettingsCard(channelId, "");
+    await sendSettingsCard(channelId, "", userId);
     return;
   }
 
@@ -1136,7 +1139,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
       topLevelMessage,
       isMentioned,
     });
-    await sendSettingsCard(channelId, "");
+    await sendSettingsCard(channelId, "", senderOpenId);
     return;
   }
 
