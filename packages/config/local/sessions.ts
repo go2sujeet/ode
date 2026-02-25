@@ -15,6 +15,7 @@ const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SESSIONS_DIR = join(ODE_CONFIG_DIR, "sessions");
 const SESSION_SAVE_DEBOUNCE_MS = 5000;
+const SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface TrackedTool {
   id: string;
@@ -101,6 +102,21 @@ function getSessionFilePath(sessionKey: string): string {
   return join(SESSIONS_DIR, `${safeKey}.json`);
 }
 
+function getSessionLastActiveAt(session: PersistedSession): number {
+  if (Number.isFinite(session.lastActivityAt)) {
+    return session.lastActivityAt;
+  }
+  if (Number.isFinite(session.createdAt)) {
+    return session.createdAt;
+  }
+  return 0;
+}
+
+function isSessionExpired(session: PersistedSession, now = Date.now()): boolean {
+  const lastActiveAt = getSessionLastActiveAt(session);
+  return now - lastActiveAt >= SESSION_RETENTION_MS;
+}
+
 function sanitizeSessionForStorage(session: PersistedSession): PersistedSession {
   const snapshot = structuredClone(session);
   if (snapshot.activeRequest) {
@@ -158,7 +174,12 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
 
   // Check cache first
   if (activeSessions.has(sessionKey)) {
-    return activeSessions.get(sessionKey)!;
+    const cached = activeSessions.get(sessionKey)!;
+    if (isSessionExpired(cached)) {
+      deleteSession(channelId, threadId);
+      return null;
+    }
+    return cached;
   }
 
   const filePath = getSessionFilePath(sessionKey);
@@ -169,6 +190,10 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
   try {
     const data = readFileSync(filePath, "utf-8");
     const session = JSON.parse(data) as PersistedSession;
+    if (isSessionExpired(session)) {
+      deleteSession(channelId, threadId);
+      return null;
+    }
     if (session.activeRequest) {
       const active = session.activeRequest as ActiveRequest & {
         settingsChannelId?: string;
@@ -340,7 +365,11 @@ export function loadAllSessions(): PersistedSession[] {
   ensureSessionsDir();
   const sessionsByKey = new Map<string, PersistedSession>();
 
-  for (const [sessionKey, session] of activeSessions.entries()) {
+  for (const [sessionKey, session] of Array.from(activeSessions.entries())) {
+    if (isSessionExpired(session)) {
+      deleteSession(session.channelId, session.threadId);
+      continue;
+    }
     sessionsByKey.set(sessionKey, session);
   }
 
@@ -351,6 +380,10 @@ export function loadAllSessions(): PersistedSession[] {
       try {
         const data = readFileSync(filePath, "utf-8");
         const session = JSON.parse(data) as PersistedSession;
+        if (isSessionExpired(session)) {
+          deleteSession(session.channelId, session.threadId);
+          continue;
+        }
         const sessionKey = getSessionKey(session.channelId, session.threadId);
         if (!sessionsByKey.has(sessionKey)) {
           sessionsByKey.set(sessionKey, session);
