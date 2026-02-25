@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -55,6 +56,7 @@ const STATUS_FREQUENCY_OPTIONS: StatusMessageFrequencyValue[] =
 const GIT_STRATEGY_OPTIONS = ["worktree", "default"] as const;
 const AUTO_UPDATE_OPTIONS = ["on", "off"] as const;
 const PROVIDERS = AGENT_PROVIDERS;
+const PROVIDER_DEFAULT_MODEL_VALUE = "__provider_default__";
 
 const channelSettingsDrafts = new Map<string, { provider: AgentProviderId; model: string }>();
 const generalSettingsDrafts = new Map<string, {
@@ -132,6 +134,14 @@ export async function sendLauncherReplyForMessage(params: {
 
 function getModalValue(interaction: any, fieldId: string): string {
   return interaction.fields.getTextInputValue(fieldId) || "";
+}
+
+function getModalSelectValue(interaction: any, fieldId: string): string {
+  try {
+    return interaction.fields.getStringSelectValues(fieldId)?.[0] || "";
+  } catch {
+    return "";
+  }
 }
 
 function parseProvider(value: string): AgentProviderId | null {
@@ -363,9 +373,57 @@ function textInputRow(params: {
   return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
 }
 
+function textInputLabel(params: {
+  id: string;
+  label: string;
+  style?: TextInputStyle;
+  required?: boolean;
+  value?: string;
+  placeholder?: string;
+  description?: string;
+}): LabelBuilder {
+  const input = new TextInputBuilder()
+    .setCustomId(params.id)
+    .setStyle(params.style ?? TextInputStyle.Short)
+    .setRequired(params.required ?? false);
+
+  if (params.value) input.setValue(params.value);
+  if (params.placeholder) input.setPlaceholder(params.placeholder);
+
+  const label = new LabelBuilder()
+    .setLabel(params.label)
+    .setTextInputComponent(input);
+
+  if (params.description) label.setDescription(params.description);
+  return label;
+}
+
+function stringSelectLabel(params: {
+  id: string;
+  label: string;
+  placeholder?: string;
+  options: Array<{ label: string; value: string; default?: boolean }>;
+  description?: string;
+}): LabelBuilder {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(params.id)
+    .addOptions(params.options.slice(0, 25));
+
+  if (params.placeholder) select.setPlaceholder(params.placeholder);
+
+  const label = new LabelBuilder()
+    .setLabel(params.label)
+    .setStringSelectMenuComponent(select);
+
+  if (params.description) label.setDescription(params.description);
+  return label;
+}
+
 function buildChannelSettingsModal(channelId: string): ModalBuilder {
   const provider = getChannelAgentProvider(channelId);
   const model = getChannelModel(channelId) || "";
+  const providerModels = getProviderModels(provider);
+  const selectedModel = findMatchingModel(providerModels, model) ?? providerModels[0] ?? "";
   const baseBranch = getChannelBaseBranch(channelId) || "main";
   const workingDirectory = resolveChannelCwd(channelId).workingDirectory || "";
   const systemMessage = getChannelSystemMessage(channelId) || "";
@@ -374,33 +432,48 @@ function buildChannelSettingsModal(channelId: string): ModalBuilder {
     .setCustomId(`${DISCORD_MODAL_CHANNEL}:${channelId}`)
     .setTitle("Channel Settings")
     .addComponents(
-      textInputRow({
+      stringSelectLabel({
         id: "agent_provider",
         label: "Agent provider",
-        required: true,
-        value: provider,
+        options: PROVIDERS.map((item) => ({
+          label: item,
+          value: item,
+          default: item === provider,
+        })),
         placeholder: PROVIDERS.join(", "),
       }),
-      textInputRow({
+      stringSelectLabel({
         id: "model",
         label: "Model",
-        required: false,
-        value: model,
+        options:
+          providerModels.length > 0
+            ? providerModels.slice(0, 25).map((item) => ({
+                label: item.slice(0, 100),
+                value: item,
+                default: item === selectedModel,
+              }))
+            : [
+                {
+                  label: "Provider default",
+                  value: PROVIDER_DEFAULT_MODEL_VALUE,
+                  default: true,
+                },
+              ],
         placeholder: "Leave empty for provider default",
       }),
-      textInputRow({
+      textInputLabel({
         id: "working_directory",
         label: "Working directory",
         required: false,
         value: workingDirectory,
       }),
-      textInputRow({
+      textInputLabel({
         id: "base_branch",
         label: "Base branch",
         required: true,
         value: baseBranch,
       }),
-      textInputRow({
+      textInputLabel({
         id: "channel_system_message",
         label: "Channel system message (optional)",
         required: false,
@@ -445,32 +518,44 @@ function buildGeneralSettingsModal(channelId: string): ModalBuilder {
     .setCustomId(`${DISCORD_MODAL_GENERAL}:${channelId}`)
     .setTitle("General Settings")
     .addComponents(
-      textInputRow({
+      stringSelectLabel({
         id: "status_format",
         label: "Status format",
-        required: true,
-        value: settings.defaultStatusMessageFormat,
+        options: STATUS_FORMAT_OPTIONS.map((item) => ({
+          label: item,
+          value: item,
+          default: item === settings.defaultStatusMessageFormat,
+        })),
         placeholder: STATUS_FORMAT_OPTIONS.join(", "),
       }),
-      textInputRow({
+      stringSelectLabel({
         id: "status_frequency",
-        label: "Status frequency (ms)",
-        required: true,
-        value: statusFrequencyValue,
+        label: "Status frequency",
+        options: STATUS_FREQUENCY_OPTIONS.map((value) => ({
+          label: `${Number(value) / 1000} seconds`,
+          value,
+          default: value === statusFrequencyValue,
+        })),
         placeholder: STATUS_FREQUENCY_OPTIONS.join(", "),
       }),
-      textInputRow({
+      stringSelectLabel({
         id: "git_strategy",
         label: "Git strategy",
-        required: true,
-        value: settings.gitStrategy,
+        options: GIT_STRATEGY_OPTIONS.map((item) => ({
+          label: item,
+          value: item,
+          default: item === settings.gitStrategy,
+        })),
         placeholder: GIT_STRATEGY_OPTIONS.join(", "),
       }),
-      textInputRow({
+      stringSelectLabel({
         id: "auto_update",
         label: "Auto update",
-        required: true,
-        value: settings.autoUpdate ? "on" : "off",
+        options: AUTO_UPDATE_OPTIONS.map((item) => ({
+          label: item === "on" ? "On" : "Off",
+          value: item,
+          default: item === (settings.autoUpdate ? "on" : "off"),
+        })),
         placeholder: AUTO_UPDATE_OPTIONS.join(", "),
       })
     );
@@ -527,7 +612,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
   const channelId = parts[3] || getResolvedChannelId(interaction);
 
   if (modalKind === DISCORD_MODAL_CHANNEL) {
-    const providerValue = getModalValue(interaction, "agent_provider").trim();
+    const providerValue = (getModalSelectValue(interaction, "agent_provider") || getModalValue(interaction, "agent_provider")).trim();
     const parsedProvider = parseProvider(providerValue);
     if (!parsedProvider || !isAgentEnabled(parsedProvider)) {
       await interaction.reply({
@@ -537,7 +622,8 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
       return true;
     }
 
-    const modelInput = getModalValue(interaction, "model").trim();
+    const modelInputRaw = (getModalSelectValue(interaction, "model") || getModalValue(interaction, "model")).trim();
+    const modelInput = modelInputRaw === PROVIDER_DEFAULT_MODEL_VALUE ? "" : modelInputRaw;
     const providerModels = getProviderModels(parsedProvider);
     if (providerModels.length > 0 && modelInput && !findMatchingModel(providerModels, modelInput)) {
       await interaction.reply({
@@ -566,7 +652,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
   }
 
   if (modalKind === DISCORD_MODAL_GENERAL) {
-    const statusFormatRaw = getModalValue(interaction, "status_format");
+    const statusFormatRaw = getModalSelectValue(interaction, "status_format") || getModalValue(interaction, "status_format");
     const statusFormat = parseGeneralStatusFormat(statusFormatRaw);
     if (!statusFormat) {
       await interaction.reply({
@@ -576,7 +662,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
       return true;
     }
 
-    const statusFrequencyRaw = getModalValue(interaction, "status_frequency");
+    const statusFrequencyRaw = getModalSelectValue(interaction, "status_frequency") || getModalValue(interaction, "status_frequency");
     const statusFrequency = parseStatusFrequency(statusFrequencyRaw);
     if (!statusFrequency) {
       await interaction.reply({
@@ -586,7 +672,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
       return true;
     }
 
-    const gitStrategyRaw = getModalValue(interaction, "git_strategy");
+    const gitStrategyRaw = getModalSelectValue(interaction, "git_strategy") || getModalValue(interaction, "git_strategy");
     const gitStrategy = parseGitStrategy(gitStrategyRaw);
     if (!gitStrategy) {
       await interaction.reply({
@@ -596,7 +682,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
       return true;
     }
 
-    const autoUpdateRaw = getModalValue(interaction, "auto_update");
+    const autoUpdateRaw = getModalSelectValue(interaction, "auto_update") || getModalValue(interaction, "auto_update");
     const autoUpdate = parseAutoUpdate(autoUpdateRaw);
     if (!autoUpdate) {
       await interaction.reply({
