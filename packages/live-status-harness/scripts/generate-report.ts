@@ -258,6 +258,7 @@ async function runProvider(
       }),
     {
       workingDirectory: options.cwd,
+      provider: meta.provider,
       baseState: { startedAt: meta.startedAt },
     }
   );

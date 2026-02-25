@@ -32,6 +32,7 @@
     ...buildSessionMessageState(events, {
       endIndex: selectedEventIndex,
       workingDirectory,
+      provider,
     }),
     currentStatus: "Starting",
     currentStep: undefined,
@@ -40,6 +41,7 @@
   const finalState = $derived(({
     ...buildSessionMessageState(events, {
       workingDirectory,
+      provider,
     }),
     currentStatus: "Completed",
     currentStep: undefined,

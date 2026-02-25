@@ -14,6 +14,7 @@ import {
   type StreamStateMaps,
   type StreamToolState,
 } from "@/agents/session-state/shared";
+import type { AgentProviderId } from "@/shared/agent-provider";
 
 export type SessionEvent = {
   timestamp: number;
@@ -64,6 +65,7 @@ export type SessionStateOptions = {
   workingDirectory?: string;
   endIndex?: number;
   baseState?: Partial<SessionMessageState>;
+  provider?: AgentProviderId;
 };
 
 type ProviderParser = {
@@ -305,7 +307,31 @@ function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record
   applyMetadataFromRecord(state, info);
 }
 
-function applySessionStatusEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
+function isOpencodeThinkingStatusWithContent(status: string): boolean {
+  if (!status.startsWith("Thinking:")) return false;
+  return status.slice("Thinking:".length).trim().length > 0;
+}
+
+function updatePhaseStatus(
+  state: SessionMessageState,
+  nextStatus: string | undefined,
+  provider?: AgentProviderId
+): void {
+  if (!nextStatus) return;
+  if (provider === "opencode") {
+    if (isOpencodeThinkingStatusWithContent(nextStatus)) {
+      state.phaseStatus = nextStatus;
+    }
+    return;
+  }
+  state.phaseStatus = nextStatus;
+}
+
+function applySessionStatusEvent(
+  state: SessionMessageState,
+  eventProps: Record<string, unknown>,
+  provider?: AgentProviderId
+): void {
   const statusValue = (eventProps as { status?: unknown }).status;
   const formattedStatus = formatSessionStatus(statusValue);
   if (!formattedStatus) return;
@@ -317,7 +343,7 @@ function applySessionStatusEvent(state: SessionMessageState, eventProps: Record<
   ) {
     return;
   }
-  state.phaseStatus = formattedStatus;
+  updatePhaseStatus(state, formattedStatus, provider);
 }
 
 function normalizeReasoningStatus(text: string): string {
@@ -331,7 +357,11 @@ function normalizeReasoningStatus(text: string): string {
   return `Thinking: ${truncated}`;
 }
 
-function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
+function applyMessagePartUpdatedEvent(
+  state: SessionMessageState,
+  eventProps: Record<string, unknown>,
+  provider?: AgentProviderId
+): void {
   const part = (eventProps as { part?: Record<string, unknown> }).part;
   if (!part) return;
   const isSessionScopedPart = typeof part.sessionID === "string";
@@ -363,11 +393,11 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
     }
 
     if (toolInfo.status === "running" || toolInfo.status === "pending") {
-      state.phaseStatus = `Running tool: ${toolInfo.name}`;
+      updatePhaseStatus(state, `Running tool: ${toolInfo.name}`, provider);
     } else if (toolInfo.status === "completed") {
-      state.phaseStatus = `Finished tool: ${toolInfo.name}`;
+      updatePhaseStatus(state, `Finished tool: ${toolInfo.name}`, provider);
     } else if (toolInfo.status === "error") {
-      state.phaseStatus = `Tool failed: ${toolInfo.name}`;
+      updatePhaseStatus(state, `Tool failed: ${toolInfo.name}`, provider);
     }
     return;
   }
@@ -375,7 +405,7 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
   if (part.type === "text" && typeof part.text === "string") {
     state.currentText = part.text;
     if (isSessionScopedPart) {
-      state.phaseStatus = "Drafting response";
+      updatePhaseStatus(state, "Drafting response", provider);
     }
     return;
   }
@@ -383,7 +413,7 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
   if (part.type === "reasoning" && typeof part.text === "string") {
     state.thinkingText = part.text;
     if (isSessionScopedPart) {
-      state.phaseStatus = normalizeReasoningStatus(part.text);
+      updatePhaseStatus(state, normalizeReasoningStatus(part.text), provider);
     }
     return;
   }
@@ -391,7 +421,7 @@ function applyMessagePartUpdatedEvent(state: SessionMessageState, eventProps: Re
   if (part.type === "thinking" && typeof part.text === "string") {
     state.thinkingText = part.text;
     if (isSessionScopedPart) {
-      state.phaseStatus = normalizeReasoningStatus(part.text);
+      updatePhaseStatus(state, normalizeReasoningStatus(part.text), provider);
     }
   }
 }
@@ -472,7 +502,7 @@ export function buildSessionMessageState(
   events: SessionEvent[],
   options: SessionStateOptions = {}
 ): SessionMessageState {
-  const { endIndex, baseState } = options;
+  const { endIndex, baseState, provider } = options;
   const startTime = events[0]?.timestamp ?? Date.now();
   const state: SessionMessageState = {
     sessionTitle: baseState?.sessionTitle,
@@ -606,11 +636,11 @@ export function buildSessionMessageState(
     }
 
     if (type === "session.status") {
-      applySessionStatusEvent(state, eventProps);
+      applySessionStatusEvent(state, eventProps, provider);
     }
 
     if (type === "message.part.updated") {
-      applyMessagePartUpdatedEvent(state, eventProps);
+      applyMessagePartUpdatedEvent(state, eventProps, provider);
     }
 
     if (type === "todo.updated") {
