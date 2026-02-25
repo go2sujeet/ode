@@ -1,54 +1,130 @@
 # Live Status Harness Report - claudecode
 
-Generated: 2026-02-22T11:47:46.669Z
+Generated: 2026-02-25T05:17:38.758Z
 Provider: claudecode
-Working directory: /root/ode-new/.worktree/ode_1771752635.512539
+Working directory: /root/ode-new/.worktree/ode_1771995140.206739
 
-- Run ID: claudecode_1771760689863_63eadf9f
-- Events captured: 387
-- Status updates rendered: 112
+- Run ID: claudecode_1771995340966_bab08ba8
+- Source: Reused Redis stream data
+- Events captured: 806
+- Status updates rendered: 77
 
 ## Final Live Status Message
 
 ```text
-*I want you to 1. Read this repo. 2. Give 1 thing you think is most important to...* (2m 56s)
+*I want you to 1. Read this repo. 2. Give 1 thing you think is most important to...* (claude-sonnet-4-5-20250929, 20k tokens, 21m 54s)
 _Finalizing response_
 
 *Tasks*
-`pending` Read the current Kimi client implementation
-`pending` Implement graceful handling for empty responses
-`pending` Add retry mechanism with fallback prompts
-`pending` Add enhanced logging for debugging
-`pending` Add unit tests for edge cases
-`pending` Run the live status harness to verify fix
+`pending` Create provider parser interface
+`pending` Extract provider-specific parsers into separate modules
+`pending` Update session inspector to use strategy pattern
+`pending` Refactor tests to use provider-specific test suites
+`pending` Add integration tests for new architecture
 
-*Tool execution (Last 6 items in 48)*
-! `Grep` parseTodo|TODO|todo in .
-- `Grep` parseTodo|TODO|todo in .
-- `Read` packages/live-status-harness/renderer.ts (limit 100)
-- `Grep` TODO|todo|parseTodo in .
-- `Grep` extractTodo|todos.*push|todo.*content in .
+*Tool execution (Last 6 items in 28)*
+- `Bash` grep -r "process\.env" packages/ --include="*.ts" | head -10
+- `Bash` grep -r "eval\|exec\|spawn\|" packages/ --include="*.ts" | grep -E "(child_|exec|spawn)" | head -5
+- `Bash` find packages -name "node_modules" -prune -o -name "*.ts" -exec grep -l "crypto\|secret\|password\|t...
+- `Read` packages/core/session.ts (offset 100, limit 50)
+- `Read` packages/config/index.ts (limit 50)
 - `TodoWrite`
 ```
 
 ## Result Message
 
 ```text
-### Fix Plan:
+### Step 1: Create Provider Parser Interface
 
-1. **Read current implementation** - Understand how `parseKimiResponse` works and why it fails
+Define a clean contract that all provider parsers must implement:
 
-2. **Implement graceful empty response handling** - Instead of throwing, return a structured error response or retry prompt
+` ` `typescript
+// packages/utils/parsers/interface.ts
+interface ProviderEvent {
+  type: string;
+  data: unknown;
+}
 
-3. **Add retry mechanism** - If Kimi returns empty, retry with a simpler fallback prompt asking it to respond properly
+interface ParsedSessionUpdate {
+  model?: string;
+  tokenUsage?: SessionTokenUsage;
+  status?: string;
+  progress?: number;
+  error?: string;
+}
 
-4. **Enhanced logging** - Log the raw response when empty, to help debug upstream issues
+interface ProviderParser {
+  providerName: string;
+  canParse(event: unknown): boolean;
+  parseEvent(event: ProviderEvent): ParsedSessionUpdate | null;
+  parseTokenUsage(value: unknown): SessionTokenUsage | undefined;
+  parseModel(value: unknown): string | undefined;
+}
+` ` `
 
-5. **Add unit tests** - Test edge cases: empty response, malformed JSON, missing content field
+### Step 2: Extract Provider-Specific Parsers
 
-6. **Verify with harness** - Run the live status harness tests to confirm the fix works
+Create separate files for each provider:
+
+` ` `
+packages/utils/parsers/
+├── interface.ts
+├── claude-parser.ts
+├── opencode-parser.ts
+├── codex-parser.ts
+├── kimi-parser.ts
+├── kiro-parser.ts
+├── kilo-parser.ts
+├── qwen-parser.ts
+├── goose-parser.ts
+└── gemini-parser.ts
+` ` `
+
+Each parser only handles its own event format, making it easy to test and modify.
+
+### Step 3: Update Session Inspector to Use Strategy Pattern
+
+Replace the monolithic functions with a registry of parsers:
+
+` ` `typescript
+// packages/utils/session-inspector.ts (refactored)
+import { ParserRegistry } from './parsers/registry';
+
+const registry = new ParserRegistry();
+
+function extractModelCandidate(value: unknown, providerType?: string): string | undefined {
+  const parser = registry.getParser(providerType);
+  return parser?.parseModel(value);
+}
+
+function extractTokenUsage(value: unknown, fallbackCost?: unknown, providerType?: string): SessionTokenUsage | undefined {
+  const parser = registry.getParser(providerType);
+  return parser?.parseTokenUsage(value, fallbackCost);
+}
+` ` `
+
+### Step 4: Refactor Tests
+
+Split the 1,889-line test file into provider-specific test suites:
+
+` ` `
+packages/agents/test/parsers/
+├── claude-parser.test.ts
+├── opencode-parser.test.ts
+└── ...
+` ` `
+
+### Step 5: Add Integration Tests
+
+Ensure the refactored system produces identical output to the current implementation using property-based testing or snapshot testing.
 
 ---
 
-**Would you like me to proceed with implementing this fix?**
+**Benefits:**
+- New provider support: Add one file, implement interface
+- Easier debugging: Provider logic is isolated
+- Better test coverage: Each parser can be tested independently
+- Reduced cognitive load: Developers only need to understand one provider at a time
+
+Would you like me to proceed with this refactoring?
 ```

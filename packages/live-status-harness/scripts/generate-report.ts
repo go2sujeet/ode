@@ -21,6 +21,7 @@ type ProviderRunSummary = {
   statusCount: number;
   finalStatus: string;
   resultMessage: string;
+  reusedRun?: boolean;
   error?: string;
 };
 
@@ -106,11 +107,11 @@ function buildMarkdown(
     lines.push(`Redis prefix: ${options.redisPrefix}`);
   }
   lines.push("");
-  lines.push("| Provider | Run ID | Events | Statuses | State |");
-  lines.push("| --- | --- | ---: | ---: | --- |");
+  lines.push("| Provider | Run ID | Events | Statuses | Source | State |");
+  lines.push("| --- | --- | ---: | ---: | --- | --- |");
   for (const summary of summaries) {
     lines.push(
-      `| ${summary.provider} | ${summary.runId} | ${summary.eventCount} | ${summary.statusCount} | ${summary.error ? "failed" : "ok"} |`
+      `| ${summary.provider} | ${summary.runId} | ${summary.eventCount} | ${summary.statusCount} | ${summary.reusedRun ? "redis" : "new capture"} | ${summary.error ? "failed" : "ok"} |`
     );
   }
   lines.push("");
@@ -119,6 +120,7 @@ function buildMarkdown(
     lines.push(`## ${summary.provider}`);
     lines.push("");
     lines.push(`- Run ID: ${summary.runId}`);
+    lines.push(`- Source: ${summary.reusedRun ? "Reused Redis stream data" : "Captured new stream data"}`);
     lines.push(`- Events captured: ${summary.eventCount}`);
     lines.push(`- Status updates rendered: ${summary.statusCount}`);
     if (summary.error) {
@@ -160,6 +162,7 @@ function buildProviderMarkdown(
   }
   lines.push("");
   lines.push(`- Run ID: ${summary.runId}`);
+  lines.push(`- Source: ${summary.reusedRun ? "Reused Redis stream data" : "Captured new stream data"}`);
   lines.push(`- Events captured: ${summary.eventCount}`);
   lines.push(`- Status updates rendered: ${summary.statusCount}`);
 
@@ -187,8 +190,20 @@ async function runProvider(
   store: HarnessRedisStore,
   options: { cwd: string; promptFile?: string; redisPrefix?: string; runId?: string }
 ): Promise<ProviderRunSummary> {
-  const runId = options.runId || buildHarnessRunId(provider);
+  let runId = options.runId || "";
+  let reusedRun = false;
+
   if (!options.runId) {
+    const existingRunId = await store.getLatestRunIdByProvider(provider);
+    if (existingRunId) {
+      runId = existingRunId;
+      reusedRun = true;
+    } else {
+      runId = buildHarnessRunId(provider);
+    }
+  }
+
+  if (!reusedRun && !options.runId) {
     const captureArgs = ["--provider", provider, "--run-id", runId, "--cwd", options.cwd];
     if (provider === "gemini") {
       captureArgs.push("--agent", "plan");
@@ -256,6 +271,7 @@ async function runProvider(
     statusCount: statuses.length,
     finalStatus,
     resultMessage,
+    reusedRun,
   };
 }
 

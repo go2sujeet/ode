@@ -329,6 +329,124 @@ describe("session inspector", () => {
     expect(state.tokenUsage?.cacheRead).toBe(700);
   });
 
+  it("hydrates metadata from raw provider records", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "qwen.raw.message",
+        data: {
+          payload: {
+            type: "qwen.raw.message",
+            properties: {
+              record: {
+                model: {
+                  providerID: "openai",
+                  modelID: "gpt-5.3-codex",
+                },
+                mode: "build",
+                usage: {
+                  prompt_tokens: 120,
+                  completion_tokens: 80,
+                  total_tokens: 240,
+                  cache_tokens: {
+                    input_tokens: 40,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.model).toBe("gpt-5.3-codex");
+    expect(state.agent).toBe("build");
+    expect(state.tokenUsage?.input).toBe(120);
+    expect(state.tokenUsage?.output).toBe(80);
+    expect(state.tokenUsage?.cacheRead).toBe(40);
+    expect(state.tokenUsage?.total).toBe(240);
+  });
+
+  it("hydrates token usage from nested codex and kilo event shapes", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "codex.raw.turn.completed",
+        data: {
+          payload: {
+            type: "codex.raw.turn.completed",
+            properties: {
+              event: {
+                type: "turn.completed",
+                usage: {
+                  input_tokens: 1000,
+                  output_tokens: 50,
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: startedAt + 1,
+        type: "kilo.raw.step_finish",
+        data: {
+          payload: {
+            type: "kilo.raw.step_finish",
+            properties: {
+              record: {
+                type: "step_finish",
+                part: {
+                  tokens: {
+                    input: 200,
+                    output: 30,
+                    cache: {
+                      read: 70,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.tokenUsage?.input).toBe(200);
+    expect(state.tokenUsage?.output).toBe(30);
+    expect(state.tokenUsage?.cacheRead).toBe(70);
+    expect(state.tokenUsage?.total).toBe(300);
+  });
+
+  it("hydrates OpenCode model when info.model is an object", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                model: {
+                  providerID: "openai",
+                  modelID: "gpt-5.3-codex",
+                },
+                mode: "build",
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.model).toBe("gpt-5.3-codex");
+    expect(state.agent).toBe("build");
+  });
+
   it("does not clear token usage when later message.updated has empty usage object", () => {
     const startedAt = Date.now();
     const state = buildSessionMessageState([
@@ -371,6 +489,54 @@ describe("session inspector", () => {
 
     expect(state.tokenUsage?.total).toBe(2048);
     expect(state.tokenUsage?.input).toBe(500);
+  });
+
+  it("does not regress to zero tokens when a later event reports zero usage", () => {
+    const startedAt = Date.now();
+    const state = buildSessionMessageState([
+      {
+        timestamp: startedAt,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                modelID: "gpt-5.3-codex",
+                tokens: {
+                  total: 1500,
+                  input: 400,
+                  output: 100,
+                  cache: { read: 1000, write: 0 },
+                },
+              },
+            },
+          },
+        },
+      },
+      {
+        timestamp: startedAt + 1,
+        type: "message.updated",
+        data: {
+          payload: {
+            type: "message.updated",
+            properties: {
+              info: {
+                tokens: {
+                  total: 0,
+                  input: 0,
+                  output: 0,
+                  cache: { read: 0, write: 0 },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(state.tokenUsage?.total).toBe(1500);
+    expect(state.tokenUsage?.input).toBe(400);
   });
 
   it("parses todo.updated aliases from wrapped payload events", () => {

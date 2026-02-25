@@ -1,60 +1,55 @@
 # Live Status Harness Report - codex
 
-Generated: 2026-02-22T11:06:45.423Z
+Generated: 2026-02-25T05:17:38.758Z
 Provider: codex
-Working directory: /root/ode-new/.worktree/ode_1771752635.512539
+Working directory: /root/ode-new/.worktree/ode_1771995140.206739
 
-- Run ID: codex_1771757062783_22a91ed8
-- Events captured: 83
-- Status updates rendered: 82
+- Run ID: codex_1771995494170_a46cebaf
+- Source: Reused Redis stream data
+- Events captured: 98
+- Status updates rendered: 96
 
 ## Final Live Status Message
 
 ```text
-*Codex is running...* (334k tokens, 1m 21s)
+*Codex is running...* (515k tokens, 19m 21s)
 _Drafting response_
 
-*Tool execution (Last 6 items in 30)*
-- `Bash` /bin/bash -lc "sed -n '1,240p' packages/config/index.ts"
-- `Bash` /bin/bash -lc "sed -n '1,260p' README.md"
-- `Bash` /bin/bash -lc "nl -ba packages/config/local/sessions.ts | sed -n '300,360p'"
-- `Bash` /bin/bash -lc "nl -ba packages/ims/slack/message-router.ts | sed -n '220,320p'"
-- `Bash` /bin/bash -lc "nl -ba packages/core/runtime.ts | sed -n '228,270p'"
-- `Bash` /bin/bash -lc 'find . -maxdepth 3 -type f | wc -l'
+*Tool execution (Last 6 items in 34)*
+- `Bash` /bin/bash -lc "sed -n '1,260p' packages/core/web/routes/action.ts"
+- `Bash` /bin/bash -lc "sed -n '1,280p' packages/core/web/routes/config.ts"
+- `Bash` /bin/bash -lc "sed -n '1,240p' packages/config/web.ts"
+- `Bash` /bin/bash -lc "sed -n '1,260p' packages/core/web/server.ts"
+- `Bash` /bin/bash -lc "grep -R \"function getWebHost\\|ODE_WEB_HOST\\|webHost\" -n packages/config packages/...
+- `Bash` /bin/bash -lc "sed -n '1,200p' packages/config/network.ts"
 ```
 
 ## Result Message
 
 ```text
-*Checklist*
-✅ done Read core runtime, Slack router, session persistence, and request lifecycle paths
-✅ done Repo scan/search summary: 62 files discovered (`find . -maxdepth 3 -type f`)
-✅ done No edits made (analysis-only pass)
+✅ done
+- Read core runtime, IM adapters, and web API flow.
+- One repo-wide search completed: `find . -type f` found `1013` files.
+- No code edits made.
 
-Most important change: make inbound message deduplication durable (not in-memory only).
+The single most important change: _add authentication to the local web API (`/api/*`)_.
 
 Why this is highest impact:
-- Duplicate-event protection currently depends on a process-local `Set`, so a restart loses dedupe state (`packages/config/local/sessions.ts:322`).
-- Incoming Slack messages are fed directly to runtime processing with `message.ts` as ID (`packages/ims/slack/message-router.ts:280`).
-- Runtime only checks the in-memory dedupe set before enqueueing (`packages/core/runtime.ts:236`).
-
-That means retries/replays after restart can re-trigger the same request (extra cost, repeated writes, conflicting bot actions).
+- Sensitive endpoints are currently unauthenticated:
+  - [`packages/core/web/app.ts`](/root/ode-new/.worktree/ode_1771995140.206739/packages/core/web/app.ts)
+  - [`packages/core/web/routes/config.ts`](/root/ode-new/.worktree/ode_1771995140.206739/packages/core/web/routes/config.ts)
+  - [`packages/core/web/routes/action.ts`](/root/ode-new/.worktree/ode_1771995140.206739/packages/core/web/routes/action.ts)
+- The app explicitly supports binding to `0.0.0.0` via `ODE_WEB_HOST`, which can expose these endpoints remotely:
+  - [`packages/config/network.ts`](/root/ode-new/.worktree/ode_1771995140.206739/packages/config/network.ts)
 
 Plan to fix:
-1. Add persistent dedupe store with TTL
-- Implement a small local file-backed or Redis-backed cache keyed by `platform:channel:thread:messageId` plus timestamp.
-- Keep entries for 24h (or configurable), prune periodically.
-
-2. Switch runtime dedupe API to persistent checks
-- Replace current `isMessageProcessed/markMessageProcessed` calls with async store-backed versions.
-- Do atomic “check-and-mark” to avoid race conditions.
-
-3. Use platform-native IDs when available
-- For Slack, also include `event_id` (if accessible) in the key to improve replay safety.
-
-4. Add deterministic tests
-- Cover: duplicate in same process, duplicate after simulated restart, TTL expiration, and race (parallel same message).
-
-5. Add observability
-- Log counters for `dedupe_hit`, `dedupe_miss`, and store errors so regressions are visible quickly.
+1. Add `ODE_WEB_API_TOKEN` config support (non-empty string).
+2. Implement middleware in `createWebApp()` that guards `/api/*` with `Authorization: Bearer <token>` (or `X-Ode-Token`).
+3. Enforce policy:
+   - If host is loopback (`127.0.0.1`/`localhost`), token optional.
+   - If host is non-loopback (`0.0.0.0` or public IP), token required or refuse startup.
+4. Keep static UI routes public, secure only `/api/*`.
+5. Update web UI client to send token header on API calls.
+6. Add tests in web route tests for allowed/denied cases and startup validation behavior.
+7. Update docs (`README`, `.env.example`) with secure exposure instructions.
 ```
