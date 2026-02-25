@@ -38,7 +38,6 @@ let pendingSettingsWriteTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSettingsSnapshot: Settings | null = null;
 let settingsWriteChain: Promise<void> = Promise.resolve();
 const channelAgentsCache = new Map<string, string | null>();
-const channelAgentInstructionCache = new Map<string, string | null>();
 let channelFileWriteChain: Promise<void> = Promise.resolve();
 
 function runChannelFileWrite(task: () => Promise<void>): void {
@@ -224,57 +223,6 @@ export function setChannelAgentsMd(channelId: string, content: string): void {
 export function deleteChannelAgentsMd(channelId: string): void {
   const filePath = join(AGENTS_DIR, `${channelId}.md`);
   channelAgentsCache.set(channelId, null);
-  runChannelFileWrite(async () => {
-    await unlink(filePath);
-  });
-}
-
-export type AgentInstructionTarget = "plan" | "build";
-
-function getAgentInstructionsFile(channelId: string, agent: AgentInstructionTarget): string {
-  return join(AGENTS_DIR, `${channelId}.${agent}.md`);
-}
-
-export function getChannelAgentInstructions(
-  channelId: string,
-  agent: AgentInstructionTarget
-): string | null {
-  const filePath = getAgentInstructionsFile(channelId, agent);
-  if (channelAgentInstructionCache.has(filePath)) {
-    return channelAgentInstructionCache.get(filePath) ?? null;
-  }
-  try {
-    const content = readFileSync(filePath, "utf-8");
-    channelAgentInstructionCache.set(filePath, content);
-    return content;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      return null;
-    }
-    channelAgentInstructionCache.set(filePath, null);
-    return null;
-  }
-}
-
-export function setChannelAgentInstructions(
-  channelId: string,
-  agent: AgentInstructionTarget,
-  content: string
-): void {
-  ensureDataDir();
-  const filePath = getAgentInstructionsFile(channelId, agent);
-  channelAgentInstructionCache.set(filePath, content);
-  runChannelFileWrite(async () => {
-    await writeFile(filePath, content, "utf-8");
-  });
-}
-
-export function deleteChannelAgentInstructions(
-  channelId: string,
-  agent: AgentInstructionTarget
-): void {
-  const filePath = getAgentInstructionsFile(channelId, agent);
-  channelAgentInstructionCache.set(filePath, null);
   runChannelFileWrite(async () => {
     await unlink(filePath);
   });

@@ -1,6 +1,5 @@
 import {
   getChannelAgentsMd,
-  getChannelAgentInstructions,
 } from "@/config/local/settings";
 import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext } from "./types";
 import { getSlackActionApiUrl } from "@/config";
@@ -113,18 +112,13 @@ export function buildSystemPrompt(slack?: SlackContext): string {
 export function buildPromptParts(
   channelId: string,
   message: string,
-  options?: OpenCodeOptions,
+  _options?: OpenCodeOptions,
   context?: OpenCodeMessageContext
 ): PromptPart[] {
   const parts: PromptPart[] = [];
 
-  const agent = options?.agent;
   const agentsMd = getChannelAgentsMd(channelId);
-  const agentInstructions =
-    agent === "plan" || agent === "build"
-      ? getChannelAgentInstructions(channelId, agent)
-      : null;
-  const combinedInstructions = [agentsMd, agentInstructions]
+  const combinedInstructions = [agentsMd]
     .filter((value): value is string => Boolean(value && value.trim()))
     .join("\n\n");
 
