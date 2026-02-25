@@ -87,6 +87,16 @@ function fallbackReadyMessage(): string {
   return `Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`;
 }
 
+function extractSettingsUrl(readyMessage: string | null): string | null {
+  if (!readyMessage) return null;
+  const marker = "setting UI is accessible at ";
+  const markerIndex = readyMessage.indexOf(marker);
+  if (markerIndex === -1) return null;
+
+  const url = readyMessage.slice(markerIndex + marker.length).trim();
+  return url.length > 0 ? url : null;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -339,7 +349,8 @@ async function showStatus(): Promise<void> {
     console.log("Upgrade: none pending");
   }
   if (daemonIsRunning) {
-    console.log(`ode is running, setting UI is accessible at ${getLocalSettingsUrl()}`);
+    const settingsUrl = extractSettingsUrl(state.readyMessage) ?? getLocalSettingsUrl();
+    console.log(`ode is running, setting UI is accessible at ${settingsUrl}`);
     return;
   }
   console.log("ode is installed but not running, can run it with ode");

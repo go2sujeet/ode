@@ -1,6 +1,6 @@
 {
   "name": "ode",
-  "version": "0.0.94",
+  "version": "0.0.95",
   "description": "Coding anywhere with your coding agents connected",
   "module": "packages/core/index.ts",
   "type": "module",
