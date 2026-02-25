@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { writeFile } from "fs/promises";
 import { log } from "@/utils";
 
 const readFileSync = fs.readFileSync;
-const writeFileSync = fs.writeFileSync;
 const existsSync = fs.existsSync;
 const mkdirSync = fs.mkdirSync;
 const readdirSync = fs.readdirSync;
@@ -14,6 +14,8 @@ const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SESSIONS_DIR = join(ODE_CONFIG_DIR, "sessions");
+const SESSION_SAVE_DEBOUNCE_MS = 5000;
+const SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface TrackedTool {
   id: string;
@@ -39,7 +41,7 @@ export interface ActiveRequest {
   startedAt: number;
   lastUpdatedAt: number;
   currentText: string;
-  tools: TrackedTool[];
+  tools?: TrackedTool[];
   todos: TrackedTodo[];
   statusFrozen?: boolean;
   state: "processing" | "completed" | "failed";
@@ -79,6 +81,10 @@ export interface PersistedSession {
 // In-memory cache
 const activeSessions = new Map<string, PersistedSession>();
 const processedMessages = new Set<string>();
+const pendingWriteTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingWriteSnapshots = new Map<string, PersistedSession>();
+const writeChains = new Map<string, Promise<void>>();
+const deletedSessionKeys = new Set<string>();
 
 function ensureSessionsDir(): void {
   if (!existsSync(SESSIONS_DIR)) {
@@ -96,12 +102,84 @@ function getSessionFilePath(sessionKey: string): string {
   return join(SESSIONS_DIR, `${safeKey}.json`);
 }
 
+function getSessionLastActiveAt(session: PersistedSession): number {
+  if (Number.isFinite(session.lastActivityAt)) {
+    return session.lastActivityAt;
+  }
+  if (Number.isFinite(session.createdAt)) {
+    return session.createdAt;
+  }
+  return 0;
+}
+
+function isSessionExpired(session: PersistedSession, now = Date.now()): boolean {
+  const lastActiveAt = getSessionLastActiveAt(session);
+  return now - lastActiveAt >= SESSION_RETENTION_MS;
+}
+
+function sanitizeSessionForStorage(session: PersistedSession): PersistedSession {
+  const snapshot = structuredClone(session);
+  if (snapshot.activeRequest) {
+    delete (snapshot.activeRequest as Partial<ActiveRequest>).tools;
+  }
+  return snapshot;
+}
+
+function enqueueSessionWrite(sessionKey: string, immediate = false): void {
+  const existingTimer = pendingWriteTimers.get(sessionKey);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    pendingWriteTimers.delete(sessionKey);
+  }
+
+  const flush = () => {
+    pendingWriteTimers.delete(sessionKey);
+    if (deletedSessionKeys.has(sessionKey)) {
+      pendingWriteSnapshots.delete(sessionKey);
+      return;
+    }
+    const snapshot = pendingWriteSnapshots.get(sessionKey);
+    if (!snapshot) return;
+    pendingWriteSnapshots.delete(sessionKey);
+    const filePath = getSessionFilePath(sessionKey);
+    const payload = JSON.stringify(snapshot, null, 2);
+    const previous = writeChains.get(sessionKey) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        await writeFile(filePath, payload, "utf-8");
+      })
+      .catch((err) => {
+        log.error("Failed to save session", { sessionKey, error: String(err) });
+      })
+      .finally(() => {
+        if (writeChains.get(sessionKey) === next) {
+          writeChains.delete(sessionKey);
+        }
+      });
+    writeChains.set(sessionKey, next);
+  };
+
+  if (immediate) {
+    flush();
+    return;
+  }
+
+  const timer = setTimeout(flush, SESSION_SAVE_DEBOUNCE_MS);
+  pendingWriteTimers.set(sessionKey, timer);
+}
+
 export function loadSession(channelId: string, threadId: string): PersistedSession | null {
   const sessionKey = getSessionKey(channelId, threadId);
 
   // Check cache first
   if (activeSessions.has(sessionKey)) {
-    return activeSessions.get(sessionKey)!;
+    const cached = activeSessions.get(sessionKey)!;
+    if (isSessionExpired(cached)) {
+      deleteSession(channelId, threadId);
+      return null;
+    }
+    return cached;
   }
 
   const filePath = getSessionFilePath(sessionKey);
@@ -112,6 +190,10 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
   try {
     const data = readFileSync(filePath, "utf-8");
     const session = JSON.parse(data) as PersistedSession;
+    if (isSessionExpired(session)) {
+      deleteSession(channelId, threadId);
+      return null;
+    }
     if (session.activeRequest) {
       const active = session.activeRequest as ActiveRequest & {
         settingsChannelId?: string;
@@ -119,6 +201,7 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
       };
       active.channelId = active.settingsChannelId || active.channelId || session.channelId;
       active.replyThreadId = active.replyThreadId || active.replyChannelId || session.threadId;
+      active.tools = Array.isArray(active.tools) ? active.tools : [];
     }
     activeSessions.set(sessionKey, session);
     return session;
@@ -128,23 +211,42 @@ export function loadSession(channelId: string, threadId: string): PersistedSessi
   }
 }
 
-export function saveSession(session: PersistedSession): void {
+export function saveSession(session: PersistedSession, options?: { immediate?: boolean }): void {
   ensureSessionsDir();
   const sessionKey = getSessionKey(session.channelId, session.threadId);
+  deletedSessionKeys.delete(sessionKey);
   session.lastActivityAt = Date.now();
   activeSessions.set(sessionKey, session);
 
-  const filePath = getSessionFilePath(sessionKey);
-  try {
-    writeFileSync(filePath, JSON.stringify(session, null, 2));
-  } catch (err) {
-    log.error("Failed to save session", { sessionKey, error: String(err) });
-  }
+  pendingWriteSnapshots.set(sessionKey, sanitizeSessionForStorage(session));
+  enqueueSessionWrite(sessionKey, options?.immediate ?? false);
 }
 
 export function deleteSession(channelId: string, threadId: string): void {
   const sessionKey = getSessionKey(channelId, threadId);
   activeSessions.delete(sessionKey);
+  deletedSessionKeys.add(sessionKey);
+
+  const timer = pendingWriteTimers.get(sessionKey);
+  if (timer) {
+    clearTimeout(timer);
+    pendingWriteTimers.delete(sessionKey);
+  }
+  pendingWriteSnapshots.delete(sessionKey);
+  const inFlight = writeChains.get(sessionKey);
+  if (inFlight) {
+    void inFlight.finally(() => {
+      if (!deletedSessionKeys.has(sessionKey)) return;
+      const pathAfterWrite = getSessionFilePath(sessionKey);
+      if (existsSync(pathAfterWrite)) {
+        try {
+          unlinkSync(pathAfterWrite);
+        } catch {
+          // Ignore delete errors
+        }
+      }
+    });
+  }
 
   const filePath = getSessionFilePath(sessionKey);
   if (existsSync(filePath)) {
@@ -189,8 +291,10 @@ export function updateActiveRequest(
   const session = loadSession(channelId, threadId);
   if (!session?.activeRequest) return;
 
-  Object.assign(session.activeRequest, updates, { lastUpdatedAt: Date.now() });
-  saveSession(session);
+  const sanitized = { ...updates } as Partial<ActiveRequest>;
+  delete sanitized.tools;
+  Object.assign(session.activeRequest, sanitized, { lastUpdatedAt: Date.now() });
+  saveSession(session, { immediate: false });
 }
 
 export function completeActiveRequest(
@@ -259,7 +363,15 @@ export function getActiveRequest(channelId: string, threadId: string): ActiveReq
 
 export function loadAllSessions(): PersistedSession[] {
   ensureSessionsDir();
-  const sessions: PersistedSession[] = [];
+  const sessionsByKey = new Map<string, PersistedSession>();
+
+  for (const [sessionKey, session] of Array.from(activeSessions.entries())) {
+    if (isSessionExpired(session)) {
+      deleteSession(session.channelId, session.threadId);
+      continue;
+    }
+    sessionsByKey.set(sessionKey, session);
+  }
 
   try {
     const files = readdirSync(SESSIONS_DIR).filter(f => f.endsWith(".json"));
@@ -268,9 +380,17 @@ export function loadAllSessions(): PersistedSession[] {
       try {
         const data = readFileSync(filePath, "utf-8");
         const session = JSON.parse(data) as PersistedSession;
-        sessions.push(session);
+        if (isSessionExpired(session)) {
+          deleteSession(session.channelId, session.threadId);
+          continue;
+        }
         const sessionKey = getSessionKey(session.channelId, session.threadId);
-        activeSessions.set(sessionKey, session);
+        if (!sessionsByKey.has(sessionKey)) {
+          sessionsByKey.set(sessionKey, session);
+        }
+        if (!activeSessions.has(sessionKey)) {
+          activeSessions.set(sessionKey, session);
+        }
       } catch {
         // Skip invalid session files
       }
@@ -279,7 +399,7 @@ export function loadAllSessions(): PersistedSession[] {
     // Sessions dir doesn't exist yet
   }
 
-  return sessions;
+  return Array.from(sessionsByKey.values());
 }
 
 export function getSessionsWithPendingRequests(platform?: "slack" | "discord" | "lark"): PersistedSession[] {

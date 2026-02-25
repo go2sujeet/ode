@@ -134,7 +134,6 @@ export async function runOpenRequest(params: {
       updateActiveRequest(context.channelId, context.threadId, {
         statusMessageTs: request.statusMessageTs,
         currentText: request.currentText,
-        tools: request.tools,
         todos: request.todos,
         statusFrozen: request.statusFrozen,
       });

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { writeFile } from "fs/promises";
 import {
   setChannelCwd as setChannelCwdInConfig,
 } from "./ode";
@@ -16,6 +17,7 @@ const homedir = typeof os.homedir === "function" ? os.homedir : () => "";
 const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SETTINGS_FILE = join(ODE_CONFIG_DIR, "settings.json");
 const AGENTS_DIR = join(ODE_CONFIG_DIR, "agents");
+const SETTINGS_SAVE_DEBOUNCE_MS = 1000;
 
 export interface ChannelSettings {
   threadSessions: Record<string, string>; // threadId -> sessionId
@@ -34,6 +36,9 @@ export interface Settings {
 }
 
 let cachedSettings: Settings | null = null;
+let pendingSettingsWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSettingsSnapshot: Settings | null = null;
+let settingsWriteChain: Promise<void> = Promise.resolve();
 
 function ensureDataDir(): void {
   if (!existsSync(ODE_CONFIG_DIR)) {
@@ -95,7 +100,26 @@ export function saveSettings(settings: Settings): void {
     ...settings,
     channels: normalizedChannels,
   };
-  writeFileSync(SETTINGS_FILE, JSON.stringify(cachedSettings, null, 2));
+
+  pendingSettingsSnapshot = structuredClone(cachedSettings);
+  if (pendingSettingsWriteTimer) {
+    clearTimeout(pendingSettingsWriteTimer);
+    pendingSettingsWriteTimer = null;
+  }
+
+  pendingSettingsWriteTimer = setTimeout(() => {
+    pendingSettingsWriteTimer = null;
+    const snapshot = pendingSettingsSnapshot;
+    if (!snapshot) return;
+    pendingSettingsSnapshot = null;
+    const payload = JSON.stringify(snapshot, null, 2);
+    settingsWriteChain = settingsWriteChain
+      .catch(() => undefined)
+      .then(async () => {
+        await writeFile(SETTINGS_FILE, payload, "utf-8");
+      })
+      .catch(() => undefined);
+  }, SETTINGS_SAVE_DEBOUNCE_MS);
 }
 
 export function getPendingRestartMessages(): PendingRestartMessage[] {
