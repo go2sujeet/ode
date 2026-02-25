@@ -51,15 +51,26 @@ function splitForDiscord(text: string): string[] {
 }
 
 async function resolveTextChannel(channelId: string) {
+  const attempts: string[] = [];
   for (const client of discordClients.values()) {
     try {
       const channel = await client.channels.fetch(channelId);
       if (channel && channel.isTextBased()) {
         return channel as any;
       }
-    } catch {
-      // Try next client
+      attempts.push(`bot=${client.user?.id || "unknown"}: channel_not_text_or_missing`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      attempts.push(`bot=${client.user?.id || "unknown"}: ${errorMessage}`);
     }
+  }
+
+  if (attempts.length > 0) {
+    log.warn("Failed to resolve Discord text channel from available clients", {
+      channelId,
+      clientCount: discordClients.size,
+      attempts,
+    });
   }
 
   throw new Error(`Discord channel ${channelId} is not text-based or inaccessible`);
@@ -91,15 +102,36 @@ async function sendMessage(
   threadId: string,
   text: string
 ): Promise<string | undefined> {
-  const channel = await resolveTextChannel(threadId);
-  const chunks = splitForDiscord(text);
-  let firstId: string | undefined;
-  for (const chunk of chunks) {
-    const sent = await channel.send(chunk);
-    firstId = firstId || sent.id;
-    statusMessageThreadMap.set(sent.id, threadId);
+  try {
+    const channel = await resolveTextChannel(threadId);
+    const chunks = splitForDiscord(text);
+    let firstId: string | undefined;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index] ?? "";
+      try {
+        const sent = await channel.send(chunk);
+        firstId = firstId || sent.id;
+        statusMessageThreadMap.set(sent.id, threadId);
+      } catch (error) {
+        log.warn("Failed to send Discord message chunk", {
+          threadId,
+          chunkIndex: index,
+          chunkCount: chunks.length,
+          chunkLength: chunk.length,
+          error: String(error),
+        });
+        throw error;
+      }
+    }
+    return firstId;
+  } catch (error) {
+    log.warn("Failed to send Discord message", {
+      threadId,
+      textLength: text.length,
+      error: String(error),
+    });
+    throw error;
   }
-  return firstId;
 }
 
 async function updateMessage(
@@ -132,14 +164,16 @@ async function updateMessage(
       });
     }
   } catch (error) {
-    const message = String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
     log.warn("Failed to update Discord message", {
       messageId,
       channelId,
       resolvedChannelId: statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || channelId,
-      error: message,
+      error: errorMessage,
+      errorStack,
     });
-    const normalized = message.toLowerCase();
+    const normalized = errorMessage.toLowerCase();
     if (normalized.includes("429") || normalized.includes("rate limit") || normalized.includes("ratelimit")) {
       throw error;
     }
