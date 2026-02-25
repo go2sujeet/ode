@@ -57,7 +57,7 @@ function printHelp(): void {
       "  ode stop",
       "  ode onboard",
       "  ode --foreground",
-      "  ODE_WEB_HOST=0.0.0.0 ode --help",
+      "  ODE_WEB_HOST=0.0.0.0 ode #run ode process and expose setting UI",
     ].join("\n"),
   );
 }
