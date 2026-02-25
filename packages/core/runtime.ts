@@ -40,16 +40,6 @@ type RuntimeState = {
   stateMachines: Map<string, CoreStateMachine>;
 };
 
-type BranchCacheEntry = {
-  value: string | null;
-  expiresAt: number;
-};
-
-const BRANCH_CACHE_TTL_MS = 30_000;
-const BRANCH_CACHE_MISS_TTL_MS = 5_000;
-const GIT_BRANCH_TIMEOUT_MS = 1_500;
-const branchNameCache = new Map<string, BranchCacheEntry>();
-
 function createRuntimeState(): RuntimeState {
   return {
     liveEventHistory: new Map(),
@@ -58,57 +48,24 @@ function createRuntimeState(): RuntimeState {
   };
 }
 
-function getCachedBranchName(cwd: string): string | null | undefined {
-  const entry = branchNameCache.get(cwd);
-  if (!entry) return undefined;
-  if (entry.expiresAt <= Date.now()) {
-    branchNameCache.delete(cwd);
-    return undefined;
-  }
-  return entry.value;
-}
-
-function setCachedBranchName(cwd: string, value: string | null): void {
-  branchNameCache.set(cwd, {
-    value,
-    expiresAt: Date.now() + (value ? BRANCH_CACHE_TTL_MS : BRANCH_CACHE_MISS_TTL_MS),
-  });
-}
-
-function resolveBranchNameFromGit(cwd: string): string | null {
-  const result = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd,
-    env: { ...process.env },
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "ignore"],
-    timeout: GIT_BRANCH_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-  });
-
-  if (result.error) {
-    log.debug("Failed resolving git branch name", { cwd, error: String(result.error) });
-    return null;
-  }
-
-  if (typeof result.status === "number" && result.status !== 0) {
-    return null;
-  }
-
-  const name = result.stdout.trim();
-  if (!name || name === "HEAD") {
-    return null;
-  }
-
-  return name;
-}
-
 function getCurrentBranchName(cwd: string): string | null {
-  const cached = getCachedBranchName(cwd);
-  if (cached !== undefined) return cached;
-
-  const name = resolveBranchNameFromGit(cwd);
-  setCachedBranchName(cwd, name);
-  return name;
+  try {
+    const result = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      env: { ...process.env },
+      encoding: "utf-8",
+    });
+    if (result.status !== 0) {
+      return null;
+    }
+    const name = String(result.stdout || "").trim();
+    if (!name || name === "HEAD") {
+      return null;
+    }
+    return name;
+  } catch {
+    return null;
+  }
 }
 
 async function maybeSyncBranchAndThread(params: {
