@@ -34,6 +34,7 @@ type StatusTodo = {
 };
 
 const PLAN_TODO_LIMIT = 15;
+const SUBAGENT_WAIT_THRESHOLD_MS = 30_000;
 
 export function formatElapsedTime(startedAt: number): string {
   const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
@@ -167,6 +168,26 @@ function formatTodoLines(todos: StatusTodo[], limit = PLAN_TODO_LIMIT): string[]
     lines.push(`_(+${todos.length - limit} more)_`);
   }
   return lines;
+}
+
+function resolveLongRunningSubagentPhase(state: SessionMessageState): string | undefined {
+  const runningSubagent = [...state.tools]
+    .reverse()
+    .find((tool) => {
+      const name = typeof tool.name === "string" ? tool.name.trim().toLowerCase() : "";
+      return (tool.status === "running" || tool.status === "pending") && name === "subagent";
+    });
+
+  if (!runningSubagent) return undefined;
+  const startedAtMs = typeof runningSubagent.metadata?.startedAtMs === "number"
+    ? runningSubagent.metadata.startedAtMs
+    : undefined;
+  if (!startedAtMs) return undefined;
+
+  const elapsedMs = Date.now() - startedAtMs;
+  if (elapsedMs < SUBAGENT_WAIT_THRESHOLD_MS) return undefined;
+
+  return `Waiting for subagent output (${formatElapsedTime(startedAtMs)})`;
 }
 
 function normalizeToolName(name: string): string {
@@ -313,7 +334,10 @@ export function buildLiveStatusMessage(
     lines.push(`(${headerDetails})`);
   }
 
-  if (state.phaseStatus) {
+  const longRunningSubagentPhase = resolveLongRunningSubagentPhase(state);
+  if (longRunningSubagentPhase) {
+    lines.push(`_${longRunningSubagentPhase}_`);
+  } else if (state.phaseStatus) {
     lines.push(`_${state.phaseStatus}_`);
   }
 

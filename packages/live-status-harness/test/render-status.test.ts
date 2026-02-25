@@ -69,6 +69,94 @@ describe("live status harness renderer", () => {
     expect(joined).toContain("Finished tool: Read");
   });
 
+  it("renders goose subagent completion when tool response uses tool_use_id", () => {
+    const now = Date.now();
+    const meta: HarnessRunMeta = {
+      runId: "run-goose-subagent-id",
+      provider: "goose",
+      prompt: "test",
+      promptHash: "hash",
+      cwd: "/tmp/repo",
+      channelId: "C1",
+      threadId: "T1",
+      sessionId: "goose_s1",
+      startedAt: now,
+      eventCount: 2,
+    };
+
+    const events: HarnessCapturedEvent[] = [
+      {
+        runId: "run-goose-subagent-id",
+        sessionId: "goose_s1",
+        provider: "goose",
+        timestamp: now,
+        index: 0,
+        event: {
+          type: "goose.raw.message",
+          properties: {
+            record: {
+              type: "message",
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "toolRequest",
+                    id: "call-subagent-1",
+                    toolCall: {
+                      value: {
+                        name: "subagent",
+                        arguments: { instructions: "inspect repo" },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      {
+        runId: "run-goose-subagent-id",
+        sessionId: "goose_s1",
+        provider: "goose",
+        timestamp: now + 1,
+        index: 1,
+        event: {
+          type: "goose.raw.message",
+          properties: {
+            record: {
+              type: "message",
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "toolResponse",
+                    tool_use_id: "call-subagent-1",
+                    toolResult: {
+                      status: "success",
+                      value: {
+                        content: [
+                          { type: "text", text: "subagent complete" },
+                        ],
+                        isError: false,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ];
+
+    const statuses = renderStatusesFromRun(meta, events);
+    const joined = statuses.map((status) => status.text).join("\n\n");
+
+    expect(joined).toContain("Running tool: subagent");
+    expect(joined).toContain("Finished tool: subagent");
+  });
+
   it("renders gemini live status from synthetic fixture", () => {
     const now = Date.now();
     const meta: HarnessRunMeta = {

@@ -59,6 +59,40 @@ export type GooseInspectorToolState = StreamToolState;
 
 export type GooseStreamStateMaps = StreamStateMaps<GooseInspectorToolState>;
 
+function resolveGooseToolResponseId(block: {
+  id?: string;
+  tool_use_id?: string;
+}): string {
+  if (typeof block.id === "string" && block.id.trim()) {
+    return block.id;
+  }
+  if (typeof block.tool_use_id === "string" && block.tool_use_id.trim()) {
+    return block.tool_use_id;
+  }
+  return "";
+}
+
+function extractGooseToolResponseText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  return value
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => {
+      const record = entry as { type?: string; text?: string };
+      if (record.type === "text" && typeof record.text === "string") {
+        return record.text;
+      }
+      return "";
+    })
+    .filter((text) => text.length > 0)
+    .join("\n")
+    .trim();
+}
+
 function parseTodosFromGooseToolInput(toolName: string, input: Record<string, unknown> | undefined): SessionTodo[] | undefined {
   const direct = parseTodosFromToolInput(toolName, input);
   if (direct) return direct;
@@ -97,6 +131,9 @@ export function applyGooseRecordToState(
     const blocks = record.message?.content ?? [];
 
     if (role === "assistant") {
+      const messageCreatedAtMs = typeof record.message?.created === "number"
+        ? record.message.created * 1000
+        : Date.now();
       for (const block of blocks) {
         if (block?.type === "text") {
           const chunk = typeof block.text === "string" ? block.text : "";
@@ -138,7 +175,12 @@ export function applyGooseRecordToState(
           output: existing?.output,
           error: existing?.error,
           title: existing?.title,
-          metadata: existing?.metadata,
+          metadata: {
+            ...(existing?.metadata ?? {}),
+            startedAtMs: typeof existing?.metadata?.startedAtMs === "number"
+              ? existing.metadata.startedAtMs
+              : messageCreatedAtMs,
+          },
         };
         toolById.set(callId, tool);
         updateTool(state, tool);
@@ -150,16 +192,12 @@ export function applyGooseRecordToState(
     if (role === "user") {
       for (const block of blocks) {
         if (block?.type !== "toolResponse") continue;
-        const callId = typeof block.id === "string" && block.id.trim() ? block.id : "";
+        const callId = resolveGooseToolResponseId(block);
         if (!callId) continue;
         const existing = toolById.get(callId);
         if (!existing) continue;
         const result = block.toolResult?.value;
-        const output = (result?.content ?? [])
-          .filter((entry) => entry?.type === "text")
-          .map((entry) => entry.text ?? "")
-          .join("\n")
-          .trim();
+        const output = extractGooseToolResponseText(result?.content);
         const hasError = result?.isError === true || block.toolResult?.status === "error";
         const updated: GooseInspectorToolState = {
           ...existing,
