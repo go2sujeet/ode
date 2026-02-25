@@ -324,12 +324,16 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     });
 
     const responses = await runOpenRequest({
-      deps: runtimeDeps,
+      deps: {
+        ...runtimeDeps,
+        platform: deps.platform,
+      },
       session,
       context,
       sessionId,
       cwd,
       message: text,
+      isFirstMessageInThread: created,
       stateMachine,
       agentContext,
       options,

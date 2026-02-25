@@ -19,6 +19,7 @@ import { getStatusMessageKey, type SessionEvent, type SessionMessageState, log }
 type OpenRequestDeps = {
   im: IMAdapter;
   agent: AgentAdapter;
+  platform: "slack" | "discord" | "lark";
 };
 
 export async function runOpenRequest(params: {
@@ -31,6 +32,7 @@ export async function runOpenRequest(params: {
   stateMachine: CoreStateMachine;
   agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
   options?: OpenCodeOptions;
+  isFirstMessageInThread: boolean;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
   publishFinalText: (params: {
@@ -50,6 +52,7 @@ export async function runOpenRequest(params: {
     stateMachine,
     agentContext,
     options,
+    isFirstMessageInThread,
     liveEventHistory,
     liveParsedState,
     publishFinalText,
@@ -81,16 +84,22 @@ export async function runOpenRequest(params: {
   saveSession(session);
 
   const statusMessageKey = getStatusMessageKey(request);
-  void maybeGenerateSessionTitle({
-    prompt: message,
-    stateKey: statusMessageKey,
-    liveParsedState,
-    startedAt: request.startedAt,
-    onTitleGenerated: async (title) => {
-      if (!deps.im.renameThread) return;
-      await deps.im.renameThread(context.channelId, context.replyThreadId, title);
-    },
-  });
+  const triggerThreadRenameFromTitle = () => {
+    void maybeGenerateSessionTitle({
+      prompt: message,
+      stateKey: statusMessageKey,
+      liveParsedState,
+      startedAt: request.startedAt,
+      onTitleGenerated: async (title) => {
+        if (!deps.im.renameThread) return;
+        await deps.im.renameThread(context.channelId, context.replyThreadId, title);
+      },
+    });
+  };
+
+  if (deps.platform !== "discord") {
+    triggerThreadRenameFromTitle();
+  }
 
   const progressIntervalMs = resolveMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
@@ -156,6 +165,11 @@ export async function runOpenRequest(params: {
   });
 
   if (result.responses === null) return null;
+
+  if (deps.platform === "discord" && isFirstMessageInThread) {
+    triggerThreadRenameFromTitle();
+  }
+
   if (result.stopFallbackText) {
     return [{ text: result.stopFallbackText, messageType: "assistant" }];
   }

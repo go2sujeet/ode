@@ -40,7 +40,6 @@ const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
-const liveStatusThreadRenameAttempted = new Set<string>();
 
 function splitForDiscord(text: string): string[] {
   if (text.length <= DISCORD_MESSAGE_LIMIT) return [text];
@@ -236,35 +235,6 @@ async function updateMessage(
       throw lastRateLimitError;
     }
 
-    const statusTitle = extractStatusTitleForDiscord(text);
-    if (
-      statusTitle
-      && threadId
-      && !liveStatusThreadRenameAttempted.has(threadId)
-      && typeof (channel as any).setName === "function"
-    ) {
-      liveStatusThreadRenameAttempted.add(threadId);
-      if ((channel as any).name !== statusTitle) {
-        void (channel as any).setName(statusTitle)
-          .then(() => {
-            log.debug("Discord thread renamed from live status title", {
-              channelId,
-              threadId,
-              messageId,
-              statusTitle,
-            });
-          })
-          .catch((error: unknown) => {
-            log.warn("Failed to rename Discord thread from live status title", {
-              channelId,
-              threadId,
-              messageId,
-              statusTitle,
-              error: String(error),
-            });
-          });
-      }
-    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
@@ -379,15 +349,6 @@ function formatThreadNameFromStatusTitle(title: string): string {
     .trim();
   if (!normalized) return "";
   return normalized.slice(0, DISCORD_THREAD_RENAME_LIMIT).trim();
-}
-
-function extractStatusTitleForDiscord(text: string): string | null {
-  const firstLine = text.split(/\r?\n/, 1)[0]?.trim() || "";
-  if (!firstLine.startsWith("*")) return null;
-  const matched = firstLine.match(/^\*([^*]+)\*\s*(?:\(|$)/);
-  if (!matched?.[1]) return null;
-  const title = formatThreadNameFromStatusTitle(matched[1]);
-  return title || null;
 }
 
 async function renameDiscordThread(
@@ -666,7 +627,6 @@ const discordRuntimeController = createRuntimeController({
     }
     discordClients.clear();
     statusMessageThreadMap.clear();
-    liveStatusThreadRenameAttempted.clear();
     log.debug("Discord runtime stopped", { reason });
   },
 });
