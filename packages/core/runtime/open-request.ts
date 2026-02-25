@@ -90,9 +90,6 @@ export async function runOpenRequest(params: {
       stateKey: statusMessageKey,
       liveParsedState,
       startedAt: request.startedAt,
-      onTitleGenerated: async (title) => {
-        await deps.im.renameThread!(context.channelId, context.replyThreadId, title);
-      },
     });
   };
 
