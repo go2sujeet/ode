@@ -5,6 +5,7 @@ import { mkdir, readdir, readFile, unlink, writeFile } from "fs/promises";
 import { log } from "@/utils";
 
 const readFileSync = fs.readFileSync;
+const readdirSync = fs.readdirSync;
 const mkdirSync = fs.mkdirSync;
 const unlinkSync = fs.unlinkSync;
 const join = typeof path.join === "function" ? path.join : (...parts: string[]) => parts.join("/");
@@ -457,16 +458,57 @@ export function updateSessionIdForThread(channelId: string, threadId: string, se
 }
 
 export function findReplyThreadIdByStatusMessageTs(messageTs: string): string | null {
-  if (activeSessions.size === 0) {
-    scheduleSessionsHydration();
-  }
-
   for (const session of activeSessions.values()) {
     const activeRequest = session.activeRequest;
     if (!activeRequest) continue;
     if (activeRequest.statusMessageTs === messageTs) {
       return activeRequest.replyThreadId || null;
     }
+  }
+
+  if (!sessionsHydrated) {
+    const foundFromDisk = findReplyThreadIdByStatusMessageTsFromDisk(messageTs);
+    if (foundFromDisk) {
+      return foundFromDisk;
+    }
+    scheduleSessionsHydration();
+  }
+
+  return null;
+}
+
+function findReplyThreadIdByStatusMessageTsFromDisk(messageTs: string): string | null {
+  try {
+    ensureSessionsDir();
+    const files = readdirSync(SESSIONS_DIR);
+    const now = Date.now();
+
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      const filePath = join(SESSIONS_DIR, file);
+      try {
+        const data = readFileSync(filePath, "utf-8");
+        const session = normalizeLoadedSession(JSON.parse(data) as PersistedSession);
+        if (isSessionExpired(session, now)) {
+          continue;
+        }
+
+        const sessionKey = getSessionKey(session.channelId, session.threadId);
+        if (!activeSessions.has(sessionKey)) {
+          activeSessions.set(sessionKey, session);
+        }
+
+        const activeRequest = session.activeRequest;
+        if (!activeRequest) continue;
+        if (activeRequest.statusMessageTs === messageTs) {
+          return activeRequest.replyThreadId || null;
+        }
+      } catch {
+        // Skip invalid session files
+      }
+    }
+  } catch {
+    // Ignore directory read errors
   }
 
   return null;
