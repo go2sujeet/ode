@@ -13,7 +13,7 @@ export type AgentInstallStatus = {
 };
 
 export type AgentCheckResult = AgentInstallStatus & {
-  claude: boolean;
+  readonly claude?: boolean;
   opencodeModels: string[];
   opencodeModelError?: string;
   kiloModels: string[];
