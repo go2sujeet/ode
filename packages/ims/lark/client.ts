@@ -778,13 +778,41 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
   );
 
   if (
+    action === "set_general_settings"
+    ||
     action === "set_general_status_format"
     || action === "set_general_status_frequency"
     || action === "set_general_git_strategy"
     || action === "set_general_auto_update"
   ) {
     const current = getUserGeneralSettings();
-    if (action === "set_general_status_format") {
+    if (action === "set_general_settings") {
+      const formValues = extractFormValues(payload);
+      const format = pickFormValue(formValues, "statusFormat");
+      const frequency = pickFormValue(formValues, "statusFrequencyMs");
+      const gitStrategy = pickFormValue(formValues, "gitStrategy");
+      const autoUpdate = pickFormValue(formValues, "autoUpdate");
+
+      if (format.exists && (format.value === "minimum" || format.value === "medium" || format.value === "aggressive")) {
+        current.defaultStatusMessageFormat = format.value as StatusMessageFormat;
+      }
+
+      if (frequency.exists) {
+        const parsed = Number(frequency.value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          current.statusMessageFrequencyMs = parseStatusMessageFrequencyMs(parsed);
+        }
+      }
+
+      if (gitStrategy.exists) {
+        current.gitStrategy = gitStrategy.value === "default" ? "default" : "worktree";
+      }
+
+      if (autoUpdate.exists) {
+        const normalized = autoUpdate.value.toLowerCase();
+        current.autoUpdate = !(normalized === "off" || normalized === "false" || normalized === "0");
+      }
+    } else if (action === "set_general_status_format") {
       const format = firstNonEmptyString(
         pickValueField(value, "status_format"),
         pickValueField(value, "statusFormat"),
@@ -946,6 +974,8 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
     ? null
     : buildLarkSettingsDetailCard({
       action: (
+        action === "set_general_settings"
+        ||
         action === "set_general_status_format"
         || action === "set_general_status_frequency"
         || action === "set_general_git_strategy"
@@ -966,6 +996,8 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
       threadId,
       userId: userId || "",
       notice: (
+        action === "set_general_settings"
+        ||
         action === "set_general_status_format"
         || action === "set_general_status_frequency"
         || action === "set_general_git_strategy"

@@ -21,6 +21,7 @@ export type LarkSettingsCardAction =
   | "open_general_settings_modal"
   | "open_settings_modal"
   | "open_github_token_modal"
+  | "set_general_settings"
   | "set_general_status_format"
   | "set_general_status_frequency"
   | "set_general_git_strategy"
@@ -103,6 +104,7 @@ export function resolveLarkSettingsCardAction(value: unknown): LarkSettingsCardA
       || normalized === "open_general_settings_modal"
       || normalized === "open_settings_modal"
       || normalized === "open_github_token_modal"
+      || normalized === "set_general_settings"
       || normalized === "set_general_status_format"
       || normalized === "set_general_status_frequency"
       || normalized === "set_general_git_strategy"
@@ -132,6 +134,24 @@ function maskedToken(token: string | undefined): string {
   if (!token) return "(not set)";
   if (token.length <= 8) return "********";
   return `${token.slice(0, 4)}...${token.slice(-4)}`;
+}
+
+function buildCardV2(
+  template: string,
+  title: string,
+  elements: Array<Record<string, unknown>>
+): Record<string, unknown> {
+  return {
+    schema: "2.0",
+    config: { wide_screen_mode: true },
+    header: {
+      template,
+      title: { tag: "plain_text", content: title },
+    },
+    body: {
+      elements,
+    },
+  };
 }
 
 export function buildLarkSettingsDetailCard(params: {
@@ -172,122 +192,115 @@ export function buildLarkSettingsDetailCard(params: {
 
     elements.push(
       {
-        tag: "markdown",
-        content: "General",
-      },
-      {
-        tag: "markdown",
-        content: `Status message format\nCurrent: \`${general.defaultStatusMessageFormat}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+        tag: "form",
+        name: "generalSettingsForm",
+        elements: [
+          {
+            tag: "markdown",
+            content: "General",
+          },
+          {
+            tag: "markdown",
+            content: `Status message format\nCurrent: \`${general.defaultStatusMessageFormat}\``,
+          },
           {
             tag: "select_static",
+            name: "statusFormat",
             placeholder: { tag: "plain_text", content: "Select format" },
             options: statusFormatOptions.map((item) => ({
               text: { tag: "plain_text", content: item.label },
               value: item.value,
             })),
-            value: {
-              action: "set_general_status_format",
-              current: general.defaultStatusMessageFormat,
-              channelId,
-              threadId,
-            },
           },
-        ],
-      },
-      {
-        tag: "markdown",
-        content: `Status message frequency\nCurrent: \`${general.statusMessageFrequencyMs / 1000}s\``,
-      },
-      {
-        tag: "action",
-        actions: [
+          {
+            tag: "markdown",
+            content: `Status message frequency\nCurrent: \`${general.statusMessageFrequencyMs / 1000}s\``,
+          },
           {
             tag: "select_static",
+            name: "statusFrequencyMs",
             placeholder: { tag: "plain_text", content: "Select frequency" },
             options: STATUS_MESSAGE_FREQUENCY_OPTIONS.map((item) => ({
               text: { tag: "plain_text", content: item.label },
               value: String(item.ms),
             })),
-            value: {
-              action: "set_general_status_frequency",
-              current: String(general.statusMessageFrequencyMs),
-              channelId,
-              threadId,
-            },
           },
-        ],
-      },
-      {
-        tag: "markdown",
-        content: `Git strategy\nCurrent: \`${general.gitStrategy}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+          {
+            tag: "markdown",
+            content: `Git strategy\nCurrent: \`${general.gitStrategy}\``,
+          },
           {
             tag: "select_static",
+            name: "gitStrategy",
             placeholder: { tag: "plain_text", content: "Select strategy" },
             options: gitOptions.map((item) => ({
               text: { tag: "plain_text", content: item.label },
               value: item.value,
             })),
-            value: {
-              action: "set_general_git_strategy",
-              current: general.gitStrategy,
-              channelId,
-              threadId,
-            },
           },
-        ],
-      },
-      {
-        tag: "markdown",
-        content: `Auto update\nCurrent: \`${boolText(general.autoUpdate)}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+          {
+            tag: "markdown",
+            content: `Auto update\nCurrent: \`${boolText(general.autoUpdate)}\``,
+          },
           {
             tag: "select_static",
+            name: "autoUpdate",
             placeholder: { tag: "plain_text", content: "Select auto update" },
             options: autoUpdateOptions.map((item) => ({
               text: { tag: "plain_text", content: item.label },
               value: item.value,
             })),
+          },
+          {
+            tag: "button",
+            name: "submitGeneralSettings",
+            type: "primary",
+            text: { tag: "plain_text", content: "Save general setting" },
             value: {
-              action: "set_general_auto_update",
-              current: general.autoUpdate ? "on" : "off",
+              action: "set_general_settings",
               channelId,
               threadId,
             },
+            behaviors: [
+              {
+                type: "callback",
+                value: {
+                  action: "set_general_settings",
+                  channelId,
+                  threadId,
+                },
+              },
+            ],
+            form_action_type: "submit",
           },
         ],
       },
       {
-        tag: "action",
-        actions: [
+        tag: "column_set",
+        columns: [
           {
-            tag: "button",
-            type: "primary",
-            text: { tag: "plain_text", content: "Back" },
-            value: { action: "open_settings_launcher", channelId, threadId },
+            tag: "column",
+            width: "auto",
+            elements: [
+              {
+                tag: "button",
+                name: "backFromGeneral",
+                type: "primary",
+                text: { tag: "plain_text", content: "Back" },
+                behaviors: [
+                  {
+                    type: "callback",
+                    value: { action: "open_settings_launcher", channelId, threadId },
+                  },
+                ],
+              },
+            ],
           },
         ],
       }
     );
 
-    return {
-      config: { wide_screen_mode: true },
-      header: {
-        template: "blue",
-        title: { tag: "plain_text", content: "General setting" },
-      },
-      elements,
-    };
+    return buildCardV2("blue", "General setting", elements);
   }
 
   if (action === "open_settings_modal") {
@@ -366,13 +379,7 @@ export function buildLarkSettingsDetailCard(params: {
       channelSystemMessage: systemMessage === "(none)" ? "" : systemMessage,
     };
 
-    return {
-      config: { wide_screen_mode: true },
-      header: {
-        template: "turquoise",
-        title: { tag: "plain_text", content: "Channel setting" },
-      },
-      elements: [
+    return buildCardV2("turquoise", "Channel setting", [
         ...(notice
           ? [
             {
@@ -382,133 +389,133 @@ export function buildLarkSettingsDetailCard(params: {
           ]
           : []),
         {
-          tag: "markdown",
-          content: "Coding Agent",
-        },
-        {
-          tag: "markdown",
-          content: `Provider\nCurrent: \`${provider}\``,
-        },
-        {
-          tag: "action",
-          actions: [
+          tag: "form",
+          name: "channelSettingsForm",
+          elements: [
+            {
+              tag: "markdown",
+              content: "Coding Agent",
+            },
+            {
+              tag: "markdown",
+              content: `Provider\nCurrent: \`${provider}\``,
+            },
             {
               tag: "select_static",
+              name: "provider",
               placeholder: { tag: "plain_text", content: "Select provider" },
               options: providerOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "provider",
-              },
             },
-          ],
-        },
-        {
-          tag: "markdown",
-          content: `Model\nCurrent: \`${model}\``,
-        },
-        {
-          tag: "action",
-          actions: [
+            {
+              tag: "markdown",
+              content: `Model\nCurrent: \`${model}\``,
+            },
             {
               tag: "select_static",
+              name: "model",
               placeholder: { tag: "plain_text", content: "Select model" },
               options: modelOptions.length > 0
                 ? modelOptions
                 : [{ text: { tag: "plain_text", content: "(empty)" }, value: "" }],
-              value: {
-                ...settingsBaseValue,
-                field: "model",
-              },
             },
-          ],
-        },
-        {
-          tag: "markdown",
-          content: "Execution",
-        },
-        {
-          tag: "markdown",
-          content: `Working directory\nCurrent: \`${cwd}\``,
-        },
-        {
-          tag: "action",
-          actions: [
+            {
+              tag: "markdown",
+              content: "Execution",
+            },
+            {
+              tag: "markdown",
+              content: `Working directory\nCurrent: \`${cwd}\``,
+            },
             {
               tag: "select_static",
+              name: "workingDirectory",
               placeholder: { tag: "plain_text", content: "Select working directory" },
               options: workingDirectoryOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "workingDirectory",
-              },
             },
-          ],
-        },
-        {
-          tag: "markdown",
-          content: `Base branch\nCurrent: \`${baseBranch}\``,
-        },
-        {
-          tag: "action",
-          actions: [
+            {
+              tag: "markdown",
+              content: `Base branch\nCurrent: \`${baseBranch}\``,
+            },
             {
               tag: "select_static",
+              name: "baseBranch",
               placeholder: { tag: "plain_text", content: "Select base branch" },
               options: baseBranchOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "baseBranch",
-              },
             },
-          ],
-        },
-        {
-          tag: "markdown",
-          content: `System message\nCurrent: ${systemMessage}`,
-        },
-        {
-          tag: "action",
-          actions: [
+            {
+              tag: "markdown",
+              content: `System message\nCurrent: ${systemMessage}`,
+            },
             {
               tag: "select_static",
+              name: "channelSystemMessage",
               placeholder: { tag: "plain_text", content: "Select system message" },
               options: channelSystemMessageOptions,
-              value: {
-                ...settingsBaseValue,
-                field: "channelSystemMessage",
-              },
             },
-          ],
-        },
-        {
-          tag: "action",
-          actions: [
             {
               tag: "button",
+              name: "submitChannelSettings",
               type: "primary",
               text: { tag: "plain_text", content: "Save channel setting" },
               value: {
                 ...settingsBaseValue,
                 field: "save",
               },
-            },
-            {
-              tag: "button",
-              type: "default",
-              text: { tag: "plain_text", content: "Open channel page" },
-              url: workspaceUrl,
-            },
-            {
-              tag: "button",
-              type: "primary",
-              text: { tag: "plain_text", content: "Back" },
-              value: { action: "open_settings_launcher", channelId, threadId },
+              behaviors: [
+                {
+                  type: "callback",
+                  value: {
+                    ...settingsBaseValue,
+                    field: "save",
+                  },
+                },
+              ],
+              form_action_type: "submit",
             },
           ],
         },
-      ],
-    };
+        {
+          tag: "column_set",
+          columns: [
+            {
+              tag: "column",
+              width: "auto",
+              elements: [
+                {
+                  tag: "button",
+                  name: "openChannelPage",
+                  type: "default",
+                  text: { tag: "plain_text", content: "Open channel page" },
+                  behaviors: [
+                    {
+                      type: "open_url",
+                      default_url: workspaceUrl,
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              tag: "column",
+              width: "auto",
+              elements: [
+                {
+                  tag: "button",
+                  name: "backFromChannel",
+                  type: "primary",
+                  text: { tag: "plain_text", content: "Back" },
+                  behaviors: [
+                    {
+                      type: "callback",
+                      value: { action: "open_settings_launcher", channelId, threadId },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ]);
   }
 
   const github = getGitHubInfoForUser(userId);
@@ -523,13 +530,7 @@ export function buildLarkSettingsDetailCard(params: {
     githubName,
     githubEmail,
   };
-  return {
-    config: { wide_screen_mode: true },
-    header: {
-      template: "violet",
-      title: { tag: "plain_text", content: "GitHub info" },
-    },
-    elements: [
+  return buildCardV2("violet", "GitHub info", [
       ...(notice
         ? [
           {
@@ -539,112 +540,140 @@ export function buildLarkSettingsDetailCard(params: {
         ]
         : []),
       {
-        tag: "markdown",
-        content: "GitHub",
-      },
-      {
-        tag: "markdown",
-        content: `Token\nCurrent: \`${maskedToken(github?.token)}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+        tag: "form",
+        name: "githubSettingsForm",
+        elements: [
+          {
+            tag: "markdown",
+            content: "GitHub",
+          },
+          {
+            tag: "markdown",
+            content: `Token\nCurrent: \`${maskedToken(github?.token)}\``,
+          },
           {
             tag: "select_static",
+            name: "githubToken",
             placeholder: { tag: "plain_text", content: "Token action" },
             options: [
               { text: { tag: "plain_text", content: "Keep current" }, value: githubToken },
               { text: { tag: "plain_text", content: "Clear token" }, value: "" },
             ],
-            value: {
-              ...githubBaseValue,
-              field: "githubToken",
-            },
           },
-        ],
-      },
-      {
-        tag: "markdown",
-        content: `Git name\nCurrent: \`${github?.gitName || "(not set)"}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+          {
+            tag: "markdown",
+            content: `Git name\nCurrent: \`${github?.gitName || "(not set)"}\``,
+          },
           {
             tag: "select_static",
+            name: "githubName",
             placeholder: { tag: "plain_text", content: "Select git name" },
             options: [
               { text: { tag: "plain_text", content: githubName || "(not set)" }, value: githubName },
               { text: { tag: "plain_text", content: "LIU9293" }, value: "LIU9293" },
               { text: { tag: "plain_text", content: "(empty)" }, value: "" },
             ],
-            value: {
-              ...githubBaseValue,
-              field: "githubName",
-            },
           },
-        ],
-      },
-      {
-        tag: "markdown",
-        content: `Git email\nCurrent: \`${github?.gitEmail || "(not set)"}\``,
-      },
-      {
-        tag: "action",
-        actions: [
+          {
+            tag: "markdown",
+            content: `Git email\nCurrent: \`${github?.gitEmail || "(not set)"}\``,
+          },
           {
             tag: "select_static",
+            name: "githubEmail",
             placeholder: { tag: "plain_text", content: "Select git email" },
             options: [
               { text: { tag: "plain_text", content: githubEmail || "(not set)" }, value: githubEmail },
               { text: { tag: "plain_text", content: "mylock.kai@gmail.com" }, value: "mylock.kai@gmail.com" },
               { text: { tag: "plain_text", content: "(empty)" }, value: "" },
             ],
-            value: {
-              ...githubBaseValue,
-              field: "githubEmail",
-            },
           },
-        ],
-      },
-      {
-        tag: "action",
-        actions: [
           {
             tag: "button",
+            name: "submitGitHubSettings",
             type: "primary",
             text: { tag: "plain_text", content: "Save GitHub setting" },
             value: {
               ...githubBaseValue,
               field: "save",
             },
-          },
-          {
-            tag: "button",
-            type: "danger",
-            text: { tag: "plain_text", content: "Clear" },
-            value: {
-              action: "clear_github_info",
-              channelId,
-              threadId,
-            },
-          },
-          {
-            tag: "button",
-            type: "default",
-            text: { tag: "plain_text", content: "Open workspace page" },
-            url: workspaceUrl,
-          },
-          {
-            tag: "button",
-            type: "primary",
-            text: { tag: "plain_text", content: "Back" },
-            value: { action: "open_settings_launcher", channelId, threadId },
+            behaviors: [
+              {
+                type: "callback",
+                value: {
+                  ...githubBaseValue,
+                  field: "save",
+                },
+              },
+            ],
+            form_action_type: "submit",
           },
         ],
       },
-    ],
-  };
+      {
+        tag: "column_set",
+        columns: [
+          {
+            tag: "column",
+            width: "auto",
+            elements: [
+              {
+                tag: "button",
+                name: "clearGitHub",
+                type: "danger",
+                text: { tag: "plain_text", content: "Clear" },
+                behaviors: [
+                  {
+                    type: "callback",
+                    value: {
+                      action: "clear_github_info",
+                      channelId,
+                      threadId,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            tag: "column",
+            width: "auto",
+            elements: [
+              {
+                tag: "button",
+                name: "openWorkspacePage",
+                type: "default",
+                text: { tag: "plain_text", content: "Open workspace page" },
+                behaviors: [
+                  {
+                    type: "open_url",
+                    default_url: workspaceUrl,
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            tag: "column",
+            width: "auto",
+            elements: [
+              {
+                tag: "button",
+                name: "backFromGithub",
+                type: "primary",
+                text: { tag: "plain_text", content: "Back" },
+                behaviors: [
+                  {
+                    type: "callback",
+                    value: { action: "open_settings_launcher", channelId, threadId },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
 }
 
 export async function sendLarkSettingsCard(params: {
