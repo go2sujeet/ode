@@ -91,15 +91,10 @@ export async function runOpenRequest(params: {
       liveParsedState,
       startedAt: request.startedAt,
       onTitleGenerated: async (title) => {
-        if (!deps.im.renameThread) return;
-        await deps.im.renameThread(context.channelId, context.replyThreadId, title);
+        await deps.im.renameThread!(context.channelId, context.replyThreadId, title);
       },
     });
   };
-
-  if (deps.platform !== "discord") {
-    triggerThreadRenameFromTitle();
-  }
 
   const progressIntervalMs = resolveMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
