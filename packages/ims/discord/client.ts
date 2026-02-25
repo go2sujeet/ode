@@ -35,6 +35,8 @@ import {
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_THREAD_NAME_LIMIT = 25;
 const DISCORD_THREAD_RENAME_LIMIT = 90;
+const DISCORD_UPDATE_MAX_ATTEMPTS = 3;
+const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
@@ -48,6 +50,44 @@ function splitForDiscord(text: string): string[] {
     index += DISCORD_MESSAGE_LIMIT;
   }
   return chunks;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isDiscordRateLimitErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("429") || normalized.includes("rate limit") || normalized.includes("ratelimit");
+}
+
+function parseDiscordRetryAfterMs(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const record = error as {
+    retry_after?: unknown;
+    data?: { retry_after?: unknown };
+    rawError?: { retry_after?: unknown };
+    message?: unknown;
+  };
+
+  const retryAfterCandidates = [
+    record.retry_after,
+    record.data?.retry_after,
+    record.rawError?.retry_after,
+  ];
+
+  for (const candidate of retryAfterCandidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0) {
+      return candidate <= 30 ? Math.ceil(candidate * 1000) : Math.ceil(candidate);
+    }
+  }
+
+  const message = typeof record.message === "string" ? record.message : "";
+  const matched = message.match(/retry(?:_|\s)?after[^0-9]*([0-9]+(?:\.[0-9]+)?)/i);
+  if (!matched?.[1]) return null;
+  const parsed = Number(matched[1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed <= 30 ? Math.ceil(parsed * 1000) : Math.ceil(parsed);
 }
 
 async function resolveTextChannel(channelId: string) {
@@ -151,8 +191,50 @@ async function updateMessage(
       statusMessageThreadMap.set(messageId, persistedThreadId);
     }
     const channel = await resolveTextChannel(threadId);
-    const message = await channel.messages.fetch(messageId);
-    await message.edit(splitForDiscord(text)[0] ?? text);
+    const content = splitForDiscord(text)[0] ?? text;
+    let lastRateLimitError: unknown;
+
+    for (let attempt = 1; attempt <= DISCORD_UPDATE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const message = await channel.messages.fetch(messageId);
+        await message.edit(content);
+        lastRateLimitError = undefined;
+        break;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (!isDiscordRateLimitErrorMessage(errorMessage)) {
+          throw error;
+        }
+
+        lastRateLimitError = error;
+
+        if (attempt >= DISCORD_UPDATE_MAX_ATTEMPTS) {
+          throw new Error(
+            `Discord message update failed after ${DISCORD_UPDATE_MAX_ATTEMPTS} attempts due to 429 rate limit: ${errorMessage}`
+          );
+        }
+
+        const retryAfterMs = parseDiscordRetryAfterMs(error);
+        const jitterMs = Math.floor(Math.random() * 120);
+        const backoffMs = DISCORD_UPDATE_RETRY_BASE_MS * attempt + jitterMs;
+        const waitMs = Math.max(retryAfterMs ?? backoffMs, 120);
+        log.warn("Discord message update rate limited; retrying", {
+          channelId,
+          threadId,
+          messageId,
+          attempt,
+          maxAttempts: DISCORD_UPDATE_MAX_ATTEMPTS,
+          waitMs,
+          error: errorMessage,
+        });
+        await sleep(waitMs);
+      }
+    }
+
+    if (lastRateLimitError) {
+      throw lastRateLimitError;
+    }
+
     const statusTitle = extractStatusTitleForDiscord(text);
     if (statusTitle && typeof (channel as any).setName === "function" && (channel as any).name !== statusTitle) {
       await (channel as any).setName(statusTitle);
@@ -173,8 +255,7 @@ async function updateMessage(
       error: errorMessage,
       errorStack,
     });
-    const normalized = errorMessage.toLowerCase();
-    if (normalized.includes("429") || normalized.includes("rate limit") || normalized.includes("ratelimit")) {
+    if (isDiscordRateLimitErrorMessage(errorMessage)) {
       throw error;
     }
   }
