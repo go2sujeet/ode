@@ -71,6 +71,7 @@ export interface SessionMeta {
   workingDirectory: string;
   createdAt: number;
   lastActivityAt: number;
+  initialPrompt?: string;
   threadOwnerUserId?: string;
   slackAppId?: string;
 }
@@ -83,6 +84,7 @@ interface GetSessionEventsOptions {
 type HarnessRunMetaRecord = {
   runId: string;
   provider: string;
+  prompt?: string;
   cwd: string;
   channelId: string;
   threadId: string;
@@ -148,6 +150,7 @@ function parseHarnessRunMeta(raw: string | null): HarnessRunMetaRecord | null {
     return {
       runId: parsed.runId,
       provider: typeof parsed.provider === "string" ? parsed.provider : "opencode",
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : undefined,
       cwd: parsed.cwd,
       channelId: parsed.channelId,
       threadId: parsed.threadId,
@@ -170,6 +173,7 @@ function mapHarnessMetaToSession(meta: HarnessRunMetaRecord): SessionMeta {
     workingDirectory: meta.cwd,
     createdAt: meta.startedAt,
     lastActivityAt: meta.completedAt ?? meta.startedAt,
+    initialPrompt: meta.prompt,
   };
 }
 
@@ -251,6 +255,7 @@ export async function storeSessionMeta(meta: SessionMeta): Promise<void> {
       workingDirectory: meta.workingDirectory,
       createdAt: meta.createdAt.toString(),
       lastActivityAt: meta.lastActivityAt.toString(),
+      initialPrompt: meta.initialPrompt || "",
       threadOwnerUserId: meta.threadOwnerUserId || "",
       slackAppId: meta.slackAppId || "",
     });
@@ -342,6 +347,7 @@ export async function getSessionMeta(sessionId: string): Promise<SessionMeta | n
       workingDirectory: data.workingDirectory,
       createdAt: parseInt(data.createdAt, 10),
       lastActivityAt: parseInt(data.lastActivityAt, 10),
+      initialPrompt: data.initialPrompt || undefined,
       threadOwnerUserId: data.threadOwnerUserId || undefined,
       slackAppId: data.slackAppId || undefined,
     };

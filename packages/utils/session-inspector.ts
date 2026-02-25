@@ -92,6 +92,200 @@ function asNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function extractModelCandidate(value: unknown): string | undefined {
+  if (!value) return undefined;
+
+  const direct = asNonEmptyString(value);
+  if (direct) return direct;
+
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  const modelId =
+    asNonEmptyString(record.modelID)
+    ?? asNonEmptyString(record.modelId)
+    ?? asNonEmptyString(record.model_id)
+    ?? asNonEmptyString(record.id)
+    ?? asNonEmptyString(record.name)
+    ?? asNonEmptyString(record.model);
+  if (modelId) return modelId;
+
+  const nested = asRecord(record.model);
+  if (nested) {
+    const nestedModel = extractModelCandidate(nested);
+    if (nestedModel) return nestedModel;
+  }
+
+  return undefined;
+}
+
+function extractAgentCandidate(value: unknown): string | undefined {
+  if (!value) return undefined;
+  const record = asRecord(value);
+  if (!record) return asNonEmptyString(value);
+
+  return asNonEmptyString(record.agent)
+    ?? asNonEmptyString(record.agentName)
+    ?? asNonEmptyString(record.agent_name)
+    ?? asNonEmptyString(record.mode)
+    ?? asNonEmptyString(record.assistant)
+    ?? asNonEmptyString(record.agentType)
+    ?? asNonEmptyString(record.agent_type);
+}
+
+function extractTokenUsage(value: unknown, fallbackCost?: unknown): SessionTokenUsage | undefined {
+  const tokens = asRecord(value);
+  if (!tokens) return undefined;
+
+  const cacheContainer =
+    asRecord(tokens.cache)
+    ?? asRecord(tokens.cache_tokens)
+    ?? asRecord(tokens.cacheTokens)
+    ?? asRecord(tokens.cached_tokens)
+    ?? asRecord(tokens.cachedTokens)
+    ?? asRecord(tokens.cache_usage)
+    ?? asRecord(tokens.cacheUsage);
+
+  const hasTokenSignal = [
+    tokens.input,
+    tokens.input_tokens,
+    tokens.inputTokens,
+    tokens.prompt_tokens,
+    tokens.promptTokens,
+    tokens.output,
+    tokens.output_tokens,
+    tokens.outputTokens,
+    tokens.completion_tokens,
+    tokens.completionTokens,
+    tokens.reasoning,
+    tokens.reasoning_tokens,
+    tokens.reasoningTokens,
+    tokens.thinking_tokens,
+    tokens.thinkingTokens,
+    tokens.total,
+    tokens.total_tokens,
+    tokens.totalTokens,
+    cacheContainer?.read,
+    cacheContainer?.write,
+    cacheContainer?.input_tokens,
+    cacheContainer?.inputTokens,
+    cacheContainer?.output_tokens,
+    cacheContainer?.outputTokens,
+  ].some((entry) => entry !== undefined && entry !== null);
+  if (!hasTokenSignal) return undefined;
+
+  const input =
+    asNumber(tokens.input)
+    ?? asNumber(tokens.input_tokens)
+    ?? asNumber(tokens.inputTokens)
+    ?? asNumber(tokens.prompt_tokens)
+    ?? asNumber(tokens.promptTokens)
+    ?? 0;
+  const output =
+    asNumber(tokens.output)
+    ?? asNumber(tokens.output_tokens)
+    ?? asNumber(tokens.outputTokens)
+    ?? asNumber(tokens.completion_tokens)
+    ?? asNumber(tokens.completionTokens)
+    ?? 0;
+  const reasoning =
+    asNumber(tokens.reasoning)
+    ?? asNumber(tokens.reasoning_tokens)
+    ?? asNumber(tokens.reasoningTokens)
+    ?? asNumber(tokens.thinking_tokens)
+    ?? asNumber(tokens.thinkingTokens)
+    ?? 0;
+  const cacheRead =
+    asNumber(cacheContainer?.read)
+    ?? asNumber(cacheContainer?.input_tokens)
+    ?? asNumber(cacheContainer?.inputTokens)
+    ?? 0;
+  const cacheWrite =
+    asNumber(cacheContainer?.write)
+    ?? asNumber(cacheContainer?.output_tokens)
+    ?? asNumber(cacheContainer?.outputTokens)
+    ?? 0;
+  const reportedTotal =
+    asNumber(tokens.total)
+    ?? asNumber(tokens.total_tokens)
+    ?? asNumber(tokens.totalTokens);
+  const total = typeof reportedTotal === "number" && Number.isFinite(reportedTotal)
+    ? reportedTotal
+    : input + output + reasoning + cacheRead + cacheWrite;
+  const cost =
+    asNumber(tokens.cost)
+    ?? asNumber(tokens.total_cost)
+    ?? asNumber(tokens.totalCost)
+    ?? asNumber(fallbackCost);
+
+  return {
+    input,
+    output,
+    reasoning,
+    cacheRead,
+    cacheWrite,
+    total,
+    cost,
+  };
+}
+
+function applyMetadataFromRecord(state: SessionMessageState, source: unknown): void {
+  const record = asRecord(source);
+  if (!record) return;
+  const part = asRecord(record.part);
+  const event = asRecord(record.event);
+
+  const modelCandidate =
+    extractModelCandidate(record.modelID)
+    ?? extractModelCandidate(record.modelId)
+    ?? extractModelCandidate(record.model_id)
+    ?? extractModelCandidate(record.model)
+    ?? extractModelCandidate(record.modelInfo)
+    ?? extractModelCandidate(record.model_info)
+    ?? extractModelCandidate(part?.model)
+    ?? extractModelCandidate(event?.model)
+    ?? extractModelCandidate(event?.properties);
+  if (modelCandidate) {
+    state.model = modelCandidate;
+  }
+
+  const agentCandidate =
+    extractAgentCandidate(record)
+    ?? extractAgentCandidate(record.info)
+    ?? extractAgentCandidate(record.message)
+    ?? extractAgentCandidate(part)
+    ?? extractAgentCandidate(event)
+    ?? extractAgentCandidate(event?.properties);
+  if (agentCandidate) {
+    state.agent = agentCandidate;
+  }
+
+  const tokenUsage =
+    extractTokenUsage(record.tokens, record.cost)
+    ?? extractTokenUsage(record.tokenUsage, record.cost)
+    ?? extractTokenUsage(record.token_usage, record.cost)
+    ?? extractTokenUsage(record.usage, record.cost)
+    ?? extractTokenUsage(record.usage_metadata, record.cost)
+    ?? extractTokenUsage(record.metadata, record.cost)
+    ?? extractTokenUsage(part?.tokens, part?.cost)
+    ?? extractTokenUsage(event?.usage, record.cost)
+    ?? extractTokenUsage(asRecord(event?.properties)?.usage, record.cost)
+    ?? extractTokenUsage(record.message, record.cost)
+    ?? extractTokenUsage(record.info, record.cost);
+  if (tokenUsage) {
+    const currentTotal = state.tokenUsage?.total ?? 0;
+    if (tokenUsage.total > 0 || currentTotal <= 0) {
+      state.tokenUsage = tokenUsage;
+    }
+  }
+}
+
 function extractMessageInfo(eventProps: Record<string, unknown>): Record<string, unknown> | undefined {
   const direct = asRecord(eventProps.info);
   if (direct) return direct;
@@ -108,71 +302,7 @@ function applyMessageUpdatedEvent(state: SessionMessageState, eventProps: Record
   const info = extractMessageInfo(eventProps);
   if (!info) return;
 
-  const modelCandidate =
-    (typeof info.modelID === "string" ? info.modelID : undefined)
-    ?? (typeof info.modelId === "string" ? info.modelId : undefined)
-    ?? (typeof info.model === "string" ? info.model : undefined);
-  if (typeof modelCandidate === "string" && modelCandidate.trim()) {
-    state.model = modelCandidate;
-  }
-
-  const agentCandidate =
-    (typeof info.agent === "string" ? info.agent : undefined)
-    ?? (typeof info.agentName === "string" ? info.agentName : undefined)
-    ?? (typeof info.assistant === "string" ? info.assistant : undefined);
-  if (typeof agentCandidate === "string" && agentCandidate.trim()) {
-    state.agent = agentCandidate;
-  }
-
-  const tokenContainer =
-    asRecord(info.tokens)
-    ?? asRecord(info.tokenUsage)
-    ?? asRecord(info.usage);
-  const cacheContainer =
-    asRecord(tokenContainer?.cache)
-    ?? asRecord(tokenContainer?.cache_tokens)
-    ?? asRecord(tokenContainer?.cacheTokens);
-
-  const tokens = tokenContainer;
-  if (tokens && typeof tokens === "object") {
-    const hasTokenSignal = [
-      tokens.input,
-      tokens.input_tokens,
-      tokens.output,
-      tokens.output_tokens,
-      tokens.reasoning,
-      tokens.reasoning_tokens,
-      tokens.total,
-      tokens.total_tokens,
-      cacheContainer?.read,
-      cacheContainer?.write,
-      cacheContainer?.input_tokens,
-      cacheContainer?.output_tokens,
-    ].some((value) => value !== undefined && value !== null);
-    if (!hasTokenSignal) {
-      return;
-    }
-
-    const input = asNumber(tokens.input ?? tokens.input_tokens) ?? 0;
-    const output = asNumber(tokens.output ?? tokens.output_tokens) ?? 0;
-    const reasoning = asNumber(tokens.reasoning ?? tokens.reasoning_tokens) ?? 0;
-    const cacheRead = asNumber(cacheContainer?.read ?? cacheContainer?.input_tokens) ?? 0;
-    const cacheWrite = asNumber(cacheContainer?.write ?? cacheContainer?.output_tokens) ?? 0;
-    const reportedTotal = asNumber(tokens.total ?? tokens.total_tokens);
-    const total = typeof reportedTotal === "number" && Number.isFinite(reportedTotal)
-      ? reportedTotal
-      : input + output + reasoning + cacheRead + cacheWrite;
-    const cost = asNumber(info.cost ?? tokens.cost);
-    state.tokenUsage = {
-      input,
-      output,
-      reasoning,
-      cacheRead,
-      cacheWrite,
-      total,
-      cost,
-    };
-  }
+  applyMetadataFromRecord(state, info);
 }
 
 function applySessionStatusEvent(state: SessionMessageState, eventProps: Record<string, unknown>): void {
@@ -446,6 +576,14 @@ export function buildSessionMessageState(
     const eventData = unwrapEventData(event.data);
     const eventProps = getEventProperties(eventData);
     const type = event.type;
+
+    applyMetadataFromRecord(state, eventData);
+    applyMetadataFromRecord(state, eventProps);
+    applyMetadataFromRecord(state, eventProps.record);
+    applyMetadataFromRecord(state, eventProps.message);
+    applyMetadataFromRecord(state, eventProps.info);
+    applyMetadataFromRecord(state, eventProps.part);
+    applyMetadataFromRecord(state, eventProps.event);
 
     let handledByProvider = false;
     for (const parser of providerParsers) {

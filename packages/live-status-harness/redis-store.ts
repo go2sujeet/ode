@@ -79,6 +79,19 @@ export class HarnessRedisStore {
   async getLatestRunId(): Promise<string | null> {
     return this.client.zrevrange(this.key("runs:index"), 0, 0).then((items) => items[0] ?? null);
   }
+
+  async getLatestRunIdByProvider(provider: HarnessRunMeta["provider"]): Promise<string | null> {
+    const runIds = await this.client.zrevrange(this.key("runs:index"), 0, -1);
+    for (const runId of runIds) {
+      const meta = await this.getRunMeta(runId);
+      if (!meta || meta.provider !== provider) continue;
+      const eventCount = await this.client.llen(this.key(`runs:${runId}:events`));
+      if (eventCount > 0) {
+        return runId;
+      }
+    }
+    return null;
+  }
 }
 
 export function buildHarnessRunId(provider: string): string {

@@ -49,6 +49,8 @@ bun run packages/live-status-harness/scripts/generate-report.ts
 
 This runs capture + render for each provider (`opencode`, `claudecode`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`).
 
+When possible, report generation reuses the latest Redis run for each provider and skips capture. If no Redis stream data exists for a provider, it captures a new run.
+
 By default, it writes one report per provider:
 
 - `packages/live-status-harness/reports/opencode.md`

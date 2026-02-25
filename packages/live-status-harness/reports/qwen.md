@@ -1,50 +1,90 @@
 # Live Status Harness Report - qwen
 
-Generated: 2026-02-22T11:06:45.423Z
+Generated: 2026-02-25T05:17:38.758Z
 Provider: qwen
-Working directory: /root/ode-new/.worktree/ode_1771752635.512539
+Working directory: /root/ode-new/.worktree/ode_1771995140.206739
 
-- Run ID: qwen_1771757570446_8867e8d0
-- Events captured: 311
-- Status updates rendered: 111
+- Run ID: qwen_1771995877979_502aca02
+- Source: Reused Redis stream data
+- Events captured: 461
+- Status updates rendered: 161
 
 ## Final Live Status Message
 
 ```text
-*Qwen is running...* (5m 14s)
+*Qwen is running...* (coder-model, 260k tokens, 13m 0s)
 _Finalizing response_
 
-*Tool execution (Last 6 items in 17)*
-- `glob` **/config/**/*.ts in .
-- `read` tsconfig.json
-- `read` packages/config/index.ts
-- `bash` cd /root/ode-new/.worktree/ode_1771752635.512539 && bun test 2>&1 | head -100
-- `read` package.json
-- `bash` cd /root/ode-new/.worktree/ode_1771752635.512539 && bun test --timeout=30000 2>&1 | tail -50
+*Tool execution (Last 6 items in 26)*
+- `read` packages/core/runtime/request-runner.ts (offset 100, limit 50)
+- `grep` void .*\.catch in .
+- `grep` async.*=> in .
+- `bash` cd /root/ode-new/.worktree/ode_1771995140.206739 && timeout 60 bun test 2>&1 | tail -30
+- `read` packages/ims/index.ts
+- `grep` throw new in .
 ```
 
 ## Result Message
 
 ```text
-Good! I can see the test results. Now let me analyze what I've learned:
-
-## Analysis Complete
-
-**Most Important Thing to Change: Add proper test isolation for web server tests**
-
-The test suite has a critical issue: `packages/core/test/web-routes.test.ts` fails with `"Cannot find package 'elysia'"` even though it's installed in `package.json`. This indicates the test is trying to import from the wrong path or there's a module resolution issue that breaks test reliability.
-
-Additionally, the tests took **60+ seconds** to run 126 tests - there's likely unnecessary I/O or lack of proper mocking.
+Now I have a good understanding of the codebase. Let me provide my analysis:
 
 ---
 
-## Plan to Fix
+## Analysis Complete
 
-* not started - Investigate `web-routes.test.ts` import structure and identify why elysia can't be resolved
-* not started - Fix module resolution issues in web server tests
-* not started - Add proper mocking for expensive I/O operations (Redis, file system, network)
-* not started - Run full test suite and verify all tests pass in under 30 seconds
-* not started - Add a CI-friendly test script with proper timeouts
+**Most Important Change: Add comprehensive error handling for unhandled promise rejections**
 
-**Why this matters:** Unreliable tests block confident refactoring and slow down development. The `elysia` import failure suggests the test environment isn't properly configured, which could hide real bugs.
+### Why this matters
+
+After reading through the codebase, I found a critical pattern: **async event handlers and callbacks lack proper error handling**. This is a silent failure risk in production.
+
+**Evidence:**
+1. Only 2 `.catch()` handlers found in the entire codebase (`request-runner.ts:119`, `redis.ts:210`)
+2. Slack/Discord/Lark message handlers use `async () => {}` callbacks without try-catch
+3. Event listeners (e.g., `client.on("messageCreate", async ...)`) can fail silently
+4. No global unhandled rejection handler configured
+
+**Risk:** If an async handler throws (API failure, network issue, bug), the error is swallowed, the user gets no feedback, and the session can hang indefinitely.
+
+---
+
+## Fix Plan
+
+### 1. Add global error handlers
+**File:** `packages/core/index.ts`
+- Add `process.on('unhandledRejection')` handler
+- Add `process.on('uncaughtException')` handler
+- Log errors and gracefully degrade
+
+### 2. Wrap IM platform message handlers
+**Files:** 
+- `packages/ims/slack/message-router.ts`
+- `packages/ims/discord/client.ts`
+- `packages/ims/lark/client.ts`
+
+Wrap async callbacks with try-catch and send error feedback to users.
+
+### 3. Add error boundaries to core runtime
+**File:** `packages/core/runtime/request-runner.ts`
+- Ensure all async operations have proper error handling
+- Add user-facing error messages
+
+### 4. Add tests
+**Files:** 
+- `packages/core/test/error-handling.test.ts`
+- Platform-specific error handler tests
+
+---
+
+**Task Checklist:**
+
+* not started - Add global unhandled rejection/exception handlers
+* not started - Wrap Slack message handlers with try-catch
+* not started - Wrap Discord message handlers with try-catch  
+* not started - Wrap Lark message handlers with try-catch
+* not started - Add error boundary tests
+* not started - Run full test suite to verify
+
+Want me to implement this fix?
 ```

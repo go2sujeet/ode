@@ -1,72 +1,79 @@
 # Live Status Harness Report - kimi
 
-Generated: 2026-02-23T08:36:02.161Z
+Generated: 2026-02-25T05:17:38.758Z
 Provider: kimi
-Working directory: /root/ode-new/.worktree/ode_1771835686.471109
+Working directory: /root/ode-new/.worktree/ode_1771995140.206739
 
-- Run ID: kimi_1771835717908_3998aa2f
-- Events captured: 19
-- Status updates rendered: 19
+- Run ID: kimi_1771995580719_822aee62
+- Source: Reused Redis stream data
+- Events captured: 44
+- Status updates rendered: 44
 
 ## Final Live Status Message
 
 ```text
-*Kimi is running...* (44s)
+*Kimi is running...* (17m 55s)
 _Drafting response_
 
-*Tool execution (Last 6 items in 13)*
-- `Grep` TODO|FIXME|XXX|HACK in .
-- `Read` packages/core/runtime/request-runner.ts
+*Tool execution (Last 6 items in 30)*
+- `Bash` ls -la ./packages/agents/opencode/
+- `Read` packages/ims/slack/index.ts
+- `Bash` wc -l ./packages/ims/slack/*.ts
+- `Read` packages/ims/slack/client.ts
+- `Read` packages/agents/registry.ts
 - `Read` packages/config/local/sessions.ts
-- `Grep` throw|Error in packages/core
-- `Bash` find /root/ode-new/.worktree/ode_1771835686.471109 -name "*.test.ts" | wc -l && find /root/ode-new/....
-- `Read` packages/core/runtime/helpers.ts
 ```
 
 ## Result Message
 
 ```text
-Based on my analysis of this codebase, I've identified the key issue and have a plan to fix it.
+Now I have a solid understanding of the codebase. Let me share my analysis:
 
-## The Most Important Thing to Change
+## Key Finding: **Memory Leak in Runtime State Management**
 
-**Lack of graceful degradation when agent CLIs fail or hang**
+The most critical issue is in `/root/ode-new/.worktree/ode_1771995140.206739/packages/core/runtime.ts`. The runtime maintains three Maps that grow unbounded:
 
-The current implementation has a critical reliability gap: when an agent CLI (OpenCode, Claude, Codex, etc.) crashes, hangs, or exits unexpectedly, the system doesn't properly clean up session state, potentially leaving:
-- Orphaned child processes running indefinitely  
-- Active requests stuck in "processing" state forever
-- Users without proper feedback about what happened
-- Zombie sessions that can't be recovered
+` ` `typescript
+type RuntimeState = {
+  liveEventHistory: Map<string, SessionEvent[]>;   // Never cleaned up
+  liveParsedState: Map<string, SessionMessageState>; // Never cleaned up
+  stateMachines: Map<string, CoreStateMachine>;      // Never cleaned up
+};
+` ` `
 
-This affects the core value proposition of Ode as a bridge between chat apps and coding agents.
+These Maps use a key format of `${channelId}:${threadId}` and are only deleted when:
+1. A request completes successfully (lines 103-104, 109-110, 146-149 in request-runner.ts)
+2. A request is explicitly stopped
 
-## Plan to Fix It
+**The problem**: In a long-running production bot, thousands of unique threads will accumulate over time, causing unbounded memory growth. There's no TTL, size limit, or cleanup for old sessions.
 
-### Phase 1: Process Health Monitoring (Day 1)
-* not started - Add heartbeat/health check for running CLI processes in `CliAgentRuntime`
-* not started - Implement process timeout enforcement with configurable limits per agent
-* not started - Add "stuck request" detection (requests processing >30 min with no output)
+Also in `/root/ode-new/.worktree/ode_1771995140.206739/packages/agents/adapter.ts`:
+` ` `typescript
+const sessionProviders = new Map<string, AgentProviderId>(); // Never cleaned up
+` ` `
 
-### Phase 2: Robust Cleanup & Recovery (Day 2)
-* not started - Implement automatic cleanup of orphaned processes on startup
-* not started - Add `forceStopSession` that kills process tree (not just SIGTERM)
-* not started - Ensure session state transitions to "failed" when process exits unexpectedly
+---
 
-### Phase 3: User Experience (Day 3)
-* not started - Improve error messages in `categorizeRuntimeError` for process crashes vs timeouts
-* not started - Add "Session recovered after interruption" message when recovering stale sessions
-* not started - Surface process exit codes to users for debugging
+## Plan to Fix
 
-### Phase 4: Testing (Day 4)
-* not started - Add integration tests simulating: process kill, timeout, hang
-* not started - Verify cleanup works across all 9 supported agents
+**Phase 1: Implement TTL-based Cleanup**
+1. Add a `lastAccessedAt` timestamp to track when each state entry was last used
+2. Create a periodic cleanup job that removes entries older than a configurable TTL (e.g., 24 hours)
+3. Update access timestamps on every read/write operation
 
-**Files to modify:**
-- `packages/agents/runtime/base.ts` - Core runtime improvements
-- `packages/core/runtime/request-runner.ts` - Request lifecycle handling  
-- `packages/core/runtime/recovery.ts` - Startup cleanup logic
-- `packages/core/runtime/helpers.ts` - Error categorization
-- `packages/config/local/sessions.ts` - Session state management
+**Phase 2: Add Size-based Eviction**
+1. Set a maximum size limit for each Map (e.g., 1000 entries)
+2. When limit is exceeded, evict oldest entries (LRU policy)
+3. Add metrics/logging for eviction events
 
-Would you like me to implement this plan?
+**Phase 3: Session Provider Cleanup**
+1. Apply same TTL/size limits to `sessionProviders` Map in adapter.ts
+2. Ensure consistency between runtime state and adapter state
+
+**Phase 4: Add Monitoring**
+1. Expose metrics for state Map sizes
+2. Log warnings when Maps exceed thresholds
+3. Add tests for memory cleanup behavior
+
+Would you like me to implement this fix?
 ```

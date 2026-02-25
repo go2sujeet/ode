@@ -10,11 +10,13 @@
     workingDirectory: string;
     createdAt: number;
     lastActivityAt: number;
+    initialPrompt?: string;
     threadOwnerUserId?: string;
     slackAppId?: string;
   }
 
   let sessions: SessionMeta[] = [];
+  let sessionRows: SessionMeta[] = [];
   let loading = true;
   let error = "";
 
@@ -29,7 +31,8 @@
       if (!payload?.ok) {
         throw new Error(payload?.error || "Failed to fetch sessions");
       }
-      sessions = payload.result ?? [];
+      sessions = (payload.result ?? []) as SessionMeta[];
+      sessionRows = sessions;
       loading = false;
     } catch (err) {
       error = err instanceof Error ? err.message : "Unknown error";
@@ -58,6 +61,12 @@
   function navigateToSession(sessionId: string) {
     window.location.href = `/sessions/${sessionId}`;
   }
+
+  function formatPrompt(prompt?: string): string {
+    const normalized = prompt?.trim();
+    if (!normalized) return "-";
+    return normalized.replace(/\s+/g, " ");
+  }
 </script>
 
 <main class="page">
@@ -85,21 +94,21 @@
       <div class="table">
         <div class="table-header">
           <span>Session</span>
-          <span>Channel</span>
           <span>Thread</span>
+          <span>Prompt</span>
           <span>Directory</span>
           <span>Created</span>
           <span>Last activity</span>
         </div>
-        {#each sessions as session}
+        {#each sessionRows as session}
           <button
             class="row"
             type="button"
             on:click={() => navigateToSession(session.sessionId)}
           >
             <span class="mono accent">{session.sessionId.slice(0, 8)}</span>
-            <span class="mono">{session.channelId}</span>
             <span class="mono">{session.threadId}</span>
+            <span class="prompt">{formatPrompt(session.initialPrompt)}</span>
             <span class="mono trunc">{session.workingDirectory}</span>
             <span>{formatDate(session.createdAt)}</span>
             <span>{formatRelativeTime(session.lastActivityAt)}</span>
@@ -189,7 +198,7 @@
   .table-header,
   .row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 2fr 1.2fr 1.1fr;
+    grid-template-columns: 0.9fr 1.1fr 2.1fr 1.8fr 1.2fr 1.1fr;
     gap: 1rem;
     align-items: center;
   }
@@ -229,6 +238,13 @@
   }
 
   .trunc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .prompt {
+    color: var(--ink-soft);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
