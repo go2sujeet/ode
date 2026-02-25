@@ -491,7 +491,10 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<boolea
       channelId,
       userId: interaction.user.id,
     });
-    await interaction.showModal(buildGeneralSettingsModal(channelId));
+    await interaction.update(buildGeneralSettingsPickerPayload({
+      channelId,
+      userId: interaction.user.id,
+    }));
     return true;
   }
 
@@ -501,7 +504,10 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<boolea
       channelId,
       userId: interaction.user.id,
     });
-    await interaction.showModal(buildChannelSettingsModal(channelId));
+    await interaction.update(buildChannelSettingsPickerPayload({
+      channelId,
+      userId: interaction.user.id,
+    }));
     return true;
   }
 
