@@ -18,6 +18,7 @@ import {
 import {
   AGENT_PROVIDERS,
   isAgentProviderId,
+  providerSupportsModelSelection,
   type AgentProviderId,
 } from "@/shared/agent-provider";
 import {
@@ -202,13 +203,21 @@ function buildChannelSettingsPickerPayload(params: {
   ];
 
   const models = getProviderModels(draft.provider);
-  if (models.length > 0) {
-    const selectedModel = findMatchingModel(models, draft.model) ?? models[0]!;
-    const modelOptions = models.slice(0, 25).map((model) => ({
-      label: model.slice(0, 100),
-      value: model,
-      default: model === selectedModel,
-    }));
+  if (providerSupportsModelSelection(draft.provider)) {
+    const selectedModel = findMatchingModel(models, draft.model) ?? "";
+    const modelOptions = models.length > 0
+      ? models.slice(0, 25).map((model) => ({
+          label: model.slice(0, 100),
+          value: model,
+          default: model === selectedModel,
+        }))
+      : [
+          {
+            label: "Provider default",
+            value: PROVIDER_DEFAULT_MODEL_VALUE,
+            default: selectedModel === "",
+          },
+        ];
     const modelSelect = new StringSelectMenuBuilder()
       .setCustomId(`ode:channel:model:${channelId}`)
       .setPlaceholder("Select model")
@@ -428,20 +437,21 @@ function buildChannelSettingsModal(channelId: string): ModalBuilder {
   const workingDirectory = resolveChannelCwd(channelId).workingDirectory || "";
   const systemMessage = getChannelSystemMessage(channelId) || "";
 
-  return new ModalBuilder()
-    .setCustomId(`${DISCORD_MODAL_CHANNEL}:${channelId}`)
-    .setTitle("Channel Settings")
-    .addComponents(
-      stringSelectLabel({
-        id: "agent_provider",
-        label: "Agent provider",
-        options: PROVIDERS.map((item) => ({
-          label: item,
-          value: item,
-          default: item === provider,
-        })),
-        placeholder: PROVIDERS.join(", "),
-      }),
+  const modalLabels: LabelBuilder[] = [
+    stringSelectLabel({
+      id: "agent_provider",
+      label: "Agent provider",
+      options: PROVIDERS.map((item) => ({
+        label: item,
+        value: item,
+        default: item === provider,
+      })),
+      placeholder: PROVIDERS.join(", "),
+    }),
+  ];
+
+  if (providerSupportsModelSelection(provider)) {
+    modalLabels.push(
       stringSelectLabel({
         id: "model",
         label: "Model",
@@ -456,31 +466,40 @@ function buildChannelSettingsModal(channelId: string): ModalBuilder {
                 {
                   label: "Provider default",
                   value: PROVIDER_DEFAULT_MODEL_VALUE,
-                  default: true,
+                  default: !selectedModel,
                 },
               ],
         placeholder: "Leave empty for provider default",
-      }),
-      textInputLabel({
-        id: "working_directory",
-        label: "Working directory",
-        required: false,
-        value: workingDirectory,
-      }),
-      textInputLabel({
-        id: "base_branch",
-        label: "Base branch",
-        required: true,
-        value: baseBranch,
-      }),
-      textInputLabel({
-        id: "channel_system_message",
-        label: "Channel system message (optional)",
-        required: false,
-        value: systemMessage,
-        style: TextInputStyle.Paragraph,
       })
     );
+  }
+
+  modalLabels.push(
+    textInputLabel({
+      id: "working_directory",
+      label: "Working directory",
+      required: false,
+      value: workingDirectory,
+    }),
+    textInputLabel({
+      id: "base_branch",
+      label: "Base branch",
+      required: true,
+      value: baseBranch,
+    }),
+    textInputLabel({
+      id: "channel_system_message",
+      label: "Channel system message (optional)",
+      required: false,
+      value: systemMessage,
+      style: TextInputStyle.Paragraph,
+    })
+  );
+
+  return new ModalBuilder()
+    .setCustomId(`${DISCORD_MODAL_CHANNEL}:${channelId}`)
+    .setTitle("Channel Settings")
+    .addComponents(...modalLabels);
 }
 
 function buildGitHubSettingsModal(channelId: string, userId: string): ModalBuilder {
@@ -848,7 +867,7 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
     if (selected) {
       channelSettingsDrafts.set(key, {
         provider: draft.provider,
-        model: selected,
+        model: selected === PROVIDER_DEFAULT_MODEL_VALUE ? "" : selected,
       });
     }
     await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId }));
