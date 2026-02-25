@@ -40,6 +40,7 @@ const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
+const liveStatusThreadRenameAttempted = new Set<string>();
 
 function splitForDiscord(text: string): string[] {
   if (text.length <= DISCORD_MESSAGE_LIMIT) return [text];
@@ -236,14 +237,33 @@ async function updateMessage(
     }
 
     const statusTitle = extractStatusTitleForDiscord(text);
-    if (statusTitle && typeof (channel as any).setName === "function" && (channel as any).name !== statusTitle) {
-      await (channel as any).setName(statusTitle);
-      log.debug("Discord thread renamed from live status title", {
-        channelId,
-        threadId,
-        messageId,
-        statusTitle,
-      });
+    if (
+      statusTitle
+      && threadId
+      && !liveStatusThreadRenameAttempted.has(threadId)
+      && typeof (channel as any).setName === "function"
+    ) {
+      liveStatusThreadRenameAttempted.add(threadId);
+      if ((channel as any).name !== statusTitle) {
+        void (channel as any).setName(statusTitle)
+          .then(() => {
+            log.debug("Discord thread renamed from live status title", {
+              channelId,
+              threadId,
+              messageId,
+              statusTitle,
+            });
+          })
+          .catch((error: unknown) => {
+            log.warn("Failed to rename Discord thread from live status title", {
+              channelId,
+              threadId,
+              messageId,
+              statusTitle,
+              error: String(error),
+            });
+          });
+      }
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -646,6 +666,7 @@ const discordRuntimeController = createRuntimeController({
     }
     discordClients.clear();
     statusMessageThreadMap.clear();
+    liveStatusThreadRenameAttempted.clear();
     log.debug("Discord runtime stopped", { reason });
   },
 });
