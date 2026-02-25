@@ -4,6 +4,7 @@ import { evaluateIncomingMessage, formatIncomingDropMessage } from "@/ims/shared
 import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
 import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
 import { parseIncomingCommand } from "@/ims/shared/command-router";
+import type { IncomingPipelineResult } from "@/ims/shared/incoming-pipeline";
 import type { AgentProviderId } from "@/shared/agent-provider";
 import {
   toCoreMessageContext,
@@ -115,8 +116,11 @@ async function maybeNotifySettingsIssues(
   threadId: string,
   userId: string,
   client: any,
-  say: any
+  say: any,
+  flowResult: IncomingPipelineResult,
 ): Promise<boolean> {
+  if (flowResult.type === "ignore") return false;
+
   const settingsIssues = deps.describeSettingsIssues(channelId);
   if (settingsIssues.length === 0) return false;
 
@@ -129,6 +133,7 @@ async function maybeNotifySettingsIssues(
     threadId,
     userId,
     issuesCount: settingsIssues.length,
+    issues: settingsIssues,
   });
   await deps.postGeneralSettingsLauncher(channelId, userId, client);
   return true;
@@ -265,7 +270,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         return;
       }
 
-      if (await maybeNotifySettingsIssues(deps, channelId, threadId, userId, client, say)) {
+      if (await maybeNotifySettingsIssues(deps, channelId, threadId, userId, client, say, flowResult)) {
         return;
       }
 

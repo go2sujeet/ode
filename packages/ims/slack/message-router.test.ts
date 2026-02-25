@@ -139,6 +139,44 @@ describe("registerSlackMessageRouter", () => {
     expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("does not trigger settings launcher for ignored non-mention messages", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const postGeneralSettingsLauncher = mock(async () => {});
+    const say = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      describeSettingsIssues: () => ["Model not configured.", "Working directory not configured."],
+      postGeneralSettingsLauncher,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "hello everyone",
+        ts: "1710000000.000010",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(postGeneralSettingsLauncher).toHaveBeenCalledTimes(0);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
   it("handles message processing errors with a thread reply", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const deps = createDeps({

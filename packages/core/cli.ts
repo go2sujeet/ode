@@ -37,6 +37,7 @@ function printHelp(): void {
       "",
       "Usage:",
       "  ode [--foreground]",
+      "  ode help",
       "  ode status",
       "  ode log [--info|--error] [--tail [N]]",
       "  ode restart",
@@ -56,6 +57,7 @@ function printHelp(): void {
       "  ode stop",
       "  ode onboard",
       "  ode --foreground",
+      "  ODE_WEB_HOST=0.0.0.0 ode --help",
     ].join("\n"),
   );
 }
@@ -215,6 +217,89 @@ function lineMatchesLogLevel(line: string, level: LogFilterLevel): boolean {
   return true;
 }
 
+function normalizeConsoleLevel(level: string): string {
+  const upper = level.toUpperCase();
+  if (upper === "WARNING") return "WARN";
+  return upper;
+}
+
+function getPinoLevelLabel(level: unknown): string {
+  if (typeof level === "string") {
+    return normalizeConsoleLevel(level);
+  }
+  if (typeof level === "number") {
+    if (level >= 60) return "FATAL";
+    if (level >= 50) return "ERROR";
+    if (level >= 40) return "WARN";
+    if (level >= 30) return "INFO";
+    if (level >= 20) return "DEBUG";
+    return "TRACE";
+  }
+  return "INFO";
+}
+
+function formatLogValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null || value === undefined) return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatStructuredLogLine(parsed: Record<string, unknown>): string {
+  const level = getPinoLevelLabel(parsed.level);
+  const message = typeof parsed.msg === "string"
+    ? parsed.msg
+    : (typeof parsed.message === "string" ? parsed.message : "");
+  const timestampValue = parsed.time;
+  const timestamp = typeof timestampValue === "number"
+    ? new Date(timestampValue).toISOString()
+    : (typeof timestampValue === "string" ? timestampValue : new Date().toISOString());
+
+  const details = Object.entries(parsed)
+    .filter(([key]) => !["level", "time", "msg", "message", "pid", "hostname"].includes(key))
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+
+  const suffix = details ? ` ${details}` : "";
+  return `[${timestamp}] ${level}: ${message}${suffix}`.trim();
+}
+
+function formatConsoleBracketLine(line: string): string | null {
+  const match = line.match(/^\[(trace|debug|info|warn|warning|error|fatal)\]:\s*(.+)$/i);
+  if (!match) return null;
+  const rawLevel = match[1] ?? "info";
+  const rawPayload = match[2] ?? "";
+  const level = normalizeConsoleLevel(rawLevel);
+  const payload = rawPayload.trim();
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    if (Array.isArray(parsed)) {
+      return `${level}: ${parsed.map((entry) => formatLogValue(entry)).join(" ")}`;
+    }
+    return `${level}: ${formatLogValue(parsed)}`;
+  } catch {
+    return `${level}: ${payload}`;
+  }
+}
+
+function formatLogLineForDisplay(line: string): string {
+  if (line.startsWith("{")) {
+    try {
+      return formatStructuredLogLine(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      // Fallback to the raw line if parsing fails.
+    }
+  }
+
+  const consoleFormatted = formatConsoleBracketLine(line);
+  if (consoleFormatted) return consoleFormatted;
+  return line;
+}
+
 function showLogs(commandArgs: string[]): void {
   const logPath = getDaemonLogPath();
   if (!existsSync(logPath)) {
@@ -232,7 +317,7 @@ function showLogs(commandArgs: string[]): void {
 
   const lines = content.split(/\r?\n/).filter((line) => line.length > 0);
   const filtered = lines.filter((line) => lineMatchesLogLevel(line, filterLevel));
-  const output = tailLimit === null ? filtered : filtered.slice(-tailLimit);
+  const output = (tailLimit === null ? filtered : filtered.slice(-tailLimit)).map(formatLogLineForDisplay);
 
   if (output.length === 0) {
     console.log(`No ${filterLevel} logs found in ${logPath}`);
@@ -317,7 +402,7 @@ async function stopDaemonCommand(): Promise<void> {
   console.log(stopped ? "Daemon stopped." : `Stop requested. Follow logs at ${getDaemonLogPath()}`);
 }
 
-if (args.includes("--help") || args.includes("-h")) {
+if (command === "help" || args.includes("--help") || args.includes("-h")) {
   printHelp();
   process.exit(0);
 }

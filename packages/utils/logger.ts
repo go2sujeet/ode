@@ -6,6 +6,7 @@ const prettyStream = pretty({
   colorize: true,
   translateTime: "SYS:yyyy-mm-dd HH:MM:ss.l",
   ignore: "pid,hostname",
+  singleLine: true,
 });
 
 export const logger = pino(
