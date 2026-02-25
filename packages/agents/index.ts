@@ -1,4 +1,5 @@
 import { getAgentProvider, getSelectedAgentProvider } from "./registry";
+import { AGENT_PROVIDERS } from "@/shared/agent-provider";
 
 export type {
   OpenCodeMessage,
@@ -8,15 +9,6 @@ export type {
 } from "./types";
 
 const agent = getSelectedAgentProvider();
-const opencodeProvider = getAgentProvider("opencode");
-const claudeProvider = getAgentProvider("claudecode");
-const codexProvider = getAgentProvider("codex");
-const kimiProvider = getAgentProvider("kimi");
-const kiroProvider = getAgentProvider("kiro");
-const kiloProvider = getAgentProvider("kilo");
-const qwenProvider = getAgentProvider("qwen");
-const gooseProvider = getAgentProvider("goose");
-const geminiProvider = getAgentProvider("gemini");
 
 export const selectedAgent = agent.id;
 export const supportsEventStream = agent.supportsEventStream;
@@ -32,15 +24,7 @@ export const ensureSession = agent.ensureSession;
 export const subscribeToSession = agent.subscribeToSession;
 
 export async function stopAllServers(): Promise<void> {
-  await Promise.allSettled([
-    Promise.resolve().then(() => opencodeProvider.stopServer()),
-    Promise.resolve().then(() => claudeProvider.stopServer()),
-    Promise.resolve().then(() => codexProvider.stopServer()),
-    Promise.resolve().then(() => kimiProvider.stopServer()),
-    Promise.resolve().then(() => kiroProvider.stopServer()),
-    Promise.resolve().then(() => kiloProvider.stopServer()),
-    Promise.resolve().then(() => qwenProvider.stopServer()),
-    Promise.resolve().then(() => gooseProvider.stopServer()),
-    Promise.resolve().then(() => geminiProvider.stopServer()),
-  ]);
+  await Promise.allSettled(
+    AGENT_PROVIDERS.map((providerId) => Promise.resolve().then(() => getAgentProvider(providerId).stopServer()))
+  );
 }

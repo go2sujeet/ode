@@ -21,6 +21,7 @@ import {
   updateOdeConfig,
   invalidateOdeConfigCache,
 } from "./ode-store";
+import { AGENT_PROVIDERS } from "@/shared/agent-provider";
 
 export type {
   ChannelDetail,
@@ -143,30 +144,12 @@ export function getAgentsConfig(): AgentsConfig {
 
 export function getEnabledAgentProviders(): AgentProvider[] {
   const agents = getAgentsConfig();
-  const enabled: AgentProvider[] = [];
-  if (agents.opencode.enabled) enabled.push("opencode");
-  if (agents.claudecode.enabled) enabled.push("claudecode");
-  if (agents.codex.enabled) enabled.push("codex");
-  if (agents.kimi.enabled) enabled.push("kimi");
-  if (agents.kiro.enabled) enabled.push("kiro");
-  if (agents.kilo.enabled) enabled.push("kilo");
-  if (agents.qwen.enabled) enabled.push("qwen");
-  if (agents.goose.enabled) enabled.push("goose");
-  if (agents.gemini.enabled) enabled.push("gemini");
+  const enabled = AGENT_PROVIDERS.filter((provider) => agents[provider].enabled);
   return enabled.length > 0 ? enabled : ["opencode"];
 }
 
 export function isAgentEnabled(agentProvider: AgentProvider): boolean {
-  const agents = getAgentsConfig();
-  if (agentProvider === "opencode") return agents.opencode.enabled;
-  if (agentProvider === "claudecode") return agents.claudecode.enabled;
-  if (agentProvider === "codex") return agents.codex.enabled;
-  if (agentProvider === "kimi") return agents.kimi.enabled;
-  if (agentProvider === "kiro") return agents.kiro.enabled;
-  if (agentProvider === "kilo") return agents.kilo.enabled;
-  if (agentProvider === "qwen") return agents.qwen.enabled;
-  if (agentProvider === "goose") return agents.goose.enabled;
-  return agents.gemini.enabled;
+  return getAgentsConfig()[agentProvider].enabled;
 }
 
 export function getOpenCodeModels(): string[] {

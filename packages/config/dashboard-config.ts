@@ -3,7 +3,12 @@ import {
   parseStatusMessageFrequencyMs,
   type StatusMessageFrequencyMs,
 } from "./status-message-frequency";
-import { isAgentProviderId, type AgentProviderId } from "@/shared/agent-provider";
+import {
+  AGENT_PROVIDERS,
+  normalizeAgentProviderId,
+  providerSupportsModelSelection,
+  type AgentProviderId,
+} from "@/shared/agent-provider";
 
 export type DashboardConfig = {
   completeOnboarding: boolean;
@@ -103,17 +108,7 @@ export const defaultDashboardConfig: DashboardConfig = {
   updates: {
     autoUpgrade: true,
   },
-  agents: {
-    opencode: { enabled: true, models: [] },
-    claudecode: { enabled: true },
-    codex: { enabled: true, models: [] },
-    kimi: { enabled: true },
-    kiro: { enabled: true },
-    kilo: { enabled: true, models: [] },
-    qwen: { enabled: true },
-    goose: { enabled: true },
-    gemini: { enabled: true },
-  },
+  agents: createDefaultAgentsConfig(),
   workspaces: [],
 };
 
@@ -153,18 +148,52 @@ const asGitStrategy = (
 const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status"] =>
   value === "paused" ? "paused" : "active";
 
-function isKnownAgentProvider(
-  value: string
-): value is NonNullable<DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"]> {
-  return isAgentProviderId(value);
-}
-
 const asAgentProvider = (
   value: unknown
 ): DashboardConfig["workspaces"][number]["channelDetails"][number]["agentProvider"] =>
-  typeof value === "string" && isKnownAgentProvider(value)
-    ? value
-    : "opencode";
+  normalizeAgentProviderId(value);
+
+function createDefaultAgentsConfig(): DashboardConfig["agents"] {
+  return Object.fromEntries(
+    AGENT_PROVIDERS.map((provider) => [
+      provider,
+      providerSupportsModelSelection(provider)
+        ? { enabled: true, models: [] }
+        : { enabled: true },
+    ])
+  ) as unknown as DashboardConfig["agents"];
+}
+
+function sanitizeAgents(input: unknown): DashboardConfig["agents"] {
+  const agentsRecord = input && typeof input === "object"
+    ? (input as Record<string, unknown>)
+    : {};
+
+  return Object.fromEntries(
+    AGENT_PROVIDERS.map((provider) => {
+      const providerRecord = agentsRecord[provider] && typeof agentsRecord[provider] === "object"
+        ? (agentsRecord[provider] as Record<string, unknown>)
+        : {};
+
+      if (providerSupportsModelSelection(provider)) {
+        return [
+          provider,
+          {
+            enabled: providerRecord.enabled !== false,
+            models: Array.from(new Set(asStringArray(providerRecord.models).filter(Boolean))),
+          },
+        ] as const;
+      }
+
+      return [
+        provider,
+        {
+          enabled: providerRecord.enabled !== false,
+        },
+      ] as const;
+    })
+  ) as unknown as DashboardConfig["agents"];
+}
 
 const sanitizeChannelDetail = (
   channel: unknown
@@ -245,40 +274,6 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
   const record = config as Record<string, unknown>;
   const user = record.user && typeof record.user === "object" ? (record.user as Record<string, unknown>) : {};
 
-  const agentsRecord = record.agents && typeof record.agents === "object"
-    ? (record.agents as Record<string, unknown>)
-    : {};
-  const opencodeRecord = agentsRecord.opencode && typeof agentsRecord.opencode === "object"
-    ? (agentsRecord.opencode as Record<string, unknown>)
-    : {};
-  const claudecodeRecord = agentsRecord.claudecode && typeof agentsRecord.claudecode === "object"
-    ? (agentsRecord.claudecode as Record<string, unknown>)
-    : {};
-  const codexRecord = agentsRecord.codex && typeof agentsRecord.codex === "object"
-    ? (agentsRecord.codex as Record<string, unknown>)
-    : {};
-  const kimiRecord = agentsRecord.kimi && typeof agentsRecord.kimi === "object"
-    ? (agentsRecord.kimi as Record<string, unknown>)
-    : {};
-  const kiroRecord = agentsRecord.kiro && typeof agentsRecord.kiro === "object"
-    ? (agentsRecord.kiro as Record<string, unknown>)
-    : {};
-  const kiloRecord = agentsRecord.kilo && typeof agentsRecord.kilo === "object"
-    ? (agentsRecord.kilo as Record<string, unknown>)
-    : {};
-  const qwenRecord = agentsRecord.qwen && typeof agentsRecord.qwen === "object"
-    ? (agentsRecord.qwen as Record<string, unknown>)
-    : {};
-  const gooseRecord = agentsRecord.goose && typeof agentsRecord.goose === "object"
-    ? (agentsRecord.goose as Record<string, unknown>)
-    : {};
-  const geminiRecord = agentsRecord.gemini && typeof agentsRecord.gemini === "object"
-    ? (agentsRecord.gemini as Record<string, unknown>)
-    : {};
-
-  const opencodeModels = asStringArray(opencodeRecord.models);
-  const codexModels = asStringArray(codexRecord.models);
-
   const workspaces = sanitizeWorkspaces(record.workspaces);
 
   return {
@@ -299,38 +294,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
         ? (record.updates as Record<string, unknown>).autoUpgrade !== false
         : true,
     },
-    agents: {
-      opencode: {
-        enabled: opencodeRecord.enabled !== false,
-        models: Array.from(new Set(opencodeModels.filter(Boolean))),
-      },
-      claudecode: {
-        enabled: claudecodeRecord.enabled !== false,
-      },
-      codex: {
-        enabled: codexRecord.enabled !== false,
-        models: Array.from(new Set(codexModels.filter(Boolean))),
-      },
-      kimi: {
-        enabled: kimiRecord.enabled !== false,
-      },
-      kiro: {
-        enabled: kiroRecord.enabled !== false,
-      },
-      kilo: {
-        enabled: kiloRecord.enabled !== false,
-        models: Array.from(new Set(asStringArray(kiloRecord.models).filter(Boolean))),
-      },
-      qwen: {
-        enabled: qwenRecord.enabled !== false,
-      },
-      goose: {
-        enabled: gooseRecord.enabled !== false,
-      },
-      gemini: {
-        enabled: geminiRecord.enabled !== false,
-      },
-    },
+    agents: sanitizeAgents(record.agents),
     workspaces,
   };
 };

@@ -7,7 +7,8 @@ import {
 
 export type CliCheckResult = {
   opencode: boolean;
-  claude: boolean;
+  claudecode: boolean;
+  claude?: boolean;
   codex: boolean;
   kimi: boolean;
   kiro: boolean;
@@ -314,7 +315,7 @@ async function checkAgents(): Promise<void> {
           },
           claudecode: {
             ...state.config.agents.claudecode,
-            enabled: result.claude,
+            enabled: result.claudecode ?? result.claude ?? state.config.agents.claudecode.enabled,
           },
           codex: {
             ...state.config.agents.codex,
