@@ -73,6 +73,12 @@ jobs:
         with:
           path: dist
 
+      - name: Generate checksums
+        run: |
+          find dist -type f -name "ode-*" -exec cp {} dist/ \;
+          cd dist
+          sha256sum ode-* > SHA256SUMS
+
       - name: Read version
         id: vars
         run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
@@ -85,3 +91,4 @@ jobs:
           prerelease: false
           files: |
             dist/**/ode-*
+            dist/SHA256SUMS

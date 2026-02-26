@@ -1,14 +1,20 @@
 import { basename, dirname, join } from "path";
 import { mkdtemp, chmod, copyFile, rm, rename } from "fs/promises";
 import { tmpdir } from "os";
+import { createHash } from "crypto";
 
 const LATEST_RELEASE_URL = "https://api.github.com/repos/odefun/ode/releases/latest";
-const DOWNLOAD_BASE_URL = "https://github.com/odefun/ode/releases/latest/download";
+const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/odefun/ode/releases/download";
 
 type UpdateCheckResult = {
   currentVersion: string;
   latestVersion: string | null;
   isUpdateAvailable: boolean;
+};
+
+type LatestReleaseInfo = {
+  tag: string;
+  version: string | null;
 };
 
 function normalizeVersion(version: string | null | undefined): string | null {
@@ -31,15 +37,38 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-async function fetchLatestVersion(): Promise<string | null> {
+async function fetchLatestReleaseInfo(): Promise<LatestReleaseInfo | null> {
   try {
     const latestResponse = await fetch(LATEST_RELEASE_URL);
     if (!latestResponse.ok) return null;
     const latest = (await latestResponse.json()) as { tag_name?: string };
-    return normalizeVersion(latest.tag_name ?? null);
+    const tag = typeof latest.tag_name === "string" ? latest.tag_name.trim() : "";
+    if (!tag) return null;
+    return {
+      tag,
+      version: normalizeVersion(tag),
+    };
   } catch {
     return null;
   }
+}
+
+function sha256Hex(data: Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function parseSha256SumFile(content: string, assetName: string): string | null {
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = trimmed.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+    if (!match) continue;
+    const hash = match[1]?.toLowerCase();
+    const fileName = basename((match[2] ?? "").trim());
+    if (fileName !== assetName) continue;
+    return hash ?? null;
+  }
+  return null;
 }
 
 function resolveAsset(): string {
@@ -69,7 +98,8 @@ export function isInstalledBinary(): boolean {
 
 export async function checkForUpdate(currentVersion: string): Promise<UpdateCheckResult> {
   const normalizedCurrent = normalizeVersion(currentVersion) ?? "0.0.0";
-  const latestVersion = await fetchLatestVersion();
+  const latestRelease = await fetchLatestReleaseInfo();
+  const latestVersion = latestRelease?.version ?? null;
   if (!latestVersion) {
     return {
       currentVersion: normalizedCurrent,
@@ -86,17 +116,43 @@ export async function checkForUpdate(currentVersion: string): Promise<UpdateChec
 }
 
 export async function performUpgrade(): Promise<{ latestVersion: string | null }> {
-  const latestVersion = await fetchLatestVersion();
+  const latestRelease = await fetchLatestReleaseInfo();
+  if (!latestRelease?.tag) {
+    throw new Error("Failed to resolve latest release tag");
+  }
+
+  const latestVersion = latestRelease.version;
   const asset = resolveAsset();
-  const url = `${DOWNLOAD_BASE_URL}/${asset}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download ${url} (${response.status})`);
+  const downloadBaseUrl = `${RELEASE_DOWNLOAD_BASE_URL}/${encodeURIComponent(latestRelease.tag)}`;
+  const binaryUrl = `${downloadBaseUrl}/${asset}`;
+  const checksumsUrl = `${downloadBaseUrl}/SHA256SUMS`;
+
+  const [binaryResponse, checksumsResponse] = await Promise.all([
+    fetch(binaryUrl),
+    fetch(checksumsUrl),
+  ]);
+  if (!binaryResponse.ok) {
+    throw new Error(`Failed to download ${binaryUrl} (${binaryResponse.status})`);
+  }
+  if (!checksumsResponse.ok) {
+    throw new Error(`Failed to download ${checksumsUrl} (${checksumsResponse.status})`);
+  }
+
+  const [data, checksumsContent] = await Promise.all([
+    binaryResponse.arrayBuffer().then((buf) => new Uint8Array(buf)),
+    checksumsResponse.text(),
+  ]);
+  const expectedHash = parseSha256SumFile(checksumsContent, asset);
+  if (!expectedHash) {
+    throw new Error(`SHA256SUMS missing entry for ${asset}`);
+  }
+  const actualHash = sha256Hex(data);
+  if (actualHash !== expectedHash) {
+    throw new Error(`Checksum mismatch for ${asset}`);
   }
 
   const tempDir = await mkdtemp(join(tmpdir(), "ode-upgrade-"));
   const tempPath = join(tempDir, asset);
-  const data = new Uint8Array(await response.arrayBuffer());
   await Bun.write(tempPath, data);
   if (process.platform !== "win32") {
     await chmod(tempPath, 0o755);
