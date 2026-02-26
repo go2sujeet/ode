@@ -26,6 +26,13 @@ import { fetchThreadHistoryByClient } from "./message-history";
 import { registerSlackMessageRouter } from "./message-router";
 import { syncSlackWorkspace } from "@/core/web/local-settings";
 import { describeSlackSettingsIssues, postSlackGeneralSettingsLauncher } from "./settings";
+import {
+  createProcessorId,
+  getScopedProcessorId,
+  scopeChannelId,
+  unscopeChannelId,
+} from "@/ims/shared/processor-scope";
+import { createProcessorManager } from "@/ims/shared/processor-manager";
 
 export interface MessageContext {
   channelId: string;
@@ -57,7 +64,43 @@ const botTokenAuthMap = new Map<string, WorkspaceAuth>();
 const appTokenAuthMap = new Map<string, WorkspaceAuth>();
 const channelWorkspaceMap = new Map<string, string>();
 const channelWorkspaceAuthMap = new Map<string, WorkspaceAuth>();
+const threadBotTokenMap = new Map<string, string>();
+const messageBotTokenMap = new Map<string, string>();
+const slackProcessorManager = createProcessorManager({
+  createRuntime: () => createCoreRuntime({
+    platform: "slack",
+    im: slackAdapter,
+    agent: createAgentAdapter(),
+  }),
+  defaultProcessorId: "slack:default",
+});
 const backgroundWorkspaceSyncInFlight = new Set<string>();
+
+function getThreadKey(channelId: string, threadId: string): string {
+  return `${channelId}:${threadId}`;
+}
+
+function getMessageKey(channelId: string, messageTs: string): string {
+  return `${channelId}:${messageTs}`;
+}
+
+function setThreadBotToken(channelId: string, threadId: string, botToken: string): void {
+  if (!channelId || !threadId || !botToken) return;
+  threadBotTokenMap.set(getThreadKey(channelId, threadId), botToken);
+}
+
+function setMessageBotToken(channelId: string, messageTs: string, botToken: string): void {
+  if (!channelId || !messageTs || !botToken) return;
+  messageBotTokenMap.set(getMessageKey(channelId, messageTs), botToken);
+}
+
+function getMessageBotToken(channelId: string, messageTs: string): string | undefined {
+  return messageBotTokenMap.get(getMessageKey(channelId, messageTs));
+}
+
+function getThreadBotToken(channelId: string, threadId: string): string | undefined {
+  return threadBotTokenMap.get(getThreadKey(channelId, threadId));
+}
 
 export function clearSlackAuthState(): void {
   workspaceAuthMap.clear();
@@ -65,11 +108,18 @@ export function clearSlackAuthState(): void {
   appTokenAuthMap.clear();
   channelWorkspaceMap.clear();
   channelWorkspaceAuthMap.clear();
+  threadBotTokenMap.clear();
+  messageBotTokenMap.clear();
 }
 
 export function resetSlackState(): void {
   clearSlackAuthState();
   appRegistry.clear();
+  slackProcessorManager.clear();
+}
+
+function getSlackProcessorRuntime(processorId?: string): ReturnType<typeof createCoreRuntime> {
+  return slackProcessorManager.getRuntime(processorId);
 }
 
 function getOdeSlackApiUrl(): string | undefined {
@@ -83,18 +133,19 @@ async function buildSlackContext(
   userId: string,
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
+  const rawChannelId = unscopeChannelId(channelId);
   return {
     threadHistory: threadHistory || undefined,
     slack: {
       platform: "slack",
-      channelId,
+      channelId: rawChannelId,
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
       hasCustomSlackTool: await hasOdeSlackTool(cwd),
       odeSlackApiUrl: getOdeSlackApiUrl(),
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
-      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
+      channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
     },
   };
 }
@@ -148,9 +199,23 @@ function resolveWorkspaceAuth(
   return workspaceAuthMap.get(credentialKey) ?? botTokenAuthMap.get(credentialKey);
 }
 
-export function getSlackBotToken(channelId?: string): string | undefined {
-  if (channelId) {
-    const channelAuth = channelWorkspaceAuthMap.get(channelId);
+export function getSlackBotToken(channelId?: string, threadId?: string): string | undefined {
+  const rawChannelId = channelId ? unscopeChannelId(channelId) : undefined;
+  const scopedProcessorId = channelId ? getScopedProcessorId(channelId) : undefined;
+
+  if (scopedProcessorId) {
+    const scopedAuth = Array.from(botTokenAuthMap.values()).find(
+      (entry) => createProcessorId("slack", entry.botToken) === scopedProcessorId
+    );
+    if (scopedAuth?.botToken) return scopedAuth.botToken;
+  }
+
+  if (rawChannelId && threadId) {
+    const threadToken = getThreadBotToken(rawChannelId, threadId);
+    if (threadToken) return threadToken;
+  }
+  if (rawChannelId) {
+    const channelAuth = channelWorkspaceAuthMap.get(rawChannelId);
     if (channelAuth?.botToken) return channelAuth.botToken;
   }
   const registered = workspaceAuthMap.values().next().value as WorkspaceAuth | undefined;
@@ -298,11 +363,12 @@ export async function sendMessage(
   threadId: string,
   text: string
 ): Promise<string | undefined> {
+  const rawChannelId = unscopeChannelId(channelId);
   const slackApp = getApp();
   const formattedText = markdownToSlack(text);
   const chunks = splitForSlack(formattedText);
-  const workspace = channelWorkspaceMap.get(channelId) || "unknown";
-  const botToken = getSlackBotToken(channelId);
+  const workspace = channelWorkspaceMap.get(rawChannelId) || "unknown";
+  const botToken = getSlackBotToken(channelId, threadId);
 
   if (!botToken) {
     log.warn("No Slack bot token available for channel", { channelId });
@@ -319,12 +385,16 @@ export async function sendMessage(
   let lastTs: string | undefined;
   for (const chunk of chunks) {
     const result = await slackApp.client.chat.postMessage({
-      channel: channelId,
+      channel: rawChannelId,
       thread_ts: threadId,
       text: chunk,
       token: botToken,
     });
     lastTs = result.ts;
+    if (botToken && result.ts) {
+      setThreadBotToken(rawChannelId, threadId, botToken);
+      setMessageBotToken(rawChannelId, result.ts, botToken);
+    }
   }
   return lastTs;
 }
@@ -334,13 +404,14 @@ export async function deleteMessage(
   messageTs: string
 ): Promise<void> {
   try {
+    const rawChannelId = unscopeChannelId(channelId);
     const slackApp = getApp();
-    const botToken = getSlackBotToken(channelId);
+    const botToken = getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message delete", { channelId });
     }
     await slackApp.client.chat.delete({
-      channel: channelId,
+      channel: rawChannelId,
       ts: messageTs,
       token: botToken,
     });
@@ -355,15 +426,16 @@ export async function updateMessage(
   text: string
 ): Promise<void> {
   try {
+    const rawChannelId = unscopeChannelId(channelId);
     const slackApp = getApp();
     const formattedText = markdownToSlack(text);
     const truncatedText = truncateForSlack(formattedText);
-    const botToken = getSlackBotToken(channelId);
+    const botToken = getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message update", { channelId });
     }
     await slackApp.client.chat.update({
-      channel: channelId,
+      channel: rawChannelId,
       ts: messageTs,
       text: truncatedText,
       token: botToken,
@@ -383,12 +455,13 @@ async function fetchThreadHistory(
   threadId: string,
   messageId: string
 ): Promise<string | null> {
+  const rawChannelId = unscopeChannelId(channelId);
   return fetchThreadHistoryByClient({
     client: getApp().client,
-    channelId,
+    channelId: rawChannelId,
     threadId,
     messageId,
-    token: getSlackBotToken(channelId),
+    token: getSlackBotToken(channelId, threadId),
   });
 }
 
@@ -402,14 +475,14 @@ const slackAdapter: IMAdapter = {
     buildSlackContext(cwd, channelId, threadId, userId, threadHistory),
 };
 
-const coreRuntime = createCoreRuntime({
+const slackRecoveryRuntime = createCoreRuntime({
   platform: "slack",
   im: slackAdapter,
   agent: createAgentAdapter(),
 });
 
 export async function recoverPendingRequests(): Promise<void> {
-  await coreRuntime.recoverPendingRequests();
+  await slackRecoveryRuntime.recoverPendingRequests();
 
   const pendingRestartMessages = getPendingRestartMessages();
   if (pendingRestartMessages.length === 0) {
@@ -436,8 +509,13 @@ export async function handleButtonSelection(
   selection: string,
   messageTs: string
 ): Promise<void> {
-  await coreRuntime.handleButtonSelection({
-    channelId,
+  const botToken = getMessageBotToken(channelId, messageTs) ?? getThreadBotToken(channelId, threadId);
+  const processorId = createProcessorId("slack", botToken ?? "");
+  const scopedChannelId = scopeChannelId(processorId, channelId);
+  const runtime = getSlackProcessorRuntime(processorId);
+  await runtime.handleButtonSelection({
+    channelId: scopedChannelId,
+    rawChannelId: channelId,
     replyThreadId: threadId,
     threadId,
     userId,
@@ -467,8 +545,20 @@ export function setupMessageHandlers(): void {
       postGeneralSettingsLauncher: postSlackGeneralSettingsLauncher,
       describeSettingsIssues: describeSlackSettingsIssues,
       getChannelAgentProvider,
-      handleStopCommand: (channelId, threadId) => coreRuntime.handleStopCommand(channelId, threadId),
-      handleIncomingMessage: (context, text) => coreRuntime.handleIncomingMessage(context, text),
+      handleStopCommand: (channelId, threadId) => {
+        const processorId = getScopedProcessorId(channelId);
+        return getSlackProcessorRuntime(processorId).handleStopCommand(channelId, threadId);
+      },
+      handleIncomingMessage: (context, text) => {
+        if (context.botToken) {
+          const rawChannelId = context.rawChannelId ?? unscopeChannelId(context.channelId);
+          setThreadBotToken(rawChannelId, context.replyThreadId, context.botToken);
+          setThreadBotToken(rawChannelId, context.threadId, context.botToken);
+        }
+        const processorId = getScopedProcessorId(context.channelId)
+          ?? createProcessorId("slack", context.botToken ?? "");
+        return getSlackProcessorRuntime(processorId).handleIncomingMessage(context, text);
+      },
     });
 
   }

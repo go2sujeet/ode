@@ -27,12 +27,13 @@ export async function prepareRuntimeSession(params: {
 }): Promise<PreparedRuntimeSession | null> {
   const { deps, context, stateMachine } = params;
   const { channelId, replyThreadId, threadId } = context;
+  const rawChannelId = context.rawChannelId ?? channelId;
 
   let cwd: string;
   try {
-    cwd = resolveChannelCwd(channelId).cwd;
+    cwd = resolveChannelCwd(rawChannelId).cwd;
   } catch (err) {
-    await deps.im.sendMessage(channelId, replyThreadId, `Error: ${String(err)}`);
+    await deps.im.sendMessage(rawChannelId, replyThreadId, `Error: ${String(err)}`);
     return null;
   }
 
@@ -55,7 +56,7 @@ export async function prepareRuntimeSession(params: {
       threadId,
       error: String(err),
     });
-    await deps.im.sendMessage(channelId, replyThreadId, `Error: ${message}\n_${suggestion}_`);
+    await deps.im.sendMessage(rawChannelId, replyThreadId, `Error: ${message}\n_${suggestion}_`);
     return null;
   }
 
@@ -63,9 +64,9 @@ export async function prepareRuntimeSession(params: {
     try {
       stateMachine.transition("prepare_worktree");
       const worktreeId = `ode_${threadId}`;
-      const baseBranch = getChannelBaseBranch(channelId);
+      const baseBranch = getChannelBaseBranch(rawChannelId);
       const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
-        channelId,
+        channelId: rawChannelId,
         threadId,
         cwd,
         worktreeId,
@@ -74,7 +75,7 @@ export async function prepareRuntimeSession(params: {
         gitIdentity,
       });
       if (worktree.skipped && worktree.message) {
-        await deps.im.sendMessage(channelId, replyThreadId, worktree.message);
+        await deps.im.sendMessage(rawChannelId, replyThreadId, worktree.message);
       }
       cwd = resolvedCwd;
     } catch (err) {
@@ -85,7 +86,7 @@ export async function prepareRuntimeSession(params: {
         sessionId,
         error: message,
       });
-      await deps.im.sendMessage(channelId, replyThreadId, `Error: Failed to prepare worktree. ${message}`);
+      await deps.im.sendMessage(rawChannelId, replyThreadId, `Error: Failed to prepare worktree. ${message}`);
       return null;
     }
   }

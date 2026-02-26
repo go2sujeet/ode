@@ -157,7 +157,7 @@ async function slackFileUpload(
 
 async function handleSlackAction(payload: SlackActionRequest): Promise<unknown> {
   const channelId = requireString(payload.channelId, "channelId");
-  const token = getSlackBotToken();
+  const token = getSlackBotToken(channelId, typeof payload.threadId === "string" ? payload.threadId : undefined);
   if (!token) {
     throw new Error("No Slack bot token available for channel");
   }

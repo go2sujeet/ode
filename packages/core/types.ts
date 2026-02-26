@@ -10,11 +10,13 @@ import type { SessionMessageState } from "@/utils/session-inspector";
 
 export type CoreMessageContext = {
   channelId: string;
+  rawChannelId?: string;
   replyThreadId: string;
   threadId: string;
   userId: string;
   messageId: string;
   workspaceName?: string;
+  botToken?: string;
 };
 
 export type AgentContextBuilderParams = {

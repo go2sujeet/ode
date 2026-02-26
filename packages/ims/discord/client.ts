@@ -26,11 +26,13 @@ import {
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
+import { createProcessorId, scopeChannelId, unscopeChannelId } from "@/ims/shared/processor-scope";
 import {
   DISCORD_LAUNCHER_COMMANDS,
   handleDiscordSettingsInteraction,
   sendLauncherReplyForMessage,
 } from "@/ims/discord/settings";
+import { createProcessorManager } from "@/ims/shared/processor-manager";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DISCORD_THREAD_NAME_LIMIT = 25;
@@ -40,6 +42,17 @@ const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
+const discordProcessorManager = createProcessorManager({
+  createRuntime: () => createCoreRuntime({
+    platform: "discord",
+    im: discordAdapter,
+    agent: createAgentAdapter(),
+  }),
+});
+
+function getDiscordProcessorRuntime(processorId: string): ReturnType<typeof createCoreRuntime> {
+  return discordProcessorManager.getRuntime(processorId);
+}
 
 function getConfiguredDiscordRuntimeBots(): Array<{ workspaceId: string; token: string }> {
   const uniqueByWorkspace = new Map<string, { workspaceId: string; token: string }>();
@@ -134,17 +147,18 @@ async function buildDiscordContext(
   userId: string,
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
+  const rawChannelId = unscopeChannelId(channelId);
   return {
     threadHistory: threadHistory || undefined,
     slack: {
       platform: "discord",
-      channelId,
+      channelId: rawChannelId,
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
       hasCustomSlackTool: false,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
-      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
+      channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
     },
   };
 }
@@ -191,10 +205,11 @@ async function updateMessage(
   messageId: string,
   text: string
 ): Promise<void> {
+  const rawChannelId = unscopeChannelId(channelId);
   try {
     const mappedThreadId = statusMessageThreadMap.get(messageId);
     const persistedThreadId = findReplyThreadIdByStatusMessageTs(messageId);
-    const threadId = mappedThreadId || persistedThreadId || channelId;
+    const threadId = mappedThreadId || persistedThreadId || rawChannelId;
     if (!threadId) {
       log.warn("Cannot update Discord message without known thread", { messageId });
       return;
@@ -253,7 +268,7 @@ async function updateMessage(
     log.warn("Failed to update Discord message", {
       messageId,
       channelId,
-      resolvedChannelId: statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || channelId,
+      resolvedChannelId: statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || rawChannelId,
       error: errorMessage,
       errorStack,
     });
@@ -263,8 +278,9 @@ async function updateMessage(
   }
 }
 
-async function deleteMessage(_channelId: string, messageId: string): Promise<void> {
-  const threadId = statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId);
+async function deleteMessage(channelId: string, messageId: string): Promise<void> {
+  const rawChannelId = unscopeChannelId(channelId);
+  const threadId = statusMessageThreadMap.get(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || rawChannelId;
   if (!threadId) return;
   const channel = await resolveTextChannel(threadId);
   const message = await channel.messages.fetch(messageId);
@@ -301,7 +317,7 @@ const discordAdapter: IMAdapter = {
     buildDiscordContext(channelId, threadId, userId, threadHistory),
 };
 
-const coreRuntime = createCoreRuntime({
+const discordRecoveryRuntime = createCoreRuntime({
   platform: "discord",
   im: discordAdapter,
   agent: createAgentAdapter(),
@@ -423,6 +439,8 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
     }
 
     try {
+      const processorId = createProcessorId("discord", bot.token);
+      const runtime = getDiscordProcessorRuntime(processorId);
       const client = new Client({
         intents: [
           GatewayIntentBits.Guilds,
@@ -446,6 +464,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             if (configuredChannels && !configuredChannels.includes(parentId)) return;
 
             const threadId = message.channel.id;
+            const scopedChannelId = scopeChannelId(processorId, parentId);
             const text = message.content.trim();
             const launcherCommand = parseIncomingCommand(text);
             if (launcherCommand) {
@@ -461,10 +480,10 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               return;
             }
             const mentioned = isBotMentioned(message, client.user.id);
-            const active = isThreadActive(parentId, threadId);
+            const active = isThreadActive(scopedChannelId, threadId);
             const messageContext: UnifiedMessageContext = buildIncomingContext({
               platform: "discord",
-              channelId: parentId,
+              channelId: scopedChannelId,
               threadId,
               messageId: message.id,
               userId: message.author.id,
@@ -479,7 +498,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               context: messageContext,
               flowResult,
               markThreadActive,
-              handleStopCommand: (channelId, flowThreadId) => coreRuntime.handleStopCommand(channelId, flowThreadId),
+              handleStopCommand: (channelId, flowThreadId) => runtime.handleStopCommand(channelId, flowThreadId),
               sendStopAck: async () => {
                 await message.channel.send("Request stopped.");
               },
@@ -501,8 +520,8 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
                 }
               },
               forwardToCore: async (forwardText) => {
-                await coreRuntime.handleIncomingMessage(
-                  toCoreMessageContext(messageContext),
+                await runtime.handleIncomingMessage(
+                  toCoreMessageContext(messageContext, { rawChannelId: parentId }),
                   forwardText
                 );
               },
@@ -529,7 +548,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
 
           const topLevelContext: UnifiedMessageContext = buildIncomingContext({
             platform: "discord",
-            channelId: parentId,
+            channelId: scopeChannelId(processorId, parentId),
             threadId: message.id,
             messageId: message.id,
             userId: message.author.id,
@@ -577,13 +596,13 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
         autoArchiveDuration: 60,
       });
 
-          markThreadActive(parentId, thread.id);
-          await coreRuntime.handleIncomingMessage(
+          markThreadActive(scopeChannelId(processorId, parentId), thread.id);
+          await runtime.handleIncomingMessage(
             toCoreMessageContext({
               ...topLevelContext,
               threadId: thread.id,
               replyThreadId: thread.id,
-            }),
+            }, { rawChannelId: parentId }),
             topLevelFlow.text
           );
         } catch (error) {
@@ -653,9 +672,12 @@ const discordRuntimeController = createRuntimeController({
       client.destroy();
     }
     discordClients.clear();
+    discordProcessorManager.clear();
     statusMessageThreadMap.clear();
     log.debug("Discord runtime stopped", { reason });
   },
 });
 
-export const recoverPendingRequests = coreRuntime.recoverPendingRequests;
+export async function recoverPendingRequests(): Promise<void> {
+  await discordRecoveryRuntime.recoverPendingRequests();
+}

@@ -18,14 +18,16 @@ export type UnifiedMessageContext = {
 
 export function toCoreMessageContext(
   context: Pick<UnifiedMessageContext, "channelId" | "threadId" | "replyThreadId" | "messageId" | "userId">,
-  extras?: Pick<CoreMessageContext, "workspaceName">
+  extras?: Pick<CoreMessageContext, "workspaceName" | "botToken" | "rawChannelId">
 ): CoreMessageContext {
   return {
     channelId: context.channelId,
+    rawChannelId: extras?.rawChannelId,
     threadId: context.threadId,
     replyThreadId: context.replyThreadId,
     messageId: context.messageId,
     userId: context.userId,
     workspaceName: extras?.workspaceName,
+    botToken: extras?.botToken,
   };
 }

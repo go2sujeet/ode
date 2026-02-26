@@ -10,6 +10,7 @@ import {
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
+import { createProcessorId, scopeChannelId } from "@/ims/shared/processor-scope";
 
 type RouterDeps = {
   app: any;
@@ -35,11 +36,13 @@ type RouterDeps = {
   handleStopCommand: (channelId: string, threadId: string) => Promise<boolean>;
   handleIncomingMessage: (context: {
     channelId: string;
+    rawChannelId?: string;
     replyThreadId: string;
     threadId: string;
     userId: string;
     messageId: string;
     workspaceName?: string;
+    botToken?: string;
   }, text: string) => Promise<void>;
 };
 
@@ -221,8 +224,9 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         contextBotToken
       );
       const credentialKey =
-        workspaceAuth?.workspaceId
-        ?? contextBotToken
+        contextBotToken
+        ?? workspaceAuth?.botToken
+        ?? workspaceAuth?.workspaceId
         ?? undefined;
       const identity = await getBotIdentity({
         client,
@@ -231,6 +235,8 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       });
 
       const currentBotUserId = identity.botUserId;
+      const processorId = createProcessorId("slack", contextBotToken ?? workspaceAuth?.botToken ?? "");
+      const scopedChannelId = scopeChannelId(processorId, channelId);
       if (!workspaceAuth && contextBotToken) {
         workspaceAuth = syncWorkspaceAuth(deps, channelId, contextBotToken);
       }
@@ -249,10 +255,10 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
-      const threadActive = deps.isThreadActive(channelId, threadId);
+      const threadActive = deps.isThreadActive(scopedChannelId, threadId);
       const messageContext: UnifiedMessageContext = buildIncomingContext({
         platform: "slack",
-        channelId,
+        channelId: scopedChannelId,
         threadId,
         messageId,
         userId,
@@ -311,7 +317,11 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         },
         forwardToCore: async (forwardText) => {
           await deps.handleIncomingMessage(
-            toCoreMessageContext(messageContext, { workspaceName }),
+            toCoreMessageContext(messageContext, {
+              workspaceName,
+              botToken: workspaceAuth?.botToken ?? contextBotToken,
+              rawChannelId: channelId,
+            }),
             forwardText
           );
         },

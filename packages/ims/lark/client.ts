@@ -28,6 +28,12 @@ import {
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
+import {
+  createProcessorId,
+  getScopedProcessorId,
+  scopeChannelId,
+  unscopeChannelId,
+} from "@/ims/shared/processor-scope";
 import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
 import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
 import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
@@ -38,6 +44,7 @@ import {
   resolveLarkSettingsCardAction,
   sendLarkSettingsCard,
 } from "./settings";
+import { createProcessorManager } from "@/ims/shared/processor-manager";
 
 let larkRuntimeStarted = false;
 
@@ -64,7 +71,18 @@ const botOpenIdCache = new Map<string, string>();
 const sentMessageThreadMap = new Map<string, { channelId: string; threadId: string }>();
 const larkMessageEditCounts = new Map<string, number>();
 const wsClientRegistry = new Map<string, unknown>();
+const larkProcessorManager = createProcessorManager({
+  createRuntime: () => createCoreRuntime({
+    platform: "lark",
+    im: larkAdapter,
+    agent: createAgentAdapter(),
+  }),
+});
 const MAX_LARK_MESSAGE_EDITS = 20;
+
+function getLarkProcessorRuntime(processorId: string): ReturnType<typeof createCoreRuntime> {
+  return larkProcessorManager.getRuntime(processorId);
+}
 
 function getConfiguredLarkCredentials(): Array<{ appId: string; appSecret: string }> {
   const uniqueCredentials = new Map<string, { appId: string; appSecret: string }>();
@@ -98,7 +116,25 @@ function logLarkEvent(message: string, payload: Record<string, unknown>): void {
 }
 
 function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null {
-  const channel = channelId.trim();
+  const rawChannelId = unscopeChannelId(channelId);
+  const scopedProcessorId = getScopedProcessorId(channelId);
+  const channel = rawChannelId.trim();
+
+  if (scopedProcessorId) {
+    for (const workspace of getWorkspaces()) {
+      if (workspace.type !== "lark") continue;
+      const appId = workspace.larkAppKey?.trim() || workspace.larkAppId?.trim() || "";
+      const appSecret = workspace.larkAppSecret?.trim() ?? "";
+      if (!appId || !appSecret) continue;
+      if (createProcessorId("lark", appId) !== scopedProcessorId) continue;
+      return {
+        workspaceId: workspace.id,
+        appId,
+        appSecret,
+      };
+    }
+  }
+
   if (channel.length > 0) {
     for (const workspace of getWorkspaces()) {
       if (workspace.type !== "lark") continue;
@@ -198,9 +234,10 @@ async function sendLarkMessage(params: {
   msgType: LarkMessageType;
   content: Record<string, unknown>;
 }): Promise<string | undefined> {
+  const rawChannelId = unscopeChannelId(params.channelId);
   const creds = getLarkCredentialsForChannel(params.channelId);
   if (!creds) {
-    log.warn("No Lark credentials available for sendLarkMessage", { channelId: params.channelId });
+    log.warn("No Lark credentials available for sendLarkMessage", { channelId: rawChannelId });
     return undefined;
   }
 
@@ -221,7 +258,7 @@ async function sendLarkMessage(params: {
       "POST",
       "/open-apis/im/v1/messages?receive_id_type=chat_id",
       {
-        receive_id: params.channelId,
+        receive_id: rawChannelId,
         msg_type: params.msgType,
         content: JSON.stringify(params.content),
       }
@@ -230,7 +267,7 @@ async function sendLarkMessage(params: {
   const messageId = data.message_id;
   if (messageId) {
     sentMessageThreadMap.set(messageId, {
-      channelId: params.channelId,
+      channelId: rawChannelId,
       threadId: params.threadId,
     });
   }
@@ -303,17 +340,18 @@ async function buildLarkContext(
   userId: string,
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
+  const rawChannelId = unscopeChannelId(channelId);
   return {
     threadHistory: threadHistory || undefined,
     slack: {
       platform: "lark",
-      channelId,
+      channelId: rawChannelId,
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
       hasCustomSlackTool: false,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
-      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
+      channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
     },
   };
 }
@@ -354,6 +392,7 @@ async function updateMessage(
   messageId: string,
   text: string
 ): Promise<string | undefined> {
+  const rawChannelId = unscopeChannelId(channelId);
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return;
   const token = await getLarkTenantAccessToken(creds);
@@ -368,7 +407,7 @@ async function updateMessage(
         larkMessageEditCounts.delete(messageId);
         larkMessageEditCounts.set(replacementMessageId, 0);
         log.info("Lark message edit limit reached; replaced status message", {
-          channelId,
+          channelId: rawChannelId,
           oldMessageId: messageId,
           newMessageId: replacementMessageId,
           editCount,
@@ -376,13 +415,13 @@ async function updateMessage(
         return replacementMessageId;
       }
       log.warn("Lark message edit limit reached but replacement send failed", {
-        channelId,
+        channelId: rawChannelId,
         messageId,
         editCount,
       });
     } catch (error) {
       log.warn("Failed to replace Lark message after edit limit reached", {
-        channelId,
+        channelId: rawChannelId,
         messageId,
         editCount,
         error: String(error),
@@ -409,7 +448,7 @@ async function updateMessage(
     const patchNormalized = patchMessage.toLowerCase();
     if (patchNormalized.includes("429") || patchNormalized.includes("rate limit") || patchNormalized.includes("ratelimit")) {
       log.warn("Lark message update rate limited", {
-        channelId,
+        channelId: rawChannelId,
         messageId,
         error: patchMessage,
       });
@@ -417,7 +456,7 @@ async function updateMessage(
     }
     if (!patchMessage.includes("400")) {
       log.warn("Failed to update Lark message", {
-        channelId,
+        channelId: rawChannelId,
         messageId,
         error: patchMessage,
       });
@@ -438,21 +477,21 @@ async function updateMessage(
       const fallbackNormalized = fallbackMessage.toLowerCase();
       if (fallbackNormalized.includes("429") || fallbackNormalized.includes("rate limit") || fallbackNormalized.includes("ratelimit")) {
         log.warn("Lark message update fallback rate limited", {
-          channelId,
+          channelId: rawChannelId,
           messageId,
           error: fallbackMessage,
         });
         throw fallbackError;
       }
       log.warn("Failed to update Lark message with PATCH/POST fallback", {
-        channelId,
+        channelId: rawChannelId,
         messageId,
         error: fallbackMessage,
       });
     }
 
     log.warn("Failed to update Lark message", {
-      channelId,
+      channelId: rawChannelId,
       messageId,
       error: patchMessage,
     });
@@ -481,6 +520,7 @@ async function fetchThreadHistory(
   threadId: string,
   messageId: string
 ): Promise<string | null> {
+  const rawChannelId = unscopeChannelId(channelId);
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return null;
   const token = await getLarkTenantAccessToken(creds);
@@ -501,7 +541,7 @@ async function fetchThreadHistory(
     const data = await larkApi<{ items?: Array<Record<string, unknown>> }>(
       token,
       "GET",
-      `/open-apis/im/v1/messages?container_id_type=chat&container_id=${encodeURIComponent(channelId)}&page_size=50`
+      `/open-apis/im/v1/messages?container_id_type=chat&container_id=${encodeURIComponent(rawChannelId)}&page_size=50`
     );
     const lines = (data.items ?? [])
       .filter((message) => {
@@ -542,7 +582,7 @@ const larkAdapter: IMAdapter = {
     buildLarkContext(channelId, threadId, userId, threadHistory),
 };
 
-const coreRuntime = createCoreRuntime({
+const larkRecoveryRuntime = createCoreRuntime({
   platform: "lark",
   im: larkAdapter,
   agent: createAgentAdapter(),
@@ -1073,7 +1113,7 @@ function isTopLevelMessage(message: LarkIncomingEvent["message"]): boolean {
   return !(message?.root_id || message?.parent_id);
 }
 
-async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void> {
+async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId?: string): Promise<void> {
   const message = event.message;
   const senderOpenId = event.sender?.sender_id?.open_id?.trim() || "";
   const channelId = message?.chat_id?.trim() || "";
@@ -1106,7 +1146,12 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     return;
   }
 
-  const botOpenId = await getBotOpenIdForChannel(channelId);
+  const inferredAppId = processorAppId ?? getLarkCredentialsForChannel(channelId)?.appId;
+  const processorId = createProcessorId("lark", inferredAppId ?? "");
+  const scopedChannelId = scopeChannelId(processorId, channelId);
+  const runtime = getLarkProcessorRuntime(processorId);
+
+  const botOpenId = await getBotOpenIdForChannel(scopedChannelId);
   if (!topLevelMessage && botOpenId && senderOpenId === botOpenId) {
     logLarkEvent("Lark inbound ignored: self message", {
       channelId,
@@ -1131,11 +1176,11 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
   const isMentioned = botOpenId
     ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
     : false;
-  const active = isThreadActive(channelId, threadId);
+  const active = isThreadActive(scopedChannelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
   const messageContext: UnifiedMessageContext = buildIncomingContext({
     platform: "lark",
-    channelId,
+    channelId: scopedChannelId,
     threadId,
     messageId,
     userId: senderOpenId,
@@ -1167,7 +1212,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
       topLevelMessage,
       isMentioned,
     });
-    await sendSettingsCard(channelId, "", senderOpenId);
+    await sendSettingsCard(scopedChannelId, "", senderOpenId);
     return;
   }
 
@@ -1176,9 +1221,9 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
     context: messageContext,
     flowResult,
     markThreadActive,
-    handleStopCommand: (flowChannelId, flowThreadId) => coreRuntime.handleStopCommand(flowChannelId, flowThreadId),
+    handleStopCommand: (flowChannelId, flowThreadId) => runtime.handleStopCommand(flowChannelId, flowThreadId),
     sendStopAck: async () => {
-      await sendMessage(channelId, threadId, "Request stopped.");
+      await sendMessage(scopedChannelId, threadId, "Request stopped.");
     },
     onIgnore: (reason) => {
       if (reason === "not_mentioned_and_inactive") {
@@ -1205,8 +1250,8 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent): Promise<void>
         messageId,
         userId: senderOpenId,
       });
-      await coreRuntime.handleIncomingMessage(
-        toCoreMessageContext(messageContext),
+      await runtime.handleIncomingMessage(
+        toCoreMessageContext(messageContext, { rawChannelId: channelId }),
         forwardText
       );
       logLarkEvent("Lark inbound handled by core runtime", {
@@ -1235,7 +1280,7 @@ async function startLarkLongConnections(reason: string): Promise<void> {
     const eventDispatcher = new Lark.EventDispatcher({}).register({
       "im.message.receive_v1": async (data: unknown) => {
         try {
-          await processLarkIncomingEvent(data as LarkIncomingEvent);
+          await processLarkIncomingEvent(data as LarkIncomingEvent, appId);
         } catch (error) {
           log.warn("Failed to handle Lark long-connection message event", {
             appId,
@@ -1339,7 +1384,13 @@ export async function handleLarkEventPayload(payload: unknown): Promise<{ status
   }
 
   if (envelope.event) {
-    await processLarkIncomingEvent(envelope.event);
+    const envelopeRecord = envelope as Record<string, unknown>;
+    const webhookAppId =
+      (typeof envelopeRecord.app_id === "string" && envelopeRecord.app_id.trim().length > 0
+        ? envelopeRecord.app_id
+        : undefined)
+      ?? (typeof payloadRecord.app_id === "string" && payloadRecord.app_id.trim().length > 0 ? payloadRecord.app_id : undefined);
+    await processLarkIncomingEvent(envelope.event, webhookAppId);
   }
 
   return { status: 200, body: { code: 0 } };
@@ -1390,8 +1441,11 @@ const larkRuntimeController = createRuntimeController({
     tenantTokenCache.clear();
     botOpenIdCache.clear();
     sentMessageThreadMap.clear();
+    larkProcessorManager.clear();
     log.debug("Lark runtime stopped", { reason });
   },
 });
 
-export const recoverPendingRequests = coreRuntime.recoverPendingRequests;
+export async function recoverPendingRequests(): Promise<void> {
+  await larkRecoveryRuntime.recoverPendingRequests();
+}

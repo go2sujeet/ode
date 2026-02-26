@@ -201,6 +201,68 @@ describe("registerSlackMessageRouter", () => {
     expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("caches bot identity per bot token within same workspace", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const authTestA = mock(async () => ({ user_id: "U_BOT_A", team_id: "T1" }));
+    const authTestB = mock(async () => ({ user_id: "U_BOT_B", team_id: "T1" }));
+    const handleIncomingMessage = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      resolveWorkspaceAuth: (credentialKey?: string) => ({
+        workspaceId: "ws_shared",
+        botToken: credentialKey,
+      }),
+      handleIncomingMessage,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_BOT_A> hello",
+        ts: "1710000000.000101",
+      },
+      client: {
+        auth: {
+          test: authTestA,
+        },
+      },
+      context: { botToken: "xoxb-token-a" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U2",
+        text: "<@U_BOT_B> hello",
+        ts: "1710000000.000102",
+      },
+      client: {
+        auth: {
+          test: authTestB,
+        },
+      },
+      context: { botToken: "xoxb-token-b" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(authTestA).toHaveBeenCalledTimes(1);
+    expect(authTestB).toHaveBeenCalledTimes(1);
+    expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("does not trigger settings launcher for ignored non-mention messages", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const postGeneralSettingsLauncher = mock(async () => {});

@@ -171,6 +171,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
 
   async function handleUserMessageInternal(context: CoreMessageContext, text: string): Promise<void> {
     const { channelId, replyThreadId, threadId } = context;
+    const rawChannelId = context.rawChannelId ?? channelId;
     const stateMachine = getStateMachine(context);
     const prepared = await prepareRuntimeSession({
       deps: runtimeDeps,
@@ -187,12 +188,12 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     });
 
     const threadHistory = created
-      ? await runtimeDeps.im.fetchThreadHistory(channelId, replyThreadId, context.messageId)
+      ? await runtimeDeps.im.fetchThreadHistory(rawChannelId, replyThreadId, context.messageId)
       : null;
 
     const agentContext = await runtimeDeps.im.buildAgentContext({
       cwd,
-      channelId,
+      channelId: rawChannelId,
       replyThreadId,
       threadId,
       userId: threadOwnerUserId,
@@ -287,16 +288,18 @@ export function createCoreRuntime(deps: RuntimeDeps) {
 
   async function handleButtonSelection(params: {
     channelId: string;
+    rawChannelId?: string;
     replyThreadId: string;
     threadId: string;
     userId: string;
     selection: string;
     messageTs: string;
   }): Promise<void> {
-    const { channelId, replyThreadId, threadId, userId, selection, messageTs } = params;
+    const { channelId, rawChannelId, replyThreadId, threadId, userId, selection, messageTs } = params;
     await handleIncomingMessage(
       {
         channelId,
+        rawChannelId,
         replyThreadId,
         threadId,
         userId,
