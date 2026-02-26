@@ -29,8 +29,8 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 
 - Configured OpenCode / Claude Code / Codex / Kimi Code... at least 1 coding cli.
 - Choose one chatting app.
-  - **Slack** - follow [doc](https://ode.fun/docs/chat-app-setup/slack) and to get your APP TOKEN (xapp...) and BOT TOKEN (xbot..).
-  - **Discord** - follow [doc](https://ode.fun/docs/chat-app-setup/discord) and to get your BOT TOKEN.
+  - **Slack** - follow [this doc](https://ode.fun/docs/chat-app-setup/slack) to get your APP TOKEN (xapp...) and BOT TOKEN (xbot..).
+  - **Discord** - follow [this doc](https://ode.fun/docs/chat-app-setup/discord) to get your BOT TOKEN.
   - **飞书** - Just CN version for now, as Lark global is not supportting long connection with socket yet. Prepare the larkAppId and larkAppSecret.
 
 ### Installation and Running
