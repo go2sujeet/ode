@@ -101,12 +101,14 @@ export async function prepareSessionWorkspace(params: {
     resolvedCwd = worktree.worktreePath;
   }
 
-  setWorktreeGitIdentity({
-    cwd: resolvedCwd,
-    channelId,
-    threadId,
-    gitIdentity,
-  });
+  if (!worktree.skipped) {
+    setWorktreeGitIdentity({
+      cwd: resolvedCwd,
+      channelId,
+      threadId,
+      gitIdentity,
+    });
+  }
 
   return { cwd: resolvedCwd, worktree };
 }

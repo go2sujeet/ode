@@ -25,9 +25,20 @@ function getWorkspaces(): WorkspaceConfig[] {
   return loadOdeConfig().workspaces;
 }
 
+function resolveConfigChannelId(channelId: string): string {
+  const trimmed = channelId.trim();
+  if (!trimmed) return trimmed;
+  const delimiter = "::";
+  const index = trimmed.lastIndexOf(delimiter);
+  if (index < 0) return trimmed;
+  const raw = trimmed.slice(index + delimiter.length).trim();
+  return raw || trimmed;
+}
+
 export function getChannelDetails(channelId: string): ChannelDetail | null {
+  const resolvedChannelId = resolveConfigChannelId(channelId);
   for (const workspace of getWorkspaces()) {
-    const match = workspace.channelDetails.find((channel) => channel.id === channelId);
+    const match = workspace.channelDetails.find((channel) => channel.id === resolvedChannelId);
     if (match) return match;
   }
   return null;
@@ -111,11 +122,12 @@ function updateChannel(
   channelId: string,
   updater: (channel: ChannelDetail) => ChannelDetail
 ): void {
+  const resolvedChannelId = resolveConfigChannelId(channelId);
   let updated = false;
   updateOdeConfig((config) => {
     const workspaces = config.workspaces.map((workspace) => {
       const channelDetails = workspace.channelDetails.map((channel) => {
-        if (channel.id !== channelId) return channel;
+        if (channel.id !== resolvedChannelId) return channel;
         updated = true;
         return updater(channel);
       });
