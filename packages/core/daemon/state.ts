@@ -11,6 +11,7 @@ export interface PendingUpgradeRestart {
 export interface DaemonState {
   managerPid: number | null;
   runtimePid: number | null;
+  runtimeVersion: string | null;
   status: DaemonStatus;
   readyMessage: string | null;
   lastReadyAt: number | null;
@@ -29,6 +30,7 @@ function createDefaultState(): DaemonState {
   return {
     managerPid: null,
     runtimePid: null,
+    runtimeVersion: null,
     status: "stopped",
     readyMessage: null,
     lastReadyAt: null,
@@ -62,6 +64,7 @@ function normalizeState(state: Partial<DaemonState>): DaemonState {
   return {
     managerPid: typeof state.managerPid === "number" ? state.managerPid : defaults.managerPid,
     runtimePid: typeof state.runtimePid === "number" ? state.runtimePid : defaults.runtimePid,
+    runtimeVersion: typeof state.runtimeVersion === "string" ? state.runtimeVersion : defaults.runtimeVersion,
     status: state.status ?? defaults.status,
     readyMessage: typeof state.readyMessage === "string" ? state.readyMessage : defaults.readyMessage,
     lastReadyAt: typeof state.lastReadyAt === "number" ? state.lastReadyAt : defaults.lastReadyAt,

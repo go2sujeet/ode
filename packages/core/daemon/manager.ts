@@ -119,6 +119,7 @@ function handleRuntimeExit(code: number | null, signal: NodeJS.Signals | null): 
   runtimeChild = null;
   patchDaemonState({
     runtimePid: null,
+    runtimeVersion: null,
     lastExitAt: Date.now(),
     lastExitCode: code ?? null,
     lastExitSignal: signal ?? null,
@@ -214,6 +215,7 @@ async function shutdown(reason: string): Promise<void> {
   patchDaemonState({
     managerPid: null,
     runtimePid: null,
+    runtimeVersion: null,
     status: "stopped",
   });
   process.exit(0);
