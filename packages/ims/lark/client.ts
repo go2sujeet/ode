@@ -65,6 +65,27 @@ const larkMessageEditCounts = new Map<string, number>();
 const wsClientRegistry = new Map<string, unknown>();
 const MAX_LARK_MESSAGE_EDITS = 20;
 
+function getConfiguredLarkCredentials(): Array<{ appId: string; appSecret: string }> {
+  const uniqueCredentials = new Map<string, { appId: string; appSecret: string }>();
+  for (const workspace of getLarkAppCredentials()) {
+    if (!uniqueCredentials.has(workspace.appId)) {
+      uniqueCredentials.set(workspace.appId, {
+        appId: workspace.appId,
+        appSecret: workspace.appSecret,
+      });
+    }
+  }
+  return Array.from(uniqueCredentials.values());
+}
+
+function hasMissingLarkLongConnectionClient(): boolean {
+  if (!isLarkLongConnectionEnabled()) {
+    return false;
+  }
+  const configuredCredentials = getConfiguredLarkCredentials();
+  return configuredCredentials.some((entry) => !wsClientRegistry.has(entry.appId));
+}
+
 function isLarkEventDebugEnabled(): boolean {
   const raw = process.env.LARK_DEBUG_EVENTS?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
@@ -1196,18 +1217,10 @@ async function startLarkLongConnections(reason: string): Promise<void> {
     return;
   }
 
-  const workspaces = getLarkAppCredentials();
-  const uniqueCredentials = new Map<string, { appId: string; appSecret: string }>();
-  for (const workspace of workspaces) {
-    if (!uniqueCredentials.has(workspace.appId)) {
-      uniqueCredentials.set(workspace.appId, {
-        appId: workspace.appId,
-        appSecret: workspace.appSecret,
-      });
-    }
-  }
+  const configuredCredentials = getConfiguredLarkCredentials();
 
-  for (const [appId, creds] of uniqueCredentials.entries()) {
+  for (const creds of configuredCredentials) {
+    const appId = creds.appId;
     if (wsClientRegistry.has(appId)) {
       continue;
     }
@@ -1327,6 +1340,15 @@ export async function handleLarkEventPayload(payload: unknown): Promise<{ status
 
 export async function startLarkRuntime(reason: string): Promise<boolean> {
   if (larkRuntimeStarted) {
+    if (hasMissingLarkLongConnectionClient()) {
+      log.debug("Lark runtime refreshing to include newly configured apps", {
+        reason,
+        connectedCount: wsClientRegistry.size,
+      });
+      await startLarkLongConnections(`${reason}:refresh`);
+      return true;
+    }
+
     log.debug("Lark runtime start skipped; already running", { reason });
   }
   return larkRuntimeController.start(reason);

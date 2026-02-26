@@ -167,10 +167,10 @@ async function maybeHandleLauncherCommand(params: {
   return true;
 }
 
-function getCacheKey(teamId?: string, enterpriseId?: string): string {
+function getCacheKey(teamId?: string, enterpriseId?: string): string | undefined {
   if (teamId) return `team:${teamId}`;
   if (enterpriseId) return `enterprise:${enterpriseId}`;
-  return "default";
+  return undefined;
 }
 
 async function getBotIdentity(params: {
@@ -181,9 +181,11 @@ async function getBotIdentity(params: {
 }): Promise<BotIdentity> {
   const { client, cache, teamId, enterpriseId } = params;
   const key = getCacheKey(teamId, enterpriseId);
-  const cached = cache.get(key);
-  if (cached) {
-    return cached;
+  if (key) {
+    const cached = cache.get(key);
+    if (cached) {
+      return cached;
+    }
   }
 
   const authResult = await client.auth.test();
@@ -193,7 +195,9 @@ async function getBotIdentity(params: {
     enterpriseId: (authResult.enterprise_id as string | undefined) ?? enterpriseId,
   };
 
-  cache.set(key, identity);
+  if (key) {
+    cache.set(key, identity);
+  }
   return identity;
 }
 

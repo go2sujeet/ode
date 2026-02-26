@@ -139,6 +139,67 @@ describe("registerSlackMessageRouter", () => {
     expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("does not cache bot identity when team metadata is missing", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const identities = [
+      { user_id: "U_BOT_A" },
+      { user_id: "U_BOT_B" },
+    ];
+    let callCount = 0;
+    const authTest = mock(async () => identities[callCount++] ?? identities[identities.length - 1]);
+    const handleIncomingMessage = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      handleIncomingMessage,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_BOT_A> hello",
+        ts: "1710000000.000011",
+      },
+      client: {
+        auth: {
+          test: authTest,
+        },
+      },
+      context: {},
+      body: {},
+      say,
+    });
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U2",
+        text: "<@U_BOT_B> again",
+        ts: "1710000000.000012",
+      },
+      client: {
+        auth: {
+          test: authTest,
+        },
+      },
+      context: {},
+      body: {},
+      say,
+    });
+
+    expect(authTest).toHaveBeenCalledTimes(2);
+    expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("does not trigger settings launcher for ignored non-mention messages", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const postGeneralSettingsLauncher = mock(async () => {});

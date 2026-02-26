@@ -41,6 +41,15 @@ const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 const discordClients = new Map<string, Client>();
 const statusMessageThreadMap = new Map<string, string>();
 
+function getConfiguredDiscordRuntimeTokens(): string[] {
+  const configuredTokens = getDiscordBotTokens();
+  const envToken = process.env.DISCORD_BOT_TOKEN?.trim() || "";
+  return Array.from(new Set([
+    ...configuredTokens.map((entry) => entry.token?.trim() || "").filter(Boolean),
+    ...(envToken ? [envToken] : []),
+  ]));
+}
+
 function splitForDiscord(text: string): string[] {
   if (text.length <= DISCORD_MESSAGE_LIMIT) return [text];
   const chunks: string[] = [];
@@ -392,12 +401,7 @@ async function registerDiscordCommands(client: Client): Promise<void> {
 }
 
 async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
-  const configuredTokens = getDiscordBotTokens();
-  const envToken = process.env.DISCORD_BOT_TOKEN?.trim() || "";
-  const tokens = Array.from(new Set([
-    ...configuredTokens.map((entry) => entry.token?.trim() || "").filter(Boolean),
-    ...(envToken ? [envToken] : []),
-  ]));
+  const tokens = getConfiguredDiscordRuntimeTokens();
 
   if (tokens.length === 0) {
     log.debug("Discord runtime skipped (Discord bot token missing)", { reason });
@@ -411,6 +415,10 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
   });
 
   for (const token of tokens) {
+    if (discordClients.has(token)) {
+      continue;
+    }
+
     try {
       const client = new Client({
         intents: [
@@ -606,6 +614,17 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
 
 export async function startDiscordRuntime(reason: string): Promise<boolean> {
   if (discordClients.size > 0) {
+    const configuredTokens = getConfiguredDiscordRuntimeTokens();
+    const hasMissingClient = configuredTokens.some((token) => !discordClients.has(token));
+    if (hasMissingClient) {
+      log.debug("Discord runtime refreshing to include newly configured bots", {
+        reason,
+        clientCount: discordClients.size,
+        configuredTokenCount: configuredTokens.length,
+      });
+      return startDiscordRuntimeInternal(`${reason}:refresh`);
+    }
+
     log.debug("Discord runtime start skipped; already running", {
       reason,
       clientCount: discordClients.size,
