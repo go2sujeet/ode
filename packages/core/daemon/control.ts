@@ -9,9 +9,10 @@ function safePatch(updater: () => Partial<DaemonState>): void {
   }
 }
 
-export function markRuntimeReady(message: string): void {
+export function markRuntimeReady(message: string, runtimeVersion: string): void {
   safePatch(() => ({
     readyMessage: message,
+    runtimeVersion,
     status: "ready",
     lastReadyAt: Date.now(),
   }));
@@ -20,6 +21,7 @@ export function markRuntimeReady(message: string): void {
 export function clearRuntimeReadyState(): void {
   safePatch(() => ({
     readyMessage: null,
+    runtimeVersion: null,
     lastReadyAt: null,
     status: "starting",
   }));

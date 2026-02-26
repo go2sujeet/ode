@@ -35,6 +35,7 @@ import packageJson from "../../package.json" with { type: "json" };
 
 const CONFIG_WATCH_INTERVAL_MS = 1000;
 const CONFIG_WATCH_DEBOUNCE_MS = 500;
+const CURRENT_VERSION = packageJson.version ?? "0.0.0";
 
 function getLocalSettingsUrl(): string {
   const host = getWebHost();
@@ -165,9 +166,8 @@ async function runAutoUpgradeCheck(reason: string): Promise<void> {
     return;
   }
 
-  const currentVersion = packageJson.version ?? "0.0.0";
   try {
-    const update = await checkForUpdate(currentVersion);
+    const update = await checkForUpdate(CURRENT_VERSION);
     if (!update.latestVersion) {
       log.debug("Auto-upgrade check failed", { reason });
       return;
@@ -326,7 +326,7 @@ async function main(): Promise<void> {
 
   const readyMessage = `Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`;
   console.log(readyMessage);
-  markRuntimeReady(readyMessage);
+  markRuntimeReady(readyMessage, CURRENT_VERSION);
 }
 
 main().catch((err) => {

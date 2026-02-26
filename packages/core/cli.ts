@@ -177,6 +177,13 @@ function formatTimestamp(value: number | null): string {
   return new Date(value).toLocaleString();
 }
 
+function resolveRuntimeVersion(state: DaemonState): string | null {
+  if (typeof state.runtimeVersion === "string" && state.runtimeVersion.length > 0) {
+    return state.runtimeVersion;
+  }
+  return null;
+}
+
 type LogFilterLevel = "all" | "info" | "error";
 
 function parseLogFilterLevel(commandArgs: string[]): LogFilterLevel {
@@ -340,7 +347,19 @@ function showLogs(commandArgs: string[]): void {
 async function showStatus(): Promise<void> {
   const state = daemonState();
   const daemonIsRunning = managerRunning(state);
-  console.log(`Version: ${CURRENT_VERSION}`);
+  const runtimeVersion = daemonIsRunning ? resolveRuntimeVersion(state) : null;
+  if (daemonIsRunning) {
+    if (runtimeVersion) {
+      console.log(`Version: ${runtimeVersion}`);
+    } else {
+      console.log("Version: unknown (running daemon does not report its version; restart recommended)");
+    }
+    if (!runtimeVersion || runtimeVersion !== CURRENT_VERSION) {
+      console.log(`Installed Version: ${CURRENT_VERSION}`);
+    }
+  } else {
+    console.log(`Version: ${CURRENT_VERSION}`);
+  }
   console.log(`Daemon: ${daemonIsRunning ? "running" : "stopped"}`);
   if (state.pendingUpgradeRestart) {
     console.log(
