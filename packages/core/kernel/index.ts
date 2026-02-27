@@ -1,4 +1,5 @@
 export * from "./runtime-kernel";
+export * from "./runtime-facade";
 export * from "./runtime-support";
 export * from "./session-bootstrap";
 export * from "./pending-question";
