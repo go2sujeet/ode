@@ -1,4 +1,5 @@
 export * from "./runtime-kernel";
+export * from "./open-request";
 export * from "./request-run";
 export * from "./request-phase";
 export * from "./event-projector";

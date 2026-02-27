@@ -98,10 +98,10 @@ export async function runOpenRequest(params: {
   const progressIntervalMs = getMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
   const result = await runTrackedRequest({
-      deps,
-      request,
-      workingPath: cwd,
-      liveEventHistory,
+    deps,
+    request,
+    workingPath: cwd,
+    liveEventHistory,
     liveParsedState,
     sendPrompt: () =>
       deps.agent.sendMessage(

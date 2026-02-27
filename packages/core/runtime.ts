@@ -21,7 +21,7 @@ import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { handlePendingQuestionReply } from "@/core/runtime/pending-question";
 import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core/runtime/recovery";
 import { prepareRuntimeSession } from "@/core/runtime/session-bootstrap";
-import { runOpenRequest } from "@/core/runtime/open-request";
+import { runOpenRequest } from "@/core/kernel/open-request";
 import { buildMessageOptions } from "@/core/runtime/message-options";
 import { splitResultMessage } from "@/core/runtime/result-message";
 import { createRateLimitedImAdapter } from "@/core/runtime/message-updates";
