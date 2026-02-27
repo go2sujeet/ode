@@ -101,12 +101,6 @@ function isEnabled(raw: string | undefined): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
-function isDisabled(raw: string | undefined): boolean {
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off";
-}
-
 export function createCoreRuntime(deps: RuntimeDeps) {
   const runtimeDeps: RuntimeDeps = {
     ...deps,
@@ -131,7 +125,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     getKey: (context) => `${context.channelId}-${context.threadId}`,
     process: (context, text) => handleUserMessageInternal(context, text),
   });
-  const useRuntimeKernel = !isEnabled(process.env.LEGACY_INBOUND_PATH) && !isDisabled(process.env.NEW_RUNTIME_KERNEL);
+  const useRuntimeKernel = !isEnabled(process.env.LEGACY_INBOUND_PATH);
   const threadRuntimeRegistry = new ThreadRuntimeRegistry({
     ttlMs: 30 * 60 * 1000,
     sweepIntervalMs: 5 * 60 * 1000,

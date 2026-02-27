@@ -249,7 +249,7 @@ describe("core runtime e2e", () => {
     const legacyAgent = createFakeAgent();
     const kernelAgent = createFakeAgent();
 
-    await withEnv("NEW_RUNTIME_KERNEL", "0", async () => {
+    await withEnv("LEGACY_INBOUND_PATH", "1", async () => {
       const runtime = createCoreRuntime({ platform: "discord", im: legacyIm, agent: legacyAgent.agent });
       const channelId = uniqueId("CE2E-DIS-LEGACY");
       const threadId = uniqueId("TE2E-DIS-LEGACY");
@@ -266,7 +266,7 @@ describe("core runtime e2e", () => {
       deleteSession(channelId, threadId);
     });
 
-    await withEnv("NEW_RUNTIME_KERNEL", "1", async () => {
+    await withEnv("LEGACY_INBOUND_PATH", undefined, async () => {
       const runtime = createCoreRuntime({ platform: "discord", im: kernelIm, agent: kernelAgent.agent });
       const channelId = uniqueId("CE2E-DIS-KERNEL");
       const threadId = uniqueId("TE2E-DIS-KERNEL");
@@ -303,7 +303,7 @@ describe("core runtime e2e", () => {
     const im = createFakeIm(logs);
     const { agent, sentPrompts } = createFakeAgent();
 
-    await withEnv("NEW_RUNTIME_KERNEL", "1", async () => {
+    await withEnv("LEGACY_INBOUND_PATH", undefined, async () => {
       const runtime = createCoreRuntime({ platform: "lark", im, agent });
       const channelId = uniqueId("CE2E-LARK");
       const threadId = uniqueId("TE2E-LARK");

@@ -46,6 +46,6 @@
 
 1. Add value objects + new kernel skeleton (no behavior change).
 2. Introduce `RuntimeKernel` behind compatibility wrapper.
-3. Route one platform through adapters + `BotRuntime` under a flag.
-4. Cut over remaining platforms.
+3. Route one platform through adapters + `BotRuntime`, keep `LEGACY_INBOUND_PATH=1` as rollback.
+4. Cut over remaining platforms and keep the same rollback switch.
 5. Remove legacy concepts after test/harness parity.

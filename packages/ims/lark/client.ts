@@ -110,12 +110,6 @@ function isLarkEventDebugEnabled(): boolean {
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 
-function isEnabled(raw: string | undefined): boolean {
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
-
 function logLarkEvent(message: string, payload: Record<string, unknown>): void {
   if (!isLarkEventDebugEnabled()) return;
   log.debug(message, payload);
@@ -1058,7 +1052,6 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
   const processorId = createProcessorId("lark", inferredAppId ?? "");
   const scopedChannelId = scopeChannelId(processorId, channelId);
   const runtime = getLarkProcessorRuntime(processorId);
-  const useRuntimeKernel = isEnabled(process.env.NEW_RUNTIME_KERNEL);
 
   const botOpenId = await getBotOpenIdForChannel(scopedChannelId);
   if (!topLevelMessage && botOpenId && senderOpenId === botOpenId) {
@@ -1128,7 +1121,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     await sendSettingsCard(scopedChannelId, "", senderOpenId);
     return;
   }
-  if (!useRuntimeKernel && !isMentioned && !active) {
+  if (!isMentioned && !active) {
     logLarkEvent("Lark inbound ignored: not mentioned and thread inactive", {
       channelId,
       threadId,
