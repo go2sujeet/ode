@@ -132,7 +132,7 @@ jobs:
           commit_count="$(git rev-list --count ${range})"
 
           {
-            echo "body<<'EOF'"
+            echo "body<<EOF"
             echo "## Summary"
             echo "- Release \`${current_tag}\`"
             echo "${summary_line}"
