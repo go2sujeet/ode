@@ -29,7 +29,6 @@ import {
 import {
   createProcessorId,
   getScopedProcessorId,
-  scopeChannelId,
   unscopeChannelId,
 } from "@/ims/shared/processor-scope";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
@@ -1050,10 +1049,9 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
 
   const inferredAppId = processorAppId ?? getLarkCredentialsForChannel(channelId)?.appId;
   const processorId = createProcessorId("lark", inferredAppId ?? "");
-  const scopedChannelId = scopeChannelId(processorId, channelId);
   const runtime = getLarkProcessorRuntime(processorId);
 
-  const botOpenId = await getBotOpenIdForChannel(scopedChannelId);
+  const botOpenId = await getBotOpenIdForChannel(channelId);
   if (!topLevelMessage && botOpenId && senderOpenId === botOpenId) {
     logLarkEvent("Lark inbound ignored: self message", {
       channelId,
@@ -1078,12 +1076,12 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
   const isMentioned = botOpenId
     ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
     : false;
-  const active = isThreadActive(scopedChannelId, threadId);
+  const active = isThreadActive(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
   const inboundEvent: RawInboundEvent = {
     platform: "lark",
     botId: processorId,
-    channelId: scopedChannelId,
+    channelId,
     rawChannelId: channelId,
     threadId,
     replyThreadId: threadId,
@@ -1118,7 +1116,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
       topLevelMessage,
       isMentioned,
     });
-    await sendSettingsCard(scopedChannelId, "", senderOpenId);
+    await sendSettingsCard(channelId, "", senderOpenId);
     return;
   }
   if (!isMentioned && !active) {

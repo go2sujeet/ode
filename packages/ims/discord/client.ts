@@ -21,7 +21,7 @@ import {
   parseIncomingCommand,
 } from "@/ims/shared/incoming-message-processor";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
-import { createProcessorId, getScopedProcessorId, scopeChannelId, unscopeChannelId } from "@/ims/shared/processor-scope";
+import { createProcessorId, getScopedProcessorId, unscopeChannelId } from "@/ims/shared/processor-scope";
 import {
   DISCORD_LAUNCHER_COMMANDS,
   handleDiscordSettingsInteraction,
@@ -415,7 +415,6 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             if (configuredChannels && !configuredChannels.includes(parentId)) return;
 
             const threadId = message.channel.id;
-            const scopedChannelId = scopeChannelId(processorId, parentId);
             const text = message.content.trim();
             const launcherCommand = parseIncomingCommand(text);
             if (launcherCommand) {
@@ -431,12 +430,12 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               return;
             }
             const mentioned = isBotMentioned(message, client.user.id);
-            const active = isThreadActive(scopedChannelId, threadId);
+            const active = isThreadActive(parentId, threadId);
             const normalizedText = mentioned ? cleanBotMention(text, client.user.id) : text;
             const inboundEvent: RawInboundEvent = {
               platform: "discord",
               botId: processorId,
-              channelId: scopedChannelId,
+              channelId: parentId,
               rawChannelId: parentId,
               threadId,
               replyThreadId: threadId,
@@ -508,11 +507,11 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             autoArchiveDuration: 60,
           });
 
-          markThreadActive(scopeChannelId(processorId, parentId), thread.id);
+          markThreadActive(parentId, thread.id);
           await runtime.handleInboundEvent({
             platform: "discord",
             botId: processorId,
-            channelId: scopeChannelId(processorId, parentId),
+            channelId: parentId,
             rawChannelId: parentId,
             threadId: thread.id,
             replyThreadId: thread.id,

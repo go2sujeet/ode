@@ -24,7 +24,6 @@ import { describeSlackSettingsIssues, postSlackGeneralSettingsLauncher } from ".
 import {
   createProcessorId,
   getScopedProcessorId,
-  scopeChannelId,
   unscopeChannelId,
 } from "@/ims/shared/processor-scope";
 import { createProcessorManager } from "@/ims/shared/processor-manager";
@@ -419,10 +418,9 @@ export async function handleButtonSelection(
   const botToken = slackAuthRegistry.getMessageBotToken(channelId, messageTs)
     ?? slackAuthRegistry.getThreadBotToken(channelId, threadId);
   const processorId = createProcessorId("slack", botToken ?? "");
-  const scopedChannelId = scopeChannelId(processorId, channelId);
   const runtime = getSlackProcessorRuntime(processorId);
   await runtime.handleButtonSelection({
-    channelId: scopedChannelId,
+    channelId,
     rawChannelId: channelId,
     replyThreadId: threadId,
     threadId,

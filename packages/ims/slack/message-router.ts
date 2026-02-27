@@ -6,7 +6,6 @@ import {
 } from "@/ims/shared/incoming-message-processor";
 import type { InboundDecision } from "@/core/model/inbound-decision";
 import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
-import { createProcessorId, scopeChannelId } from "@/ims/shared/processor-scope";
 import { RuntimeCache } from "@/shared/cache/runtime-cache";
 import { SlackInboundAdapter } from "@/ims/slack/slack-inbound-adapter";
 
@@ -239,8 +238,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       });
 
       const currentBotUserId = identity.botUserId;
-      const processorId = createProcessorId("slack", contextBotToken ?? workspaceAuth?.botToken ?? "");
-      const scopedChannelId = scopeChannelId(processorId, channelId);
       if (!workspaceAuth && contextBotToken) {
         workspaceAuth = syncWorkspaceAuth(deps, channelId, contextBotToken);
       }
@@ -259,11 +256,11 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
-      const threadActive = deps.isThreadActive(scopedChannelId, threadId);
+      const threadActive = deps.isThreadActive(channelId, threadId);
       const inboundEvent: RawInboundEvent = {
         platform: "slack",
         botId: contextBotToken ?? workspaceAuth?.botToken ?? "default",
-        channelId: scopedChannelId,
+        channelId,
         rawChannelId: channelId,
         threadId,
         replyThreadId: threadId,

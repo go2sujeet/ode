@@ -48,7 +48,7 @@
 
 ## Remaining gaps
 
-- Replace scoped channel string encoding (`scopeChannelId`) with typed `BotKey` + `ThreadKey` end-to-end.
+- Remove legacy scoped-channel parsing helpers (`unscopeChannelId` / `getScopedProcessorId`) from platform clients.
 - Move command parsing/handling behind explicit kernel command service when command routing is fully migrated.
 
 ## Migration slices
