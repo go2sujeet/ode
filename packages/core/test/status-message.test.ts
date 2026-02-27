@@ -81,7 +81,7 @@ describe("buildStatusMessageForAgent", () => {
       statusMessageFormat: "medium",
     });
 
-    expect(text).toContain("*Opencode is running...*");
+    expect(text).toContain("*OpenCode is running...*");
     expect(text).toContain("_Thinking_");
   });
 
