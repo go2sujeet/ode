@@ -42,19 +42,15 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("");
     lines.push(`${platformLabel.toUpperCase()} ACTIONS:`);
     const baseUrl = slack.odeSlackApiUrl ?? getSlackActionApiUrl();
-    if (platform === "slack" && slack.hasCustomSlackTool) {
-      lines.push("- Use `ode_action` tool for Slack actions (messages, reactions, thread history, questions, uploads).");
-    } else {
-      lines.push("- Use bash + curl to call the Ode action API.");
-      lines.push(`- Endpoint: ${baseUrl}/action`);
-      lines.push(
-        platform === "discord"
-          ? "- Payload: {\"platform\":\"discord\",\"action\":\"post_message\",\"channelId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
-          : platform === "lark"
-            ? "- Payload: {\"platform\":\"lark\",\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"text\":\"...\"}"
+    lines.push("- Use bash + curl to call the Ode action API.");
+    lines.push(`- Endpoint: ${baseUrl}/action`);
+    lines.push(
+      platform === "discord"
+        ? "- Payload: {\"platform\":\"discord\",\"action\":\"post_message\",\"channelId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
+        : platform === "lark"
+          ? "- Payload: {\"platform\":\"lark\",\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"text\":\"...\"}"
           : "- Payload: {\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
-      );
-    }
+    );
     if (platform === "discord") {
       lines.push("- Supported actions: get_guilds, get_channels, post_message, update_message, create_thread_from_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
       lines.push("- Required fields: channelId for message/reaction/question/upload actions; threadId for get_thread_messages; messageId + emoji for reactions; userId (or \"@me\") for get_user_info; filePath for upload_file.");

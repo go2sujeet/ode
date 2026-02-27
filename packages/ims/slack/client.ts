@@ -1,6 +1,5 @@
 import { App } from "@slack/bolt";
 import { WebClient } from "@slack/web-api";
-import { join } from "path";
 import {
   getSlackTargetChannels,
   getSlackBotTokens,
@@ -77,7 +76,6 @@ function getOdeSlackApiUrl(): string | undefined {
 }
 
 async function buildSlackContext(
-  cwd: string,
   channelId: string,
   threadId: string,
   userId: string,
@@ -92,7 +90,6 @@ async function buildSlackContext(
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
-      hasCustomSlackTool: await hasOdeSlackTool(cwd),
       odeSlackApiUrl: getOdeSlackApiUrl(),
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
       channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
@@ -174,23 +171,6 @@ export function getSlackBotToken(channelId?: string, threadId?: string): string 
     .map((entry) => entry.token)
     .filter((token) => token && token.trim().length > 0);
   return tokens[0];
-}
-
-async function hasOdeSlackTool(workingPath: string): Promise<boolean> {
-  const basePath = join(workingPath, ".opencode", "tools");
-  const candidates = [
-    "ode_action.ts",
-    "ode_action.js",
-    "ode_action.mjs",
-    "ode_action.cjs",
-  ];
-
-  for (const candidate of candidates) {
-    const file = Bun.file(join(basePath, candidate));
-    if (await file.exists()) return true;
-  }
-
-  return false;
 }
 
 function truncateToken(token: string): string {
@@ -419,8 +399,8 @@ const slackAdapter: IMAdapter = {
   updateMessage,
   deleteMessage,
   fetchThreadHistory,
-  buildAgentContext: async ({ cwd, channelId, threadId, userId, threadHistory }) =>
-    buildSlackContext(cwd, channelId, threadId, userId, threadHistory),
+  buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
+    buildSlackContext(channelId, threadId, userId, threadHistory),
 };
 
 const slackRecoveryRuntime = createCoreRuntime({

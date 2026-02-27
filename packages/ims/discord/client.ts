@@ -140,7 +140,6 @@ async function buildDiscordContext(
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
-      hasCustomSlackTool: false,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
       channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
     },

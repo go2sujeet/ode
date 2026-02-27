@@ -18,7 +18,6 @@ export interface SlackContext {
   threadId: string;
   userId: string;
   threadHistory?: string;
-  hasCustomSlackTool?: boolean;
   odeSlackApiUrl?: string;
   hasGitHubToken?: boolean;
   channelSystemMessage?: string;
