@@ -1,16 +1,16 @@
 import { log } from "@/utils";
-import { isStopCommand } from "@/ims/shared/stop-command";
-import { evaluateIncomingMessage, formatIncomingDropMessage } from "@/ims/shared/incoming-pipeline";
-import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
-import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
-import { parseIncomingCommand } from "@/ims/shared/command-router";
-import type { IncomingPipelineResult } from "@/ims/shared/incoming-pipeline";
+import {
+  buildIncomingContext,
+  IncomingMessageProcessor,
+  type IncomingFlowResult,
+} from "@/ims/shared/incoming-message-processor";
 import type { AgentProviderId } from "@/shared/agent-provider";
 import {
   toCoreMessageContext,
   type UnifiedMessageContext,
 } from "@/ims/shared/message-context";
 import { createProcessorId, scopeChannelId } from "@/ims/shared/processor-scope";
+import { RuntimeCache } from "@/shared/cache/runtime-cache";
 
 type RouterDeps = {
   app: any;
@@ -47,6 +47,8 @@ type RouterDeps = {
 };
 
 type WorkspaceAuth = ReturnType<RouterDeps["resolveWorkspaceAuth"]>;
+
+const incomingMessageProcessor = new IncomingMessageProcessor();
 
 type BotIdentity = {
   botUserId: string;
@@ -122,7 +124,7 @@ async function maybeNotifySettingsIssues(
   userId: string,
   client: any,
   say: any,
-  flowResult: IncomingPipelineResult,
+  flowResult: IncomingFlowResult,
 ): Promise<boolean> {
   if (flowResult.type === "ignore") return false;
 
@@ -153,7 +155,7 @@ async function maybeHandleLauncherCommand(params: {
   client: any;
 }): Promise<boolean> {
   const { deps, cleanText, isMention, channelId, userId, client } = params;
-  const command = parseIncomingCommand(cleanText);
+  const command = incomingMessageProcessor.parseCommand(cleanText);
   if (command !== "setting") return false;
   if (isMention) {
     log.info("Slack settings launcher command matched", {
@@ -179,7 +181,7 @@ function getCacheKey(credentialKey?: string): string | undefined {
 
 async function getBotIdentity(params: {
   client: any;
-  cache: Map<string, BotIdentity>;
+  cache: RuntimeCache<string, BotIdentity>;
   credentialKey?: string;
 }): Promise<BotIdentity> {
   const { client, cache, credentialKey } = params;
@@ -206,7 +208,10 @@ async function getBotIdentity(params: {
 
 export function registerSlackMessageRouter(deps: RouterDeps): void {
   const slackApp = deps.app;
-  const botIdentityCache = new Map<string, BotIdentity>();
+  const botIdentityCache = new RuntimeCache<string, BotIdentity>({
+    max: 200,
+    ttlMs: 24 * 60 * 60 * 1000,
+  });
 
   slackApp.message(async ({ message, say, client, context, body }: any) => {
     let contextData: IncomingMessageData | null = null;
@@ -268,7 +273,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         rawText: text,
         normalizedText: cleanText,
       });
-      const flowResult = evaluateIncomingMessage(messageContext, isStopCommand);
+      const flowResult = incomingMessageProcessor.evaluate(messageContext);
 
       if (shouldDropForOtherMentions(text, isMention)) {
         log.info("[DROP] Mentions other user", {
@@ -297,7 +302,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
 
       const workspaceName = deps.getChannelWorkspaceName(channelId) || "unknown";
-      await executeIncomingFlow({
+      await incomingMessageProcessor.execute({
         context: messageContext,
         flowResult,
         markThreadActive: deps.markThreadActive,
@@ -307,7 +312,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         },
         onIgnore: async (reason) => {
           if (reason === "not_mentioned_and_inactive") {
-            log.debug(formatIncomingDropMessage(reason), { channelId, threadId });
+            log.debug(incomingMessageProcessor.formatDropMessage(reason), { channelId, threadId });
             return;
           }
           await say({

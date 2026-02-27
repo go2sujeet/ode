@@ -90,4 +90,51 @@ describe("runTrackedRequest", () => {
     expect(statusUpdates.length).toBe(1);
     expect(statusUpdates[0]).toContain("Error:");
   });
+
+  it("publishes fallback text when stop event wins race", async () => {
+    const request = buildRequest();
+    request.currentText = "partial output";
+    const published: string[] = [];
+
+    const result = await runTrackedRequest({
+      deps: {
+        agent: {
+          supportsEventStream: true,
+          ensureSession: async () => {},
+          getProviderForSession: () => "opencode",
+          subscribeToSession: (_sessionId: string, handler: (event: any) => void) => {
+            setTimeout(() => {
+              handler({
+                type: "message.part.updated",
+                properties: { part: { type: "step-finish", reason: "stop" } },
+              });
+            }, 0);
+            return () => {};
+          },
+        } as any,
+        im: {
+          updateMessage: async () => {},
+        } as any,
+      },
+      request,
+      workingPath: "/tmp/project",
+      stateMachine: new CoreStateMachine("C1:T1"),
+      liveEventHistory: new Map(),
+      liveParsedState: new Map(),
+      sendPrompt: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return [{ text: "late", messageType: "assistant" }];
+      },
+      onProgressTick: async () => {},
+      onComplete: () => {},
+      onFail: () => {},
+      publishFinalText: async (text) => {
+        published.push(text);
+      },
+      failureLogLabel: "runner failed",
+    });
+
+    expect(result.responses).toEqual([]);
+    expect(published).toEqual(["_Done_"]);
+  });
 });

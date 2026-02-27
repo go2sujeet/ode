@@ -1,13 +1,7 @@
 import type { IMAdapter } from "@/core/types";
 import { resolveMessageUpdateIntervalMs } from "@/config";
 import { log } from "@/utils";
-
-type QueuedUpdate = {
-  channelId: string;
-  messageTs: string;
-  text: string;
-  resolve: (messageTs?: string) => void;
-};
+import { CoalescedUpdateQueue } from "@/shared/queue/coalesced-update-queue";
 
 function isRateLimitError(error: unknown): boolean {
   const message = String(error || "").toLowerCase();
@@ -18,9 +12,6 @@ export function createRateLimitedImAdapter(
   im: IMAdapter,
   intervalMs = resolveMessageUpdateIntervalMs()
 ): IMAdapter {
-  let globalLastUpdateAt = 0;
-  const queue: QueuedUpdate[] = [];
-  let processing = false;
   const rateLimitedMessages = new Set<string>();
   const rateLimitErrors = new Map<string, string>();
 
@@ -28,45 +19,32 @@ export function createRateLimitedImAdapter(
     return `${channelId}:${messageTs}`;
   }
 
-  async function processQueue(): Promise<void> {
-    if (processing || queue.length === 0) return;
-    processing = true;
-
-    while (queue.length > 0) {
-      const elapsed = Date.now() - globalLastUpdateAt;
-      if (elapsed < intervalMs) {
-        await new Promise((resolve) => setTimeout(resolve, intervalMs - elapsed));
-      }
-
-      const item = queue.shift();
-      if (!item) break;
-
-      globalLastUpdateAt = Date.now();
+  const queue = new CoalescedUpdateQueue<string | undefined>(
+    intervalMs,
+    async ({ channelId, messageId }, text) => {
       try {
-        const maybeUpdatedTs = await im.updateMessage(item.channelId, item.messageTs, item.text);
-        item.resolve(typeof maybeUpdatedTs === "string" ? maybeUpdatedTs : undefined);
+        const maybeUpdatedTs = await im.updateMessage(channelId, messageId, text);
+        return typeof maybeUpdatedTs === "string" ? maybeUpdatedTs : undefined;
       } catch (error) {
         if (isRateLimitError(error)) {
-          const rateLimitKey = key(item.channelId, item.messageTs);
+          const rateLimitKey = key(channelId, messageId);
           rateLimitedMessages.add(rateLimitKey);
           rateLimitErrors.set(rateLimitKey, String(error));
           log.warn("IM message update hit rate limit (429)", {
-            channelId: item.channelId,
-            messageTs: item.messageTs,
+            channelId,
+            messageTs: messageId,
             error: String(error),
           });
         }
         log.debug("IM message update failed", {
-          channelId: item.channelId,
-          messageTs: item.messageTs,
+          channelId,
+          messageTs: messageId,
           error: String(error),
         });
-        item.resolve();
+        return undefined;
       }
     }
-
-    processing = false;
-  }
+  );
 
   return {
     ...im,
@@ -88,18 +66,7 @@ export function createRateLimitedImAdapter(
       messageTs: string,
       text: string
     ): Promise<string | undefined> => {
-      for (let i = queue.length - 1; i >= 0; i--) {
-        const queued = queue[i];
-        if (queued && queued.channelId === channelId && queued.messageTs === messageTs) {
-          queue.splice(i, 1);
-          queued.resolve();
-        }
-      }
-
-      return new Promise<string | undefined>((resolve) => {
-        queue.push({ channelId, messageTs, text, resolve });
-        void processQueue();
-      });
+      return queue.enqueue({ channelId, messageId: messageTs }, text);
     },
   };
 }

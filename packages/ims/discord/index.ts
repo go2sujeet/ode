@@ -3,4 +3,7 @@ export {
   startDiscordRuntime,
   stopDiscordRuntime,
   recoverPendingRequests as recoverDiscordPendingRequests,
-} from "./client";
+} from "./runtime";
+
+export * as discordUtils from "./utils";
+export * as discordState from "./state";

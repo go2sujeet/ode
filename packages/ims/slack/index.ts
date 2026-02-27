@@ -10,7 +10,7 @@ export {
   clearSlackAuthState,
   resetSlackState,
   type MessageContext,
-} from "./client";
+} from "./runtime";
 
 export { handleSlackActionPayload, type SlackActionRequest, type SlackApiResponse } from "./api";
 
@@ -18,4 +18,6 @@ export { setupInteractiveHandlers } from "./commands";
 
 export { stopOAuthServer } from "./oauth";
 
-export { markdownToSlack, truncateForSlack, splitForSlack } from "./formatter";
+export { markdownToSlack, truncateForSlack, splitForSlack } from "./utils";
+
+export * as slackState from "./state";

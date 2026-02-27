@@ -33,6 +33,7 @@ import {
   unscopeChannelId,
 } from "@/ims/shared/processor-scope";
 import { createProcessorManager } from "@/ims/shared/processor-manager";
+import { SlackAuthRegistry, type WorkspaceAuth } from "@/ims/slack/state/auth-registry";
 
 export interface MessageContext {
   channelId: string;
@@ -46,26 +47,7 @@ export interface MessageContext {
 
 const appRegistry = new Map<string, App>();
 
-
-type WorkspaceAuth = {
-  appToken: string;
-  botToken: string;
-  workspaceId: string;
-  workspaceName: string;
-  teamId: string | null;
-  enterpriseId: string | null;
-  botUserId: string | null;
-  botId: string | null;
-  userId: string | null;
-};
-
-const workspaceAuthMap = new Map<string, WorkspaceAuth>();
-const botTokenAuthMap = new Map<string, WorkspaceAuth>();
-const appTokenAuthMap = new Map<string, WorkspaceAuth>();
-const channelWorkspaceMap = new Map<string, string>();
-const channelWorkspaceAuthMap = new Map<string, WorkspaceAuth>();
-const threadBotTokenMap = new Map<string, string>();
-const messageBotTokenMap = new Map<string, string>();
+const slackAuthRegistry = new SlackAuthRegistry();
 const slackProcessorManager = createProcessorManager({
   createRuntime: () => createCoreRuntime({
     platform: "slack",
@@ -76,40 +58,8 @@ const slackProcessorManager = createProcessorManager({
 });
 const backgroundWorkspaceSyncInFlight = new Set<string>();
 
-function getThreadKey(channelId: string, threadId: string): string {
-  return `${channelId}:${threadId}`;
-}
-
-function getMessageKey(channelId: string, messageTs: string): string {
-  return `${channelId}:${messageTs}`;
-}
-
-function setThreadBotToken(channelId: string, threadId: string, botToken: string): void {
-  if (!channelId || !threadId || !botToken) return;
-  threadBotTokenMap.set(getThreadKey(channelId, threadId), botToken);
-}
-
-function setMessageBotToken(channelId: string, messageTs: string, botToken: string): void {
-  if (!channelId || !messageTs || !botToken) return;
-  messageBotTokenMap.set(getMessageKey(channelId, messageTs), botToken);
-}
-
-function getMessageBotToken(channelId: string, messageTs: string): string | undefined {
-  return messageBotTokenMap.get(getMessageKey(channelId, messageTs));
-}
-
-function getThreadBotToken(channelId: string, threadId: string): string | undefined {
-  return threadBotTokenMap.get(getThreadKey(channelId, threadId));
-}
-
 export function clearSlackAuthState(): void {
-  workspaceAuthMap.clear();
-  botTokenAuthMap.clear();
-  appTokenAuthMap.clear();
-  channelWorkspaceMap.clear();
-  channelWorkspaceAuthMap.clear();
-  threadBotTokenMap.clear();
-  messageBotTokenMap.clear();
+  slackAuthRegistry.clear();
 }
 
 export function resetSlackState(): void {
@@ -160,7 +110,7 @@ export async function createSlackApp(appToken: string): Promise<App> {
     return appRegistry.get(normalizedAppToken)!;
   }
 
-  const auth = appTokenAuthMap.get(normalizedAppToken);
+  const auth = slackAuthRegistry.getWorkspaceAuthByAppToken(normalizedAppToken);
   if (!auth) {
     log.warn("No Slack auth for app token", { appToken: truncateToken(normalizedAppToken) });
     throw new Error("Missing Slack auth for app token");
@@ -195,8 +145,7 @@ function isAuthorizedChannel(channelId: string): boolean {
 function resolveWorkspaceAuth(
   credentialKey?: string
 ): WorkspaceAuth | undefined {
-  if (!credentialKey) return undefined;
-  return workspaceAuthMap.get(credentialKey) ?? botTokenAuthMap.get(credentialKey);
+  return slackAuthRegistry.resolveWorkspaceAuth(credentialKey);
 }
 
 export function getSlackBotToken(channelId?: string, threadId?: string): string | undefined {
@@ -204,22 +153,23 @@ export function getSlackBotToken(channelId?: string, threadId?: string): string 
   const scopedProcessorId = channelId ? getScopedProcessorId(channelId) : undefined;
 
   if (scopedProcessorId) {
-    const scopedAuth = Array.from(botTokenAuthMap.values()).find(
-      (entry) => createProcessorId("slack", entry.botToken) === scopedProcessorId
+    const scopedToken = slackAuthRegistry.findBotTokenByProcessorId(
+      scopedProcessorId,
+      (botToken) => createProcessorId("slack", botToken)
     );
-    if (scopedAuth?.botToken) return scopedAuth.botToken;
+    if (scopedToken) return scopedToken;
   }
 
   if (rawChannelId && threadId) {
-    const threadToken = getThreadBotToken(rawChannelId, threadId);
+    const threadToken = slackAuthRegistry.getThreadBotToken(rawChannelId, threadId);
     if (threadToken) return threadToken;
   }
   if (rawChannelId) {
-    const channelAuth = channelWorkspaceAuthMap.get(rawChannelId);
-    if (channelAuth?.botToken) return channelAuth.botToken;
+    const channelToken = slackAuthRegistry.getChannelWorkspaceBotToken(rawChannelId);
+    if (channelToken) return channelToken;
   }
-  const registered = workspaceAuthMap.values().next().value as WorkspaceAuth | undefined;
-  if (registered?.botToken) return registered.botToken;
+  const registered = slackAuthRegistry.getFirstRegisteredBotToken();
+  if (registered) return registered;
   const tokens = getSlackBotTokens()
     .map((entry) => entry.token)
     .filter((token) => token && token.trim().length > 0);
@@ -321,9 +271,7 @@ async function fetchWorkspaceAuth(
 }
 
 function registerWorkspaceAuth(auth: WorkspaceAuth): void {
-  workspaceAuthMap.set(auth.workspaceId, auth);
-  botTokenAuthMap.set(auth.botToken, auth);
-  appTokenAuthMap.set(auth.appToken, auth);
+  slackAuthRegistry.registerWorkspaceAuth(auth);
 }
 
 export async function initializeWorkspaceAuth(): Promise<void> {
@@ -367,7 +315,7 @@ export async function sendMessage(
   const slackApp = getApp();
   const formattedText = markdownToSlack(text);
   const chunks = splitForSlack(formattedText);
-  const workspace = channelWorkspaceMap.get(rawChannelId) || "unknown";
+  const workspace = slackAuthRegistry.getChannelWorkspaceName(rawChannelId) || "unknown";
   const botToken = getSlackBotToken(channelId, threadId);
 
   if (!botToken) {
@@ -392,8 +340,8 @@ export async function sendMessage(
     });
     lastTs = result.ts;
     if (botToken && result.ts) {
-      setThreadBotToken(rawChannelId, threadId, botToken);
-      setMessageBotToken(rawChannelId, result.ts, botToken);
+      slackAuthRegistry.setThreadBotToken(rawChannelId, threadId, botToken);
+      slackAuthRegistry.setMessageBotToken(rawChannelId, result.ts, botToken);
     }
   }
   return lastTs;
@@ -406,7 +354,7 @@ export async function deleteMessage(
   try {
     const rawChannelId = unscopeChannelId(channelId);
     const slackApp = getApp();
-    const botToken = getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
+    const botToken = slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message delete", { channelId });
     }
@@ -430,7 +378,7 @@ export async function updateMessage(
     const slackApp = getApp();
     const formattedText = markdownToSlack(text);
     const truncatedText = truncateForSlack(formattedText);
-    const botToken = getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
+    const botToken = slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message update", { channelId });
     }
@@ -509,7 +457,8 @@ export async function handleButtonSelection(
   selection: string,
   messageTs: string
 ): Promise<void> {
-  const botToken = getMessageBotToken(channelId, messageTs) ?? getThreadBotToken(channelId, threadId);
+  const botToken = slackAuthRegistry.getMessageBotToken(channelId, messageTs)
+    ?? slackAuthRegistry.getThreadBotToken(channelId, threadId);
   const processorId = createProcessorId("slack", botToken ?? "");
   const scopedChannelId = scopeChannelId(processorId, channelId);
   const runtime = getSlackProcessorRuntime(processorId);
@@ -531,14 +480,13 @@ export function setupMessageHandlers(): void {
       isAuthorizedChannel,
       resolveWorkspaceAuth,
       syncWorkspaceForChannel: syncWorkspaceAfterMention,
-      getChannelWorkspaceName: (channelId) => channelWorkspaceMap.get(channelId),
+      getChannelWorkspaceName: (channelId) => slackAuthRegistry.getChannelWorkspaceName(channelId),
       setChannelWorkspaceName: (channelId, workspaceName) => {
-        channelWorkspaceMap.set(channelId, workspaceName);
+        slackAuthRegistry.setChannelWorkspaceName(channelId, workspaceName);
       },
       setChannelWorkspaceAuth: (channelId, auth) => {
         if (!auth?.botToken) return;
-        const fullAuth = botTokenAuthMap.get(auth.botToken);
-        if (fullAuth) channelWorkspaceAuthMap.set(channelId, fullAuth);
+        slackAuthRegistry.setChannelWorkspaceAuthByBotToken(channelId, auth.botToken);
       },
       isThreadActive,
       markThreadActive,
@@ -552,8 +500,8 @@ export function setupMessageHandlers(): void {
       handleIncomingMessage: (context, text) => {
         if (context.botToken) {
           const rawChannelId = context.rawChannelId ?? unscopeChannelId(context.channelId);
-          setThreadBotToken(rawChannelId, context.replyThreadId, context.botToken);
-          setThreadBotToken(rawChannelId, context.threadId, context.botToken);
+          slackAuthRegistry.setThreadBotToken(rawChannelId, context.replyThreadId, context.botToken);
+          slackAuthRegistry.setThreadBotToken(rawChannelId, context.threadId, context.botToken);
         }
         const processorId = getScopedProcessorId(context.channelId)
           ?? createProcessorId("slack", context.botToken ?? "");

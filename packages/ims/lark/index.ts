@@ -4,4 +4,7 @@ export {
   startLarkRuntime,
   stopLarkRuntime,
   recoverPendingRequests as recoverLarkPendingRequests,
-} from "./client";
+} from "./runtime";
+
+export * as larkUtils from "./utils";
+export * as larkState from "./state";

@@ -14,5 +14,18 @@ export function runAgentAdapterContractSuite(name: string, makeAdapter: () => Ag
       expect(typeof adapter.normalizeQuestions).toBe("function");
       expect(typeof adapter.supportsEventStream).toBe("boolean");
     });
+
+    it("returns a usable session and response payload shape", async () => {
+      const adapter = makeAdapter();
+      const session = await adapter.getOrCreateSession("C1", "T1", "/tmp", {});
+      expect(typeof session.sessionId).toBe("string");
+      expect(session.sessionId.length).toBeGreaterThan(0);
+
+      const responses = await adapter.sendMessage("C1", session.sessionId, "hello", "/tmp");
+      expect(Array.isArray(responses)).toBe(true);
+      if (responses[0]) {
+        expect(typeof responses[0].text).toBe("string");
+      }
+    });
   });
 }

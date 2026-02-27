@@ -23,7 +23,10 @@ import { isThreadActive, markThreadActive } from "@/config/local/settings";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
-import { isStopCommand } from "@/ims/shared/stop-command";
+import {
+  buildIncomingContext,
+  IncomingMessageProcessor,
+} from "@/ims/shared/incoming-message-processor";
 import {
   toCoreMessageContext,
   type UnifiedMessageContext,
@@ -34,10 +37,6 @@ import {
   scopeChannelId,
   unscopeChannelId,
 } from "@/ims/shared/processor-scope";
-import { evaluateIncomingMessage } from "@/ims/shared/incoming-pipeline";
-import { executeIncomingFlow } from "@/ims/shared/incoming-executor";
-import { buildIncomingContext } from "@/ims/shared/incoming-normalizer";
-import { parseIncomingCommand } from "@/ims/shared/command-router";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
 import {
   buildLarkSettingsDetailCard,
@@ -45,8 +44,17 @@ import {
   sendLarkSettingsCard,
 } from "./settings";
 import { createProcessorManager } from "@/ims/shared/processor-manager";
+import {
+  extractFormValues,
+  firstNonEmptyString,
+  pickActionSelectedOption,
+  pickFormValue,
+  pickValueField,
+} from "@/ims/lark/utils/card-action-utils";
+import { LarkRuntimeState } from "@/ims/lark/state/runtime-state";
 
 let larkRuntimeStarted = false;
+const incomingMessageProcessor = new IncomingMessageProcessor();
 
 type LarkCredentials = {
   workspaceId: string;
@@ -66,10 +74,7 @@ type LarkBotInfoResponse = {
   };
 };
 
-const tenantTokenCache = new Map<string, { token: string; expiresAt: number }>();
-const botOpenIdCache = new Map<string, string>();
-const sentMessageThreadMap = new Map<string, { channelId: string; threadId: string }>();
-const larkMessageEditCounts = new Map<string, number>();
+const larkRuntimeState = new LarkRuntimeState();
 const wsClientRegistry = new Map<string, unknown>();
 const larkProcessorManager = createProcessorManager({
   createRuntime: () => createCoreRuntime({
@@ -161,7 +166,7 @@ function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null
 }
 
 async function getLarkTenantAccessToken(creds: LarkCredentials): Promise<string> {
-  const cached = tenantTokenCache.get(creds.workspaceId);
+  const cached = larkRuntimeState.getTenantToken(creds.workspaceId);
   const now = Date.now();
   if (cached && cached.expiresAt > now + 30_000) {
     return cached.token;
@@ -189,7 +194,7 @@ async function getLarkTenantAccessToken(creds: LarkCredentials): Promise<string>
   }
 
   const ttlSec = typeof payload.expire === "number" ? payload.expire : 3600;
-  tenantTokenCache.set(creds.workspaceId, {
+  larkRuntimeState.setTenantToken(creds.workspaceId, {
     token: payload.tenant_access_token,
     expiresAt: now + Math.max(ttlSec - 30, 30) * 1000,
   });
@@ -266,7 +271,7 @@ async function sendLarkMessage(params: {
 
   const messageId = data.message_id;
   if (messageId) {
-    sentMessageThreadMap.set(messageId, {
+    larkRuntimeState.setMessageThread(messageId, {
       channelId: rawChannelId,
       threadId: params.threadId,
     });
@@ -397,15 +402,14 @@ async function updateMessage(
   if (!creds) return;
   const token = await getLarkTenantAccessToken(creds);
 
-  const editCount = larkMessageEditCounts.get(messageId) ?? 0;
+  const editCount = larkRuntimeState.getMessageEditCount(messageId);
   if (editCount >= MAX_LARK_MESSAGE_EDITS) {
-    const trackedThreadId = sentMessageThreadMap.get(messageId)?.threadId || findReplyThreadIdByStatusMessageTs(messageId) || "";
+    const trackedThreadId = larkRuntimeState.getMessageThread(messageId)?.threadId || findReplyThreadIdByStatusMessageTs(messageId) || "";
     try {
       await deleteMessage(channelId, messageId);
       const replacementMessageId = await sendMessage(channelId, trackedThreadId, text);
       if (replacementMessageId) {
-        larkMessageEditCounts.delete(messageId);
-        larkMessageEditCounts.set(replacementMessageId, 0);
+        larkRuntimeState.moveMessageEditCount(messageId, replacementMessageId);
         log.info("Lark message edit limit reached; replaced status message", {
           channelId: rawChannelId,
           oldMessageId: messageId,
@@ -441,7 +445,7 @@ async function updateMessage(
       `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
       payload
     );
-    larkMessageEditCounts.set(messageId, editCount + 1);
+    larkRuntimeState.setMessageEditCount(messageId, editCount + 1);
     return;
   } catch (error) {
     const patchMessage = error instanceof Error ? error.message : String(error);
@@ -470,7 +474,7 @@ async function updateMessage(
         `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
         payload
       );
-      larkMessageEditCounts.set(messageId, editCount + 1);
+       larkRuntimeState.setMessageEditCount(messageId, editCount + 1);
       return;
     } catch (fallbackError) {
       const fallbackMessage = String(fallbackError);
@@ -508,8 +512,8 @@ async function deleteMessage(channelId: string, messageId: string): Promise<void
       "DELETE",
       `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`
     );
-    sentMessageThreadMap.delete(messageId);
-    larkMessageEditCounts.delete(messageId);
+    larkRuntimeState.deleteMessageThread(messageId);
+    larkRuntimeState.deleteMessageEditCount(messageId);
   } catch {
     // Ignore delete failures
   }
@@ -591,13 +595,13 @@ const larkRecoveryRuntime = createCoreRuntime({
 async function getBotOpenIdForChannel(channelId: string): Promise<string | null> {
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return null;
-  const cached = botOpenIdCache.get(creds.workspaceId);
+  const cached = larkRuntimeState.getBotOpenId(creds.workspaceId);
   if (cached) return cached;
   const token = await getLarkTenantAccessToken(creds);
   const data = await larkApi<LarkBotInfoResponse>(token, "GET", "/open-apis/bot/v3/info");
   const openId = data.bot?.open_id?.trim();
   if (openId) {
-    botOpenIdCache.set(creds.workspaceId, openId);
+    larkRuntimeState.setBotOpenId(creds.workspaceId, openId);
     return openId;
   }
   logLarkEvent("Lark bot open_id missing from bot/v3/info response", {
@@ -717,102 +721,6 @@ type LarkCardActionEnvelope = {
 };
 
 type LarkIncomingEvent = NonNullable<LarkIncomingEnvelope["event"]>;
-
-function toTrimmedString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function firstNonEmptyString(...values: unknown[]): string {
-  for (const value of values) {
-    const normalized = toTrimmedString(value);
-    if (normalized.length > 0) return normalized;
-  }
-  return "";
-}
-
-function pickValueField(value: unknown, key: string): string {
-  if (!value || typeof value !== "object") return "";
-  const record = value as Record<string, unknown>;
-  return firstNonEmptyString(record[key], record[key.replace(/_([a-z])/g, (_, s) => s.toUpperCase())]);
-}
-
-function pickActionSelectedOption(payload: unknown): string {
-  if (!payload || typeof payload !== "object") return "";
-  const root = payload as Record<string, unknown>;
-  const event = root.event && typeof root.event === "object" ? root.event as Record<string, unknown> : null;
-  const action = event?.action && typeof event.action === "object" ? event.action as Record<string, unknown> : null;
-  const option = action?.option && typeof action.option === "object" ? action.option as Record<string, unknown> : null;
-  const options = action?.options && Array.isArray(action.options) ? action.options as unknown[] : [];
-
-  const fromOption = firstNonEmptyString(option?.value);
-  if (fromOption) return fromOption;
-
-  for (const item of options) {
-    if (!item || typeof item !== "object") continue;
-    const value = firstNonEmptyString((item as Record<string, unknown>).value);
-    if (value) return value;
-  }
-
-  return "";
-}
-
-function extractFormValues(payload: unknown): Record<string, string> {
-  if (!payload || typeof payload !== "object") return {};
-  const root = payload as Record<string, unknown>;
-  const event = root.event && typeof root.event === "object" ? root.event as Record<string, unknown> : null;
-  const action = event?.action && typeof event.action === "object" ? event.action as Record<string, unknown> : null;
-  const form = action?.form_value && typeof action.form_value === "object"
-    ? action.form_value as Record<string, unknown>
-    : root.form_value && typeof root.form_value === "object"
-      ? root.form_value as Record<string, unknown>
-      : {};
-  const normalized: Record<string, string> = {};
-  for (const [key, value] of Object.entries(form)) {
-    if (typeof value === "string") {
-      normalized[key] = value;
-      continue;
-    }
-    if (!value || typeof value !== "object") continue;
-    const record = value as Record<string, unknown>;
-    const directValue = firstNonEmptyString(record.value);
-    if (directValue) {
-      normalized[key] = directValue;
-      continue;
-    }
-    const option = record.option && typeof record.option === "object" ? record.option as Record<string, unknown> : null;
-    const optionValue = firstNonEmptyString(option?.value);
-    if (optionValue) {
-      normalized[key] = optionValue;
-      continue;
-    }
-    const options = Array.isArray(record.options) ? record.options : [];
-    for (const item of options) {
-      if (!item || typeof item !== "object") continue;
-      const itemValue = firstNonEmptyString((item as Record<string, unknown>).value);
-      if (itemValue) {
-        normalized[key] = itemValue;
-        break;
-      }
-    }
-  }
-  return normalized;
-}
-
-function pickFormValue(
-  formValues: Record<string, string>,
-  key: string
-): { exists: boolean; value: string } {
-  if (Object.prototype.hasOwnProperty.call(formValues, key)) {
-    return {
-      exists: true,
-      value: formValues[key] ?? "",
-    };
-  }
-  return {
-    exists: false,
-    value: "",
-  };
-}
 
 async function processLarkCardAction(payload: unknown): Promise<void> {
   if (!payload || typeof payload !== "object") return;
@@ -1203,7 +1111,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     textLength: text.length,
   });
 
-  const command = parseIncomingCommand(text);
+  const command = incomingMessageProcessor.parseCommand(text);
   if (command === "setting") {
     logLarkEvent("Lark inbound matched /setting", {
       channelId,
@@ -1216,8 +1124,8 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     return;
   }
 
-  const flowResult = evaluateIncomingMessage(messageContext, isStopCommand);
-  await executeIncomingFlow({
+  const flowResult = incomingMessageProcessor.evaluate(messageContext);
+  await incomingMessageProcessor.execute({
     context: messageContext,
     flowResult,
     markThreadActive,
@@ -1425,9 +1333,7 @@ const larkRuntimeController = createRuntimeController({
       return false;
     }
     larkRuntimeStarted = true;
-    tenantTokenCache.clear();
-    botOpenIdCache.clear();
-    sentMessageThreadMap.clear();
+    larkRuntimeState.clear();
     log.debug("Lark runtime started", {
       reason,
       workspaceCount: workspaces.length,
@@ -1438,9 +1344,7 @@ const larkRuntimeController = createRuntimeController({
   stopInternal: async (reason: string): Promise<void> => {
     larkRuntimeStarted = false;
     await stopLarkLongConnections(reason);
-    tenantTokenCache.clear();
-    botOpenIdCache.clear();
-    sentMessageThreadMap.clear();
+    larkRuntimeState.clear();
     larkProcessorManager.clear();
     log.debug("Lark runtime stopped", { reason });
   },

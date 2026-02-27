@@ -11,5 +11,24 @@ export function runImAdapterContractSuite(name: string, makeAdapter: () => IMAda
       expect(typeof adapter.fetchThreadHistory).toBe("function");
       expect(typeof adapter.buildAgentContext).toBe("function");
     });
+
+    it("supports send/update/delete and context building", async () => {
+      const adapter = makeAdapter();
+      const messageTs = await adapter.sendMessage("C1", "T1", "hello");
+      if (messageTs) {
+        await adapter.updateMessage("C1", messageTs, "updated");
+        await adapter.deleteMessage("C1", messageTs);
+      }
+
+      const context = await adapter.buildAgentContext({
+        cwd: "/tmp",
+        channelId: "C1",
+        replyThreadId: "T1",
+        threadId: "T1",
+        userId: "U1",
+        threadHistory: "U1: hello",
+      });
+      expect(typeof context).toBe("object");
+    });
   });
 }
