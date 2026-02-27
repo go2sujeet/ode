@@ -14,6 +14,7 @@ import { maybeSyncBranchAndThread, publishFinalText } from "@/core/kernel/runtim
 import { handleStopCommand } from "@/core/kernel/stop-command";
 import { buildMessageOptions } from "@/core/runtime/message-options";
 import { createRateLimitedImAdapter } from "@/core/runtime/message-updates";
+import { defaultInboundPolicy } from "@/ims/shared/inbound-policy";
 import type { OpenCodeOptions } from "@/agents";
 import {
   BotRuntime,
@@ -58,7 +59,7 @@ export class KernelRuntimeFacade {
       sweepIntervalMs: 5 * 60 * 1000,
       onDecision: async (_threadKey, params) => {
         const { event, decision } = params;
-        if (decision.kind === "ignore" || decision.kind === "command") return;
+        if (decision.kind === "ignore") return;
         if (decision.kind === "stop") {
           await handleStopCommand({ deps: this.runtimeDeps, channelId: event.channelId, threadId: event.threadId });
           return;
@@ -80,34 +81,35 @@ export class KernelRuntimeFacade {
     });
 
     const inboundAdapter: InboundAdapter = {
-      evaluate: (event) => {
-        const text = event.normalizedText.trim();
-        if (!text) {
-          return { kind: "ignore", reason: "empty_text" };
-        }
-        return { kind: "message", text };
-      },
+      evaluate: (event) => defaultInboundPolicy({
+        isTopLevel: event.isTopLevel,
+        mentionedBot: event.mentionedBot,
+        activeThread: event.activeThread,
+        normalizedText: event.normalizedText,
+      }),
     };
 
     this.runtimeKernel = new RuntimeKernel({
       createBotRuntime: (botKey) => new BotRuntime(botKey, {
         inboundAdapter,
-        handleCommand: async () => {},
         threadRuntimeRegistry,
       }),
     });
   }
 
   async handleInboundEvent(event: RawInboundEvent): Promise<void> {
-    const shouldProcess = event.isTopLevel
-      ? event.mentionedBot
-      : (event.mentionedBot || event.activeThread);
-    if (!shouldProcess) return;
+    const decision = defaultInboundPolicy({
+      isTopLevel: event.isTopLevel,
+      mentionedBot: event.mentionedBot,
+      activeThread: event.activeThread,
+      normalizedText: event.normalizedText,
+    });
 
-    const text = event.normalizedText.trim();
-    if (!text) return;
+    if (decision.kind === "ignore") {
+      return;
+    }
 
-    if (text.toLowerCase() === "stop") {
+    if (decision.kind === "stop") {
       const stopped = await handleStopCommand({
         deps: this.runtimeDeps,
         channelId: event.channelId,
@@ -130,7 +132,7 @@ export class KernelRuntimeFacade {
         messageId: event.messageId,
         botToken: event.botId,
       },
-      text
+      decision.text
     );
   }
 

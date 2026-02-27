@@ -19,7 +19,6 @@ type ThreadRuntimeRegistryDeps = {
 
 type BotRuntimeDeps = {
   inboundAdapter: InboundAdapter;
-  handleCommand: (event: RawInboundEvent, commandName: string, args: string[]) => Promise<void>;
   threadRuntimeRegistry: ThreadRuntimeRegistry;
 };
 
@@ -104,11 +103,6 @@ export class BotRuntime {
     const decision = this.deps.inboundAdapter.evaluate(event);
 
     if (decision.kind === "ignore") return;
-
-    if (decision.kind === "command") {
-      await this.deps.handleCommand(event, decision.name, decision.args);
-      return;
-    }
 
     await this.enqueueToThreadRuntime(event, decision);
   }

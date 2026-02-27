@@ -181,7 +181,7 @@ describe("core runtime e2e", () => {
       onSend: async (message) => {
         processingOrder.push(message);
         if (message === "first") {
-          await sleep(40);
+          await sleep(10);
         }
       },
       responses: [{ text: "ok", messageType: "assistant" }],
@@ -197,7 +197,7 @@ describe("core runtime e2e", () => {
       userId: "UE2E-2",
     };
 
-    await runtime.handleInboundEvent(toInboundEvent({
+    const firstRun = runtime.handleInboundEvent(toInboundEvent({
       platform: "slack",
       channelId: baseContext.channelId,
       threadId: baseContext.threadId,
@@ -205,7 +205,7 @@ describe("core runtime e2e", () => {
       messageId: uniqueId("ME2E-Q1"),
       text: "first",
     }));
-    await runtime.handleInboundEvent(toInboundEvent({
+    const secondRun = runtime.handleInboundEvent(toInboundEvent({
       platform: "slack",
       channelId: baseContext.channelId,
       threadId: baseContext.threadId,
@@ -213,6 +213,7 @@ describe("core runtime e2e", () => {
       messageId: uniqueId("ME2E-Q2"),
       text: "second",
     }));
+    await Promise.all([firstRun, secondRun]);
 
     await waitFor(() => sentPrompts.length === 2);
 
@@ -220,7 +221,7 @@ describe("core runtime e2e", () => {
     expect(sentPrompts).toEqual(["first", "second"]);
 
     deleteSession(baseContext.channelId, baseContext.threadId);
-  });
+  }, 15000);
 
   it("routes pending-question replies instead of opening a new request", async () => {
     const logs = { sends: [], updates: [] } as {

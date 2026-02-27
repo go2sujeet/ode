@@ -990,17 +990,13 @@ function isLarkLongConnectionEnabled(): boolean {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
-function isTopLevelMessage(message: LarkIncomingEvent["message"]): boolean {
-  return !(message?.root_id || message?.parent_id);
-}
-
 async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId?: string): Promise<void> {
   const message = event.message;
   const senderOpenId = event.sender?.sender_id?.open_id?.trim() || "";
   const channelId = message?.chat_id?.trim() || "";
   const messageId = message?.message_id?.trim() || "";
   const threadId = message?.root_id?.trim() || message?.parent_id?.trim() || messageId;
-  const topLevelMessage = isTopLevelMessage(message);
+  const topLevelMessage = !(message?.root_id || message?.parent_id);
 
   logLarkEvent("Lark inbound event received", {
     channelId,

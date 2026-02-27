@@ -90,7 +90,25 @@ function getConfiguredDiscordRuntimeBots(): Array<{ workspaceId: string; token: 
   return Array.from(uniqueByWorkspace.values());
 }
 
-
+async function maybeHandleLauncherCommand(params: {
+  text: string;
+  message: any;
+  channelId: string;
+  logContext: "thread" | "parent channel" | "mention";
+}): Promise<boolean> {
+  const command = parseIncomingCommand(params.text);
+  if (!command) return false;
+  await sendLauncherReplyForMessage({
+    message: params.message,
+    command,
+    channelId: params.channelId,
+  });
+  log.debug(`Handled Discord message settings command in ${params.logContext}`, {
+    command,
+    channelId: params.channelId,
+  });
+  return true;
+}
 async function resolveTextChannel(channelId: string, processorId?: string) {
   const attempts: string[] = [];
   if (processorId) {
@@ -428,17 +446,12 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
 
             const threadId = message.channel.id;
             const text = message.content.trim();
-            const launcherCommand = parseIncomingCommand(text);
-            if (launcherCommand) {
-              await sendLauncherReplyForMessage({
-                message,
-                command: launcherCommand,
-                channelId: parentId,
-              });
-              log.debug("Handled Discord message settings command in thread", {
-                command: launcherCommand,
-                threadId,
-              });
+            if (await maybeHandleLauncherCommand({
+              text,
+              message,
+              channelId: parentId,
+              logContext: "thread",
+            })) {
               return;
             }
             const mentioned = isBotMentioned(message, client.user.id);
@@ -468,17 +481,12 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
           const parentId = message.channel.id;
           if (configuredChannels && !configuredChannels.includes(parentId)) return;
 
-          const parentLauncherCommand = parseIncomingCommand(message.content);
-          if (parentLauncherCommand) {
-            await sendLauncherReplyForMessage({
-              message,
-              command: parentLauncherCommand,
-              channelId: parentId,
-            });
-            log.debug("Handled Discord message settings command in parent channel", {
-              command: parentLauncherCommand,
-              channelId: parentId,
-            });
+          if (await maybeHandleLauncherCommand({
+            text: message.content,
+            message,
+            channelId: parentId,
+            logContext: "parent channel",
+          })) {
             return;
           }
 
@@ -501,17 +509,12 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             return;
           }
 
-          const cleanedLauncherCommand = parseIncomingCommand(topLevelText);
-          if (cleanedLauncherCommand) {
-            await sendLauncherReplyForMessage({
-              message,
-              command: cleanedLauncherCommand,
-              channelId: parentId,
-            });
-            log.debug("Handled Discord mention settings command", {
-              command: cleanedLauncherCommand,
-              channelId: parentId,
-            });
+          if (await maybeHandleLauncherCommand({
+            text: topLevelText,
+            message,
+            channelId: parentId,
+            logContext: "mention",
+          })) {
             return;
           }
 

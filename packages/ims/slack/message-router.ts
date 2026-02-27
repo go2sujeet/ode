@@ -41,8 +41,6 @@ function toIncomingFlowResult(decision: InboundDecision): IncomingFlowResult {
       return { type: "ignore", reason: decision.reason };
     case "stop":
       return { type: "stop", text: "stop" };
-    case "command":
-      return { type: "forward", text: decision.args.join(" ").trim() };
     case "message":
       return { type: "forward", text: decision.text };
   }
