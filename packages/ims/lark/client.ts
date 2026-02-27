@@ -19,7 +19,7 @@ import {
   getWorkspaces,
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
-import { isThreadActive, markThreadActive } from "@/config/local/settings";
+import { isThreadActive, markThreadActive } from "@/config/local/sessions";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";

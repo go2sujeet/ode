@@ -12,9 +12,7 @@ import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
 import {
   markThreadActive,
   isThreadActive,
-  getPendingRestartMessages,
-  clearPendingRestartMessages,
-} from "@/config/local/settings";
+} from "@/config/local/sessions";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { createAgentAdapter } from "@/agents/adapter";
@@ -411,23 +409,6 @@ const slackRecoveryRuntime = createCoreRuntime({
 
 export async function recoverPendingRequests(): Promise<void> {
   await slackRecoveryRuntime.recoverPendingRequests();
-
-  const pendingRestartMessages = getPendingRestartMessages();
-  if (pendingRestartMessages.length === 0) {
-    return;
-  }
-
-  log.info("Updating pending restart messages", { count: pendingRestartMessages.length });
-
-  for (const pendingRestart of pendingRestartMessages) {
-    await updateMessage(
-      pendingRestart.channelId,
-      pendingRestart.messageTs,
-      "Restarting Ode complete."
-    );
-  }
-
-  clearPendingRestartMessages();
 }
 
 export async function handleButtonSelection(

@@ -8,7 +8,7 @@ import {
 } from "./server";
 import {
   setThreadSessionId,
-} from "@/config/local/settings";
+} from "@/config/local/sessions";
 import { getChannelModel, isLocalMode } from "@/config";
 import { log } from "@/utils";
 import { buildPromptParts, buildSystemPrompt } from "../shared";

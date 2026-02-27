@@ -15,6 +15,7 @@ const ODE_CONFIG_DIR = join(homedir(), ".config", "ode");
 const SESSIONS_DIR = join(ODE_CONFIG_DIR, "sessions");
 const SESSION_SAVE_DEBOUNCE_MS = 5000;
 const SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ACTIVE_THREAD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface TrackedTool {
   id: string;
@@ -171,6 +172,41 @@ async function hydrateSessionsFromDisk(): Promise<void> {
       // Skip invalid session files
     }
   }
+}
+
+function hydrateSessionsFromDiskSync(): void {
+  ensureSessionsDir();
+  const files = readdirSync(SESSIONS_DIR);
+  const now = Date.now();
+
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const filePath = join(SESSIONS_DIR, file);
+    try {
+      const data = readFileSync(filePath, "utf-8");
+      const session = normalizeLoadedSession(JSON.parse(data) as PersistedSession);
+      if (isSessionExpired(session, now)) {
+        const sessionKey = getSessionKey(session.channelId, session.threadId);
+        activeSessions.delete(sessionKey);
+        deletedSessionKeys.add(sessionKey);
+        try {
+          unlinkSync(filePath);
+        } catch {
+          // Ignore delete errors
+        }
+        continue;
+      }
+
+      const sessionKey = getSessionKey(session.channelId, session.threadId);
+      if (!activeSessions.has(sessionKey)) {
+        activeSessions.set(sessionKey, session);
+      }
+    } catch {
+      // Skip invalid session files
+    }
+  }
+
+  sessionsHydrated = true;
 }
 
 function scheduleSessionsHydration(): void {
@@ -419,7 +455,9 @@ export function getActiveRequest(channelId: string, threadId: string): ActiveReq
 }
 
 export function loadAllSessions(): PersistedSession[] {
-  scheduleSessionsHydration();
+  if (!sessionsHydrated) {
+    hydrateSessionsFromDiskSync();
+  }
   const sessionsByKey = new Map<string, PersistedSession>();
 
   for (const [sessionKey, session] of Array.from(activeSessions.entries())) {
@@ -449,12 +487,25 @@ export async function getSessionsWithPendingRequests(
   });
 }
 
-export function updateSessionIdForThread(channelId: string, threadId: string, sessionId: string): void {
+export function setThreadSessionId(channelId: string, threadId: string, sessionId: string): void {
   const session = loadSession(channelId, threadId);
   if (!session) return;
   if (session.sessionId === sessionId) return;
   session.sessionId = sessionId;
   saveSession(session);
+}
+
+export function getThreadSessionId(
+  channelId: string,
+  threadId: string,
+  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini"
+): string | null {
+  const session = loadSession(channelId, threadId);
+  if (!session?.sessionId) return null;
+  if (providerId && session.providerId !== providerId) {
+    return null;
+  }
+  return session.sessionId;
 }
 
 export function findReplyThreadIdByStatusMessageTs(messageTs: string): string | null {
@@ -512,6 +563,43 @@ function findReplyThreadIdByStatusMessageTsFromDisk(messageTs: string): string |
   }
 
   return null;
+}
+
+export interface ActiveThreadInfo {
+  channelId: string;
+  threadId: string;
+  lastActiveAt: number;
+}
+
+export function markThreadActive(channelId: string, threadId: string): void {
+  const session = loadSession(channelId, threadId);
+  if (!session) return;
+  session.lastActivityAt = Date.now();
+  saveSession(session, { immediate: false });
+}
+
+export function isThreadActive(channelId: string, threadId: string): boolean {
+  const session = loadSession(channelId, threadId);
+  if (!session) return false;
+  return Date.now() - getSessionLastActiveAt(session) < ACTIVE_THREAD_WINDOW_MS;
+}
+
+export function getActiveThreads(): ActiveThreadInfo[] {
+  const now = Date.now();
+  return loadAllSessions()
+    .filter((session) => now - getSessionLastActiveAt(session) < ACTIVE_THREAD_WINDOW_MS)
+    .map((session) => ({
+      channelId: session.channelId,
+      threadId: session.threadId,
+      lastActiveAt: getSessionLastActiveAt(session),
+    }));
+}
+
+export function clearThreadSessions(channelId: string): void {
+  const sessions = loadAllSessions().filter((session) => session.channelId === channelId);
+  for (const session of sessions) {
+    deleteSession(session.channelId, session.threadId);
+  }
 }
 
 // Deduplication

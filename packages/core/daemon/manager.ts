@@ -3,7 +3,7 @@ import { createWriteStream, existsSync, renameSync, rmSync, statSync, type Write
 import { clearPendingUpgradeRestart, clearRuntimeReadyState } from "./control";
 import { ensureDaemonDir, getDaemonLogPath } from "./paths";
 import { isProcessAlive, patchDaemonState, readDaemonState } from "./state";
-import { getActiveThreads } from "@/config/local/settings";
+import { getActiveThreads } from "@/config/local/sessions";
 import { isInstalledBinary } from "@/core/upgrade";
 
 const RESTART_DELAY_MS = 3000;

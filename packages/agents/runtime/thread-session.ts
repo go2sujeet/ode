@@ -1,7 +1,7 @@
 import {
   getThreadSessionId,
   setThreadSessionId,
-} from "@/config/local/settings";
+} from "@/config/local/sessions";
 import type { OpenCodeSessionInfo } from "@/agents/types";
 import type { AgentProviderId } from "@/shared/agent-provider";
 import { normalizeSessionEnvironment, type SessionEnvironment } from "./base";

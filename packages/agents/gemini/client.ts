@@ -1,4 +1,4 @@
-import { setThreadSessionId } from "@/config/local/settings";
+import { setThreadSessionId } from "@/config/local/sessions";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt, buildSystemWrappedPrompt } from "../shared";
 import {
