@@ -1,7 +1,6 @@
 export * from "./runtime-kernel";
 export * from "./session-bootstrap";
 export * from "./pending-question";
-export * from "./open-request";
 export * from "./request-run";
 export * from "./request-phase";
 export * from "./event-projector";
