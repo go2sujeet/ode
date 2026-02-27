@@ -107,11 +107,10 @@ function buildSettingsChooserRows(channelId: string): ActionRowBuilder<ButtonBui
 }
 
 function buildLauncherReplyPayload(command: LauncherCommand, channelId: string): {
-  content: string;
   components: ActionRowBuilder<ButtonBuilder>[];
 } {
+  void command;
   return {
-    content: command === "setting" ? "Choose what to configure in Discord:" : "Choose settings action:",
     components: buildSettingsChooserRows(channelId),
   };
 }
