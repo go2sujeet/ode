@@ -213,7 +213,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
     ttlMs: 24 * 60 * 60 * 1000,
   });
 
-  slackApp.message(async ({ message, say, client, context, body }: any) => {
+  slackApp.message(async ({ message, say, client, context }: any) => {
     let contextData: IncomingMessageData | null = null;
 
     try {

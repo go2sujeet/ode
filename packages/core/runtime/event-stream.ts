@@ -7,7 +7,7 @@ import {
   type TrackedTodo,
   type TrackedTool,
 } from "@/config/local/sessions";
-import { resolveStatusMessageFormat } from "@/config/status-message-format";
+import { getUserGeneralSettings } from "@/config";
 import { CoreStateMachine } from "@/core/state-machine";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
@@ -199,7 +199,7 @@ export async function startEventStreamWatcher(
             request,
             workingPath,
             state: liveParsedState.get(messageKey),
-            statusMessageFormat: resolveStatusMessageFormat(),
+            statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
           })
         );
         if (typeof updatedStatusTs === "string" && updatedStatusTs !== request.statusMessageTs) {

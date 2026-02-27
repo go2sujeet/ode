@@ -73,21 +73,12 @@ export function normalizeBaseBranch(baseBranch: string | null | undefined): stri
 }
 
 function normalizeConfig(config: OdeConfig): OdeConfig {
-  const {
-    defaultMessageFrequency: _deprecatedMessageFrequency,
-    messageUpdateIntervalMs: _deprecatedMessageUpdateIntervalMs,
-    ...normalizedUser
-  } = config.user;
-  const statusMessageFormat = config.user.defaultStatusMessageFormat
-    ?? config.user.defaultMessageFrequency
-    ?? "medium";
+  const statusMessageFormat = config.user.defaultStatusMessageFormat ?? "medium";
   const normalizedFrequency = statusMessageFormat;
   const normalizedGitStrategy =
     config.user.gitStrategy === "default" ? "default" : "worktree";
   const messageUpdateIntervalCandidate =
-    config.user.IM_MESSAGE_UPDATE_INTERVAL_MS
-    ?? config.user.messageUpdateIntervalMs
-    ?? DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
+    config.user.IM_MESSAGE_UPDATE_INTERVAL_MS ?? DEFAULT_MESSAGE_UPDATE_INTERVAL_MS;
   const normalizedMessageUpdateInterval =
     Number.isFinite(messageUpdateIntervalCandidate) && messageUpdateIntervalCandidate > 0
       ? Math.max(messageUpdateIntervalCandidate, MIN_MESSAGE_UPDATE_INTERVAL_MS)
@@ -124,7 +115,7 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
   return {
     ...config,
     user: {
-      ...normalizedUser,
+      ...config.user,
       gitStrategy: normalizedGitStrategy,
       defaultStatusMessageFormat: normalizedFrequency,
       IM_MESSAGE_UPDATE_INTERVAL_MS: normalizedMessageUpdateInterval,

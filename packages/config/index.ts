@@ -31,6 +31,7 @@ export {
   getLarkAppCredentials,
   getLarkTargetChannels,
   getDefaultCwd,
+  getMessageUpdateIntervalMs,
   getGitHubInfoForUser,
   getUserGeneralSettings,
   resolveChannelCwd,
@@ -63,10 +64,11 @@ export {
 } from "./dashboard-config";
 
 export {
-  resolveStatusMessageFormat,
   TOOL_DISPLAY_CONFIG,
+  DEFAULT_GIT_STRATEGY,
   type StatusMessageFormat,
-} from "./status-message-format";
+  type GitStrategy,
+} from "./baseConfig";
 
 export {
   STATUS_MESSAGE_FREQUENCY_OPTIONS,
@@ -80,11 +82,6 @@ export {
   type StatusMessageFrequencyValue,
 } from "./status-message-frequency";
 
-export { resolveMessageUpdateIntervalMs } from "./message-update-interval";
-
-export { resolveGitStrategy, type GitStrategy } from "./git-strategy";
-
 export { getSlackActionApiUrl, getWebHost, getWebPort } from "./network";
 
 export * as local from "./local";
-export * as db from "./db";

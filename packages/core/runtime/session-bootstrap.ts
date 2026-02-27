@@ -1,10 +1,28 @@
 import { loadSession, saveSession, type PersistedSession } from "@/config/local/sessions";
-import { getChannelBaseBranch, resolveChannelCwd, resolveGitStrategy } from "@/config";
+import { getChannelBaseBranch, getUserGeneralSettings, resolveChannelCwd } from "@/config";
 import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
 import { CoreStateMachine } from "@/core/state-machine";
 import { categorizeRuntimeError } from "@/core/runtime/helpers";
 import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
 import { log } from "@/utils";
+import { createHash } from "crypto";
+
+function isCiEnvironment(): boolean {
+  const value = process.env.CI?.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+function resolveWorktreeId(threadId: string, rawChannelId: string, cwd: string): string {
+  if (!isCiEnvironment()) {
+    return `ode_${threadId}`;
+  }
+
+  const worktreeScope = createHash("sha1")
+    .update(`${rawChannelId}:${cwd}`)
+    .digest("hex")
+    .slice(0, 8);
+  return `ode_${threadId}_${worktreeScope}`;
+}
 
 type BootstrapDeps = {
   platform: "slack" | "discord" | "lark";
@@ -60,10 +78,10 @@ export async function prepareRuntimeSession(params: {
     return null;
   }
 
-  if (resolveGitStrategy() === "worktree") {
+  if (getUserGeneralSettings().gitStrategy === "worktree") {
     try {
       stateMachine.transition("prepare_worktree");
-      const worktreeId = `ode_${threadId}`;
+      const worktreeId = resolveWorktreeId(threadId, rawChannelId, cwd);
       const baseBranch = getChannelBaseBranch(rawChannelId);
       const { cwd: resolvedCwd, worktree } = await prepareSessionWorkspace({
         channelId: rawChannelId,

@@ -15,11 +15,8 @@ import {
   type OdeConfig,
 } from "./ode-schema";
 import {
-  ODE_CONFIG_FILE,
   loadOdeConfig,
-  saveOdeConfig,
   updateOdeConfig,
-  invalidateOdeConfigCache,
 } from "./ode-store";
 import { AGENT_PROVIDERS } from "@/shared/agent-provider";
 
@@ -51,8 +48,7 @@ export {
   type ChannelCwdInfo,
 } from "./ode-channel";
 
-const DEFAULT_UPDATE_INTERVAL_MS = 60 * 60 * 1000;
-const MIN_UPDATE_INTERVAL_MS = 5 * 60 * 1000;
+const MIN_MESSAGE_UPDATE_INTERVAL_MS = 250;
 export const DEFAULT_CODEX_MODEL = "gpt-5.3-codex";
 
 function toDashboardConfig(config: OdeConfig): DashboardConfig {
@@ -301,6 +297,15 @@ export type UserGeneralSettings = {
   statusMessageFrequencyMs: StatusMessageFrequencyMs;
   autoUpdate: boolean;
 };
+
+export function getMessageUpdateIntervalMs(): number {
+  const user = loadOdeConfig().user;
+  const value = user.IM_MESSAGE_UPDATE_INTERVAL_MS;
+  if (Number.isFinite(value) && value > 0) {
+    return Math.max(value, MIN_MESSAGE_UPDATE_INTERVAL_MS);
+  }
+  return DEFAULT_STATUS_MESSAGE_FREQUENCY_MS;
+}
 
 export function getGitHubInfoForUser(userId: string): GitHubInfo | null {
   const info = loadOdeConfig().githubInfos?.[userId];

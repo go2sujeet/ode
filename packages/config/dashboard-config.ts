@@ -19,7 +19,6 @@ export type DashboardConfig = {
     avatar?: string;
     gitStrategy: "default" | "worktree";
     defaultStatusMessageFormat: "aggressive" | "medium" | "minimum";
-    defaultMessageFrequency?: "aggressive" | "medium" | "minimum";
     statusMessageFrequencyMs?: StatusMessageFrequencyMs;
   };
   updates: {
@@ -284,9 +283,7 @@ export const sanitizeDashboardConfig = (config: unknown): DashboardConfig => {
       initials: asString(user.initials, "") || undefined,
       avatar: asString(user.avatar, "") || undefined,
       gitStrategy: asGitStrategy(user.gitStrategy),
-      defaultStatusMessageFormat: asFrequency(
-        user.defaultStatusMessageFormat ?? user.defaultMessageFrequency
-      ),
+      defaultStatusMessageFormat: asFrequency(user.defaultStatusMessageFormat),
       statusMessageFrequencyMs: asStatusMessageFrequencyMs(user.statusMessageFrequencyMs),
     },
     updates: {

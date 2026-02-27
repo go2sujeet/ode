@@ -4,7 +4,7 @@ import type {
   OpenCodeOptions,
   OpenCodeSessionInfo,
 } from "@/agents";
-import type { StatusMessageFormat } from "@/config/status-message-format";
+import type { StatusMessageFormat } from "@/config";
 import type { AgentProviderId } from "@/shared/agent-provider";
 import type { SessionMessageState } from "@/utils/session-inspector";
 

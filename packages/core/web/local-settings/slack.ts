@@ -1,7 +1,6 @@
 import {
   readDashboardConfig,
   updateDashboardConfig,
-  type DashboardConfig,
 } from "@/config";
 import {
   createWorkspaceCredentialId,

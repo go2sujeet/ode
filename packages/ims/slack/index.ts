@@ -10,7 +10,7 @@ export {
   clearSlackAuthState,
   resetSlackState,
   type MessageContext,
-} from "./runtime";
+} from "./client";
 
 export { handleSlackActionPayload, type SlackActionRequest, type SlackApiResponse } from "./api";
 

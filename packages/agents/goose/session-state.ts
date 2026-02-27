@@ -1,4 +1,4 @@
-import type { SessionMessageState, SessionTodo, SessionTool } from "@/utils/session-inspector";
+import type { SessionMessageState, SessionTodo } from "@/utils/session-inspector";
 import {
   applyAnthropicStyleStreamEvent,
   applyAssistantBlocks,

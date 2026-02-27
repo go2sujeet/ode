@@ -1,6 +1,6 @@
 import { spawnSync } from "child_process";
 import {
-  resolveStatusMessageFormat,
+  getUserGeneralSettings,
 } from "@/config";
 import {
   loadSession,
@@ -119,7 +119,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     text: string;
   }): Promise<void> {
     const { channelId, threadId, statusTs, text } = params;
-    const statusFormat = resolveStatusMessageFormat();
+    const statusFormat = getUserGeneralSettings().defaultStatusMessageFormat;
     const finalChunks = splitResultMessage(text);
     const singleChunk = finalChunks[0] ?? text;
     const statusRateLimited = runtimeDeps.im.wasRateLimited?.(channelId, statusTs) ?? false;

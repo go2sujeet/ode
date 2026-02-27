@@ -139,10 +139,7 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
     user: {
       ...input.user,
       gitStrategy: input.user.gitStrategy ?? "worktree",
-      defaultStatusMessageFormat:
-        input.user.defaultStatusMessageFormat
-        ?? input.user.defaultMessageFrequency
-        ?? "medium",
+      defaultStatusMessageFormat: input.user.defaultStatusMessageFormat ?? "medium",
       statusMessageFrequencyMs: parseStatusMessageFrequencyMs(input.user.statusMessageFrequencyMs),
     },
     updates: {

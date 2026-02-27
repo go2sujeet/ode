@@ -1,6 +1,6 @@
 {
   "name": "ode",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Coding anywhere with your coding agents connected",
   "module": "packages/core/index.ts",
   "type": "module",
@@ -34,7 +34,6 @@
     "@slack/bolt": "^4.6.0",
     "@slack/socket-mode": "^2.0.5",
     "@slack/web-api": "^7.13.0",
-    "@supabase/supabase-js": "^2.90.1",
     "discord.js": "^14.25.1",
     "elysia": "^1.4.25",
     "ioredis": "^5.9.2",

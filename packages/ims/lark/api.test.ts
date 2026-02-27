@@ -215,7 +215,7 @@ describe("handleLarkActionPayload", () => {
     await Bun.write(tempFilePath, "hello lark file");
 
     try {
-      const fetchMock = mock(async (url: string, init?: RequestInit) => {
+      const fetchMock = mock(async (url: string) => {
         if (url.includes("tenant_access_token")) {
           return new Response(
             JSON.stringify({ code: 0, tenant_access_token: "tenant_token" }),

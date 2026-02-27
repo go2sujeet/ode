@@ -16,5 +16,4 @@ data/
 .DS_Store
 .ode.pid
 .ode.pgid
-supabase/
 .env.dev

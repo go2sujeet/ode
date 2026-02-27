@@ -1,5 +1,5 @@
 import type { IMAdapter } from "@/core/types";
-import { resolveMessageUpdateIntervalMs } from "@/config";
+import { getMessageUpdateIntervalMs } from "@/config";
 import { log } from "@/utils";
 import { CoalescedUpdateQueue } from "@/shared/queue/coalesced-update-queue";
 
@@ -10,7 +10,7 @@ function isRateLimitError(error: unknown): boolean {
 
 export function createRateLimitedImAdapter(
   im: IMAdapter,
-  intervalMs = resolveMessageUpdateIntervalMs()
+  intervalMs = getMessageUpdateIntervalMs()
 ): IMAdapter {
   const rateLimitedMessages = new Set<string>();
   const rateLimitErrors = new Map<string, string>();

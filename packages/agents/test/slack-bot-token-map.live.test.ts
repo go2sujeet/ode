@@ -1,7 +1,6 @@
 import { describe, it } from "bun:test";
 import { WebClient } from "@slack/web-api";
-import { getSlackAppTokens } from "@/config";
-import { getAllBotTokens } from "@/config/db";
+import { getSlackAppTokens, getSlackBotTokens } from "@/config";
 import { log } from "@/utils";
 
 function truncateToken(token: string): string {
@@ -10,13 +9,18 @@ function truncateToken(token: string): string {
 }
 
 describe("slack bot token map", () => {
-  it("logs team and enterprise ids for db bot tokens", async () => {
+  it("logs team and enterprise ids for configured bot tokens", async () => {
     const appTokens = getSlackAppTokens();
     const uniqueAppTokens = Array.from(new Set(appTokens.map((entry) => entry.token).filter(Boolean)));
-    const tokens = await getAllBotTokens();
+    const tokens = getSlackBotTokens()
+      .map((entry) => ({
+        botToken: entry.token,
+        workspaceName: entry.workspaceName ?? null,
+      }))
+      .filter((entry) => entry.botToken && entry.botToken.trim().length > 0);
 
     if (tokens.length === 0) {
-      log.warn("No bot tokens found in database for slack test");
+      log.warn("No configured bot tokens found for slack test");
       return;
     }
 

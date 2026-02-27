@@ -1,4 +1,4 @@
-import type { StatusMessageFormat } from "@/config/status-message-format";
+import type { StatusMessageFormat } from "@/config";
 import type { AgentAdapter, StatusMessageRequest } from "@/core/types";
 import { buildStatusMessageByProvider } from "@/utils/status";
 import type { SessionMessageState } from "@/utils/session-inspector";

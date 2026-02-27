@@ -1,5 +1,4 @@
-import { resolveStatusMessageFormat } from "@/config/status-message-format";
-import { resolveMessageUpdateIntervalMs } from "@/config/message-update-interval";
+import { getMessageUpdateIntervalMs, getUserGeneralSettings } from "@/config";
 import {
   completeActiveRequest,
   createActiveRequest,
@@ -98,7 +97,7 @@ export async function runOpenRequest(params: {
     },
   });
 
-  const progressIntervalMs = resolveMessageUpdateIntervalMs();
+  const progressIntervalMs = getMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
   const result = await runTrackedRequest({
     deps,
@@ -128,7 +127,7 @@ export async function runOpenRequest(params: {
         request,
         workingPath: cwd,
         state: liveParsedState.get(statusMessageKey),
-        statusMessageFormat: resolveStatusMessageFormat(),
+        statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
       });
       if (!request.statusFrozen) {
         const updatedStatusTs = await deps.im.updateMessage(context.channelId, statusTs, statusText);

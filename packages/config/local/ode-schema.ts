@@ -11,8 +11,6 @@ const userSchema = z.object({
   avatar: z.string().optional().default(""),
   gitStrategy: z.enum(["default", "worktree"]).optional().default("worktree"),
   defaultStatusMessageFormat: z.enum(["minimum", "medium", "aggressive"]).optional().default("medium"),
-  defaultMessageFrequency: z.enum(["minimum", "medium", "aggressive"]).optional(),
-  messageUpdateIntervalMs: z.number().optional(),
   IM_MESSAGE_UPDATE_INTERVAL_MS: z.number().optional().default(DEFAULT_STATUS_MESSAGE_FREQUENCY_MS),
 });
 

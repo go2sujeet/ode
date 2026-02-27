@@ -3,7 +3,7 @@ import type { ActiveRequest } from "@/config/local/sessions";
 import { CoreStateMachine } from "@/core/state-machine";
 import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "@/core/runtime/helpers";
 import { startEventStreamWatcher } from "@/core/runtime/event-stream";
-import { resolveMessageUpdateIntervalMs } from "@/config";
+import { getMessageUpdateIntervalMs } from "@/config";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { getStatusMessageKey, type SessionEvent, type SessionMessageState, log } from "@/utils";
 
@@ -54,7 +54,7 @@ export async function runTrackedRequest(
     failureLogLabel,
   } = params;
 
-  const progressIntervalMs = resolveMessageUpdateIntervalMs();
+  const progressIntervalMs = getMessageUpdateIntervalMs();
   let progressInFlight = false;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
   let stopWatcher: (() => void) | null = null;
