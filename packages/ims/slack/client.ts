@@ -75,13 +75,13 @@ async function buildSlackContext(
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
   return {
-    threadHistory: threadHistory || undefined,
+    threadHistory: threadHistory ?? undefined,
     slack: {
       platform: "slack",
       channelId,
       threadId,
       userId,
-      threadHistory: threadHistory || undefined,
+      threadHistory: threadHistory ?? undefined,
       odeSlackApiUrl: getOdeSlackApiUrl(),
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
       channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,

@@ -12,7 +12,7 @@ export interface OpenCodeOptions {
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 }
 
-export interface SlackContext {
+export interface PlatformContext {
   platform?: "slack" | "discord" | "lark";
   channelId: string;
   threadId: string;
@@ -23,9 +23,12 @@ export interface SlackContext {
   channelSystemMessage?: string;
 }
 
+// Backward-compatible alias: OpenCode transport still expects `slack` key.
+export type SlackContext = PlatformContext;
+
 export interface OpenCodeMessageContext {
   threadHistory?: string;
-  slack?: SlackContext;
+  slack?: PlatformContext;
 }
 
 export interface OpenCodeSessionInfo {

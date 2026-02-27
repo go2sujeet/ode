@@ -321,13 +321,13 @@ async function buildLarkContext(
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
   return {
-    threadHistory: threadHistory || undefined,
+    threadHistory: threadHistory ?? undefined,
     slack: {
       platform: "lark",
       channelId,
       threadId,
       userId,
-      threadHistory: threadHistory || undefined,
+      threadHistory: threadHistory ?? undefined,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
       channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
     },
