@@ -9,6 +9,9 @@ export type RawInboundEvent = Readonly<{
   replyThreadId: string;
   messageId: string;
   userId: string;
+  selfMessage: boolean;
+  threadOwnerMessage: boolean;
+  threadParticipantBotCount: number;
   isTopLevel: boolean;
   mentionedBot: boolean;
   activeThread: boolean;

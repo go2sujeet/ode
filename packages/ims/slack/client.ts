@@ -9,7 +9,9 @@ import {
 } from "@/config";
 import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
 import {
+  getThreadParticipantBotIds,
   isThreadActive,
+  loadSession,
 } from "@/config/local/sessions";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
@@ -38,6 +40,7 @@ export interface MessageContext {
 
 
 const appRegistry = new Map<string, App>();
+const TRACE_SLACK_ROUTER = process.env.ODE_SLACK_TRACE === "1";
 
 const slackAuthRegistry = new SlackAuthRegistry();
 const slackProcessorManager = createProcessorManager({
@@ -159,6 +162,11 @@ export function getSlackBotToken(channelId?: string, threadId?: string): string 
 function truncateToken(token: string): string {
   if (token.length <= 12) return token;
   return `${token.slice(0, 6)}...${token.slice(-4)}`;
+}
+
+function tokenLast6(token?: string): string | undefined {
+  if (!token) return undefined;
+  return token.slice(-6);
 }
 
 async function syncWorkspaceAfterMention(
@@ -285,13 +293,25 @@ export async function sendMessage(
     log.warn("No Slack bot token available for channel", { channelId });
   }
 
-  log.debug("[SLACK] Outgoing message", {
-    workspace,
-    channel: channelId,
-    thread: threadId,
-    text,
-    chunks: chunks.length,
-  });
+  if (TRACE_SLACK_ROUTER) {
+    log.info("[SLACK] Outgoing message", {
+      workspace,
+      channel: channelId,
+      thread: threadId,
+      botTokenLast6: tokenLast6(botToken),
+      text,
+      chunks: chunks.length,
+    });
+  } else {
+    log.debug("[SLACK] Outgoing message", {
+      workspace,
+      channel: channelId,
+      thread: threadId,
+      botTokenLast6: tokenLast6(botToken),
+      text,
+      chunks: chunks.length,
+    });
+  }
 
   let lastTs: string | undefined;
   for (const chunk of chunks) {
@@ -433,6 +453,11 @@ export function setupMessageHandlers(): void {
         if (!auth?.botToken) return;
         slackAuthRegistry.setChannelWorkspaceAuthByBotToken(channelId, auth.botToken);
       },
+      isThreadOwner: (channelId, threadId, userId) => {
+        const session = loadSession(channelId, threadId);
+        return session?.threadOwnerUserId === userId;
+      },
+      getThreadParticipantBotCount: (channelId, threadId) => getThreadParticipantBotIds(channelId, threadId).length,
       isThreadActive,
       postGeneralSettingsLauncher: postSlackGeneralSettingsLauncher,
       describeSettingsIssues: describeSlackSettingsIssues,
@@ -443,6 +468,29 @@ export function setupMessageHandlers(): void {
           slackAuthRegistry.setThreadBotToken(rawChannelId, event.threadId, event.botId);
         }
         const processorId = createProcessorId("slack", event.botId ?? "");
+        if (TRACE_SLACK_ROUTER) {
+          log.info("Slack runtime dispatch", {
+            channelId: event.channelId,
+            threadId: event.threadId,
+            replyThreadId: event.replyThreadId,
+            messageId: event.messageId,
+            botTokenLast6: tokenLast6(event.botId),
+            processorId,
+            mentionedBot: event.mentionedBot,
+            activeThread: event.activeThread,
+          });
+        } else {
+          log.debug("Slack runtime dispatch", {
+            channelId: event.channelId,
+            threadId: event.threadId,
+            replyThreadId: event.replyThreadId,
+            messageId: event.messageId,
+            botTokenLast6: tokenLast6(event.botId),
+            processorId,
+            mentionedBot: event.mentionedBot,
+            activeThread: event.activeThread,
+          });
+        }
         await getSlackProcessorRuntime(processorId).handleInboundEvent(event);
       },
     });

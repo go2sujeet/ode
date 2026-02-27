@@ -1,4 +1,9 @@
-export type IncomingIgnoreReason = "not_mentioned_and_inactive" | "empty_text";
+export type IncomingIgnoreReason =
+  | "self_message"
+  | "not_mentioned_and_inactive"
+  | "not_thread_owner"
+  | "mention_required_in_multi_bot_thread"
+  | "empty_text";
 
 export type IncomingFlowResult =
   | { type: "ignore"; reason: IncomingIgnoreReason }
@@ -9,8 +14,14 @@ export type IncomingCommand = "setting";
 
 export function formatIncomingDropMessage(reason: IncomingIgnoreReason): string {
   switch (reason) {
+    case "self_message":
+      return "[DROP] Self message";
     case "not_mentioned_and_inactive":
       return "[DROP] Not mentioned and thread inactive";
+    case "not_thread_owner":
+      return "[DROP] Thread message requires owner or mention";
+    case "mention_required_in_multi_bot_thread":
+      return "[DROP] Mention required in multi-bot thread";
     case "empty_text":
       return "[DROP] Empty text after normalization";
   }

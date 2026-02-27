@@ -1,12 +1,31 @@
 import type { InboundDecision } from "@/core/model/inbound-decision";
 
 export function defaultInboundPolicy(params: {
+  selfMessage: boolean;
+  threadOwnerMessage: boolean;
+  threadParticipantBotCount: number;
   isTopLevel: boolean;
   mentionedBot: boolean;
   activeThread: boolean;
   normalizedText: string;
   detectStop?: boolean;
 }): InboundDecision {
+  if (params.selfMessage) {
+    return { kind: "ignore", reason: "self_message" };
+  }
+
+  if (!params.isTopLevel && !params.mentionedBot) {
+    if (!params.activeThread) {
+      return { kind: "ignore", reason: "not_mentioned_and_inactive" };
+    }
+    if (!params.threadOwnerMessage) {
+      return { kind: "ignore", reason: "not_thread_owner" };
+    }
+    if (params.threadParticipantBotCount > 1) {
+      return { kind: "ignore", reason: "mention_required_in_multi_bot_thread" };
+    }
+  }
+
   const shouldProcess = params.isTopLevel
     ? params.mentionedBot
     : (params.mentionedBot || params.activeThread);

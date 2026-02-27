@@ -82,6 +82,9 @@ export class KernelRuntimeFacade {
 
     const inboundAdapter: InboundAdapter = {
       evaluate: (event) => defaultInboundPolicy({
+        selfMessage: event.selfMessage,
+        threadOwnerMessage: event.threadOwnerMessage,
+        threadParticipantBotCount: event.threadParticipantBotCount,
         isTopLevel: event.isTopLevel,
         mentionedBot: event.mentionedBot,
         activeThread: event.activeThread,
@@ -99,6 +102,9 @@ export class KernelRuntimeFacade {
 
   async handleInboundEvent(event: RawInboundEvent): Promise<void> {
     const decision = defaultInboundPolicy({
+      selfMessage: event.selfMessage,
+      threadOwnerMessage: event.threadOwnerMessage,
+      threadParticipantBotCount: event.threadParticipantBotCount,
       isTopLevel: event.isTopLevel,
       mentionedBot: event.mentionedBot,
       activeThread: event.activeThread,
@@ -155,6 +161,9 @@ export class KernelRuntimeFacade {
       replyThreadId,
       messageId: messageTs,
       userId,
+      selfMessage: false,
+      threadOwnerMessage: true,
+      threadParticipantBotCount: 1,
       isTopLevel: false,
       mentionedBot: true,
       activeThread: true,
@@ -256,6 +265,9 @@ export class KernelRuntimeFacade {
       replyThreadId: context.replyThreadId,
       messageId: context.messageId,
       userId: context.userId,
+      selfMessage: false,
+      threadOwnerMessage: true,
+      threadParticipantBotCount: 1,
       isTopLevel: false,
       mentionedBot: true,
       activeThread: true,

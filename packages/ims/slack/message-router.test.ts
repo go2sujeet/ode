@@ -14,6 +14,8 @@ function createDeps(overrides: Partial<Parameters<typeof registerSlackMessageRou
     getChannelWorkspaceName: () => "workspace",
     setChannelWorkspaceName: () => {},
     setChannelWorkspaceAuth: () => {},
+    isThreadOwner: () => false,
+    getThreadParticipantBotCount: () => 1,
     isThreadActive: () => false,
     postGeneralSettingsLauncher: async () => {},
     describeSettingsIssues: () => [],
@@ -73,6 +75,201 @@ describe("registerSlackMessageRouter", () => {
     });
 
     expect(handleInboundEvent).toHaveBeenCalledTimes(2);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
+  it("ignores messages that carry the current bot id", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        bot_id: "B_BOT",
+        text: "main has uncommitted changes",
+        ts: "1710000000.000015",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", bot_id: "B_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(handleInboundEvent).toHaveBeenCalledTimes(0);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
+  it("detects mentions that include display names", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_BOT|ode> stop",
+        ts: "1710000000.000013",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(handleInboundEvent).toHaveBeenCalledTimes(1);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
+  it("drops active-thread messages that mention a different bot", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      isThreadActive: () => true,
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_OTHER|other-bot> please handle this",
+        ts: "1710000000.000014",
+        thread_ts: "1710000000.000010",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(handleInboundEvent).toHaveBeenCalledTimes(0);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
+  it("ignores non-owner thread replies unless bot is mentioned", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      isThreadActive: () => true,
+      isThreadOwner: () => false,
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U_OTHER",
+        text: "OpenCode is running...",
+        ts: "1710000000.000017",
+        thread_ts: "1710000000.000010",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(handleInboundEvent).toHaveBeenCalledTimes(0);
+    expect(say).toHaveBeenCalledTimes(0);
+  });
+
+  it("requires mention in multi-bot thread even for owner", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      isThreadActive: () => true,
+      isThreadOwner: () => true,
+      getThreadParticipantBotCount: () => 2,
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U_OWNER",
+        text: "continue",
+        ts: "1710000000.000018",
+        thread_ts: "1710000000.000010",
+      },
+      client: {
+        auth: {
+          test: async () => ({ user_id: "U_BOT", team_id: "T1" }),
+        },
+      },
+      context: { teamId: "T1" },
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(handleInboundEvent).toHaveBeenCalledTimes(0);
     expect(say).toHaveBeenCalledTimes(0);
   });
 

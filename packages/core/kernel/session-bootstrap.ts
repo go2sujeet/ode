@@ -55,6 +55,9 @@ export async function prepareRuntimeSession(params: {
   }
 
   let session = loadSession(channelId, threadId);
+  if (session?.workingDirectory) {
+    cwd = session.workingDirectory;
+  }
   const threadOwnerUserId = session?.threadOwnerUserId ?? context.userId;
   const { env: sessionEnv, gitIdentity } = buildSessionEnvironment({
     threadOwnerUserId,
@@ -76,7 +79,8 @@ export async function prepareRuntimeSession(params: {
     return null;
   }
 
-  if (getUserGeneralSettings().gitStrategy === "worktree") {
+  const isFirstMessageInThread = !session;
+  if (getUserGeneralSettings().gitStrategy === "worktree" && isFirstMessageInThread) {
     try {
       const worktreeId = resolveWorktreeId(threadId, rawChannelId, cwd);
       const baseBranch = getChannelBaseBranch(rawChannelId);
@@ -115,6 +119,7 @@ export async function prepareRuntimeSession(params: {
       threadId,
       workingDirectory: cwd,
       threadOwnerUserId,
+      participantBotIds: [context.botToken ?? "default"],
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
     };
@@ -137,6 +142,12 @@ export async function prepareRuntimeSession(params: {
 
   if (!session.threadOwnerUserId) {
     session.threadOwnerUserId = threadOwnerUserId;
+  }
+  const participantBotIds = session.participantBotIds ?? [];
+  const currentBotId = context.botToken ?? "default";
+  if (!participantBotIds.includes(currentBotId)) {
+    participantBotIds.push(currentBotId);
+    session.participantBotIds = participantBotIds;
   }
   saveSession(session);
 

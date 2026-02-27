@@ -25,6 +25,8 @@ type RouterDeps = {
     channelId: string,
     auth: { workspaceId?: string; workspaceName?: string; botToken?: string; [key: string]: unknown } | undefined
   ) => void;
+  isThreadOwner: (channelId: string, threadId: string, userId: string) => boolean;
+  getThreadParticipantBotCount: (channelId: string, threadId: string) => number;
   isThreadActive: (channelId: string, threadId: string) => boolean;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
@@ -34,6 +36,15 @@ type RouterDeps = {
 type WorkspaceAuth = ReturnType<RouterDeps["resolveWorkspaceAuth"]>;
 
 const slackInboundAdapter = new SlackInboundAdapter();
+const TRACE_SLACK_ROUTER = process.env.ODE_SLACK_TRACE === "1";
+
+function logSlackTrace(message: string, data: Record<string, unknown>): void {
+  if (TRACE_SLACK_ROUTER) {
+    log.info(message, data);
+    return;
+  }
+  log.debug(message, data);
+}
 
 function toIncomingFlowResult(decision: InboundDecision): IncomingFlowResult {
   switch (decision.kind) {
@@ -48,6 +59,7 @@ function toIncomingFlowResult(decision: InboundDecision): IncomingFlowResult {
 
 type BotIdentity = {
   botUserId: string;
+  botId?: string;
   teamId?: string;
   enterpriseId?: string;
 };
@@ -75,7 +87,21 @@ function syncWorkspaceAuth(
 
 function stripBotMention(text: string, botUserId: string): string {
   if (!botUserId) return text.trim();
-  return text.replace(new RegExp(`<@${botUserId}>`, "g"), "").trim();
+  const escapedBotUserId = botUserId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`<@${escapedBotUserId}(?:\\|[^>]+)?>`, "g"), "").trim();
+}
+
+function extractMentionedUserIds(text: string): string[] {
+  const mentionPattern = /<@([A-Z0-9_]+)(?:\|[^>]+)?>/g;
+  const mentions: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = mentionPattern.exec(text)) !== null) {
+    const mentionedUserId = match[1];
+    if (mentionedUserId) {
+      mentions.push(mentionedUserId);
+    }
+  }
+  return mentions;
 }
 
 function extractIncomingMessageData(message: any): IncomingMessageData | null {
@@ -93,7 +119,7 @@ function extractIncomingMessageData(message: any): IncomingMessageData | null {
 }
 
 function shouldDropForOtherMentions(text: string, isMention: boolean): boolean {
-  return /<@U[A-Z0-9]+>/g.test(text) && !isMention;
+  return extractMentionedUserIds(text).length > 0 && !isMention;
 }
 
 function tokenLast6(token?: string): string | undefined {
@@ -192,6 +218,7 @@ async function getBotIdentity(params: {
   const authResult = await client.auth.test();
   const identity: BotIdentity = {
     botUserId: (authResult.user_id as string) || "",
+    botId: authResult.bot_id as string | undefined,
     teamId: authResult.team_id as string | undefined,
     enterpriseId: authResult.enterprise_id as string | undefined,
   };
@@ -239,13 +266,28 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth = syncWorkspaceAuth(deps, channelId, contextBotToken);
       }
 
-      if (userId === currentBotUserId) {
-        log.debug("[DROP] Message from bot user", { channelId, userId });
-        return;
-      }
+      const messageBotId = typeof message?.bot_id === "string" ? message.bot_id : undefined;
+      const messageBotProfileId = typeof message?.bot_profile?.id === "string"
+        ? message.bot_profile.id
+        : undefined;
+      const selfMessage =
+        (currentBotUserId && userId === currentBotUserId)
+        || (Boolean(identity.botId) && (messageBotId === identity.botId || messageBotProfileId === identity.botId));
 
-      const isMention = currentBotUserId ? text.includes(`<@${currentBotUserId}>`) : false;
+      const mentionedUserIds = extractMentionedUserIds(text);
+      const isMention = currentBotUserId ? mentionedUserIds.includes(currentBotUserId) : false;
       const cleanText = stripBotMention(text, currentBotUserId);
+      logSlackTrace("Slack mention parse", {
+        channelId,
+        threadId,
+        messageId,
+        userId,
+        currentBotUserId,
+        mentionedUserIds,
+        isMention,
+        text,
+        cleanText,
+      });
       await maybeRefreshWorkspaceForMention({
         deps,
         channelId,
@@ -253,6 +295,9 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
+      const isTopLevel = threadId === messageId;
+      const threadOwnerMessage = deps.isThreadOwner(channelId, threadId, userId);
+      const threadParticipantBotCount = deps.getThreadParticipantBotCount(channelId, threadId);
       const threadActive = deps.isThreadActive(channelId, threadId);
       const inboundEvent: RawInboundEvent = {
         platform: "slack",
@@ -263,7 +308,10 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         replyThreadId: threadId,
         messageId,
         userId,
-        isTopLevel: threadId === messageId,
+        selfMessage,
+        threadOwnerMessage,
+        threadParticipantBotCount,
+        isTopLevel,
         mentionedBot: isMention,
         activeThread: threadActive,
         rawText: text,
@@ -271,14 +319,43 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         receivedAtMs: Date.now(),
       };
       const flowResult = toIncomingFlowResult(slackInboundAdapter.evaluate(inboundEvent));
+      logSlackTrace("Slack inbound decision", {
+        channelId,
+        threadId,
+        messageId,
+        currentBotUserId,
+        mentionedUserIds,
+        isMention,
+        threadOwnerMessage,
+        threadParticipantBotCount,
+        threadActive,
+        flowType: flowResult.type,
+        flowReason: flowResult.type === "ignore" ? flowResult.reason : undefined,
+      });
+
+      if (selfMessage) {
+        log.info("[DROP] Bot-authored message", {
+          channelId,
+          threadId,
+          messageId,
+          userId,
+          currentBotUserId,
+          currentBotId: identity.botId,
+          messageBotId,
+          messageBotProfileId,
+        });
+      }
 
       if (shouldDropForOtherMentions(text, isMention)) {
         log.info("[DROP] Mentions other user", {
           channelId,
           threadId,
+          messageId,
           imName: workspaceAuth?.workspaceName ?? deps.getChannelWorkspaceName(channelId) ?? "unknown",
           botTokenLast6: tokenLast6(workspaceAuth?.botToken),
           botUserId: currentBotUserId || "unknown",
+          mentionedUserIds,
+          isMention,
         });
         return;
       }
@@ -299,8 +376,21 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       }
 
       if (flowResult.type === "ignore") {
-        if (flowResult.reason === "not_mentioned_and_inactive") {
-          log.debug(formatIncomingDropMessage(flowResult.reason), { channelId, threadId });
+        if (
+          flowResult.reason === "not_mentioned_and_inactive"
+          || flowResult.reason === "self_message"
+          || flowResult.reason === "not_thread_owner"
+          || flowResult.reason === "mention_required_in_multi_bot_thread"
+        ) {
+          logSlackTrace(formatIncomingDropMessage(flowResult.reason), {
+            channelId,
+            threadId,
+            messageId,
+            mentionedUserIds,
+            currentBotUserId,
+            isMention,
+            threadActive,
+          });
           return;
         }
         await say({

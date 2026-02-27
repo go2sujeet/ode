@@ -70,6 +70,7 @@ export interface PersistedSession {
   platform?: "slack" | "discord" | "lark";
   workingDirectory: string;
   threadOwnerUserId?: string;
+  participantBotIds?: string[];
   branchName?: string;
   threadNameSyncedWithBranch?: string;
   createdAt: number;
@@ -593,6 +594,14 @@ export function getActiveThreads(): ActiveThreadInfo[] {
       threadId: session.threadId,
       lastActiveAt: getSessionLastActiveAt(session),
     }));
+}
+
+export function getThreadParticipantBotIds(channelId: string, threadId: string): string[] {
+  const session = loadSession(channelId, threadId);
+  if (!session?.participantBotIds || session.participantBotIds.length === 0) {
+    return [];
+  }
+  return session.participantBotIds;
 }
 
 export function clearThreadSessions(channelId: string): void {

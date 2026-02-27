@@ -14,7 +14,12 @@ import {
   getGitHubInfoForUser,
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
-import { isThreadActive, markThreadActive } from "@/config/local/sessions";
+import {
+  getThreadParticipantBotIds,
+  isThreadActive,
+  loadSession,
+  markThreadActive,
+} from "@/config/local/sessions";
 import { log } from "@/utils";
 import {
   formatIncomingDropMessage,
@@ -457,6 +462,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             const mentioned = isBotMentioned(message, client.user.id);
             const active = isThreadActive(parentId, threadId);
             const normalizedText = mentioned ? cleanBotMention(text, client.user.id) : text;
+            const threadSession = loadSession(parentId, threadId);
             const inboundEvent: RawInboundEvent = {
               platform: "discord",
               botId: processorId,
@@ -466,6 +472,9 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               replyThreadId: threadId,
               messageId: message.id,
               userId: message.author.id,
+              selfMessage: false,
+              threadOwnerMessage: threadSession?.threadOwnerUserId === message.author.id,
+              threadParticipantBotCount: getThreadParticipantBotIds(parentId, threadId).length,
               isTopLevel: false,
               mentionedBot: mentioned,
               activeThread: active,
@@ -534,8 +543,11 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             replyThreadId: thread.id,
             messageId: message.id,
             userId: message.author.id,
-            isTopLevel: false,
-            mentionedBot: true,
+             selfMessage: false,
+             threadOwnerMessage: true,
+             threadParticipantBotCount: getThreadParticipantBotIds(parentId, thread.id).length,
+             isTopLevel: false,
+             mentionedBot: true,
             activeThread: false,
             rawText: message.content,
             normalizedText: topLevelText,

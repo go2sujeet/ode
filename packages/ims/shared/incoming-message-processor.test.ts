@@ -14,5 +14,8 @@ describe("incoming message flow helpers", () => {
 
   it("formats drop reason messages", () => {
     expect(formatIncomingDropMessage("not_mentioned_and_inactive")).toContain("Not mentioned");
+    expect(formatIncomingDropMessage("self_message")).toContain("Self message");
+    expect(formatIncomingDropMessage("not_thread_owner")).toContain("owner");
+    expect(formatIncomingDropMessage("mention_required_in_multi_bot_thread")).toContain("Mention required");
   });
 });

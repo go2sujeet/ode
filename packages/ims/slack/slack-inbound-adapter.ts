@@ -6,6 +6,9 @@ import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
 export class SlackInboundAdapter implements InboundAdapter {
   evaluate(event: RawInboundEvent): InboundDecision {
     return defaultInboundPolicy({
+      selfMessage: event.selfMessage,
+      threadOwnerMessage: event.threadOwnerMessage,
+      threadParticipantBotCount: event.threadParticipantBotCount,
       isTopLevel: event.isTopLevel,
       mentionedBot: event.mentionedBot,
       activeThread: event.activeThread,

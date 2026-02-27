@@ -19,7 +19,12 @@ import {
   getWorkspaces,
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
-import { isThreadActive, markThreadActive } from "@/config/local/sessions";
+import {
+  getThreadParticipantBotIds,
+  isThreadActive,
+  loadSession,
+  markThreadActive,
+} from "@/config/local/sessions";
 import { createCoreRuntime } from "@/core/runtime";
 import type { IMAdapter } from "@/core/types";
 import { log } from "@/utils";
@@ -1028,15 +1033,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
   const runtime = getLarkProcessorRuntime(processorId);
 
   const botOpenId = await getBotOpenIdForChannel(channelId);
-  if (!topLevelMessage && botOpenId && senderOpenId === botOpenId) {
-    logLarkEvent("Lark inbound ignored: self message", {
-      channelId,
-      messageId,
-      senderOpenId,
-      botOpenId,
-    });
-    return;
-  }
+  const isSelfMessage = Boolean(botOpenId && senderOpenId === botOpenId);
 
   if (message?.message_type !== "text") {
     logLarkEvent("Lark inbound ignored: non-text message", {
@@ -1053,6 +1050,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
     : false;
   const active = isThreadActive(channelId, threadId);
+  const threadSession = loadSession(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
   const inboundEvent: RawInboundEvent = {
     platform: "lark",
@@ -1063,6 +1061,9 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     replyThreadId: threadId,
     messageId,
     userId: senderOpenId,
+    selfMessage: isSelfMessage,
+    threadOwnerMessage: threadSession?.threadOwnerUserId === senderOpenId,
+    threadParticipantBotCount: getThreadParticipantBotIds(channelId, threadId).length,
     isTopLevel: topLevelMessage,
     mentionedBot: isMentioned,
     activeThread: active,
