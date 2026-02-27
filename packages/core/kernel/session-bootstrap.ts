@@ -3,7 +3,7 @@ import { getChannelBaseBranch, getUserGeneralSettings, resolveChannelCwd } from 
 import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
 import { categorizeRuntimeError } from "@/core/runtime/helpers";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
-import type { RuntimeRequestContext } from "@/core/runtime/request-context";
+import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 import { log } from "@/utils";
 import { createHash } from "crypto";
 

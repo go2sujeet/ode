@@ -19,7 +19,7 @@ import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { maybeGenerateSessionTitle } from "@/core/runtime/session-title";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
-import type { RuntimeRequestContext } from "@/core/runtime/request-context";
+import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 import { formatQuestionPrompt } from "@/core/runtime/helpers";
 import {
   buildSessionMessageState,

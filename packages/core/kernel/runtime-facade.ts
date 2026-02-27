@@ -7,7 +7,7 @@ import {
 import { type SessionEvent, type SessionMessageState, log } from "@/utils";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { handlePendingQuestionReply } from "@/core/kernel/pending-question";
-import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core/runtime/recovery";
+import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core/kernel/recovery";
 import { prepareRuntimeSession } from "@/core/kernel/session-bootstrap";
 import { runOpenRequest } from "@/core/kernel/request-run";
 import { maybeSyncBranchAndThread, publishFinalText } from "@/core/kernel/runtime-support";
@@ -22,7 +22,7 @@ import {
 } from "@/core/kernel/runtime-kernel";
 import type { InboundAdapter } from "@/ims/shared/inbound-adapter";
 import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
-import type { RuntimeRequestContext } from "@/core/runtime/request-context";
+import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 
 export type RuntimeDeps = {
   platform: "slack" | "discord" | "lark";

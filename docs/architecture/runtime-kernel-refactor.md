@@ -13,11 +13,8 @@
 - `BotRuntime`: per bot lane (`BotKey`), owns inbound adapter + thread registry.
 - `ThreadRuntimeRegistry`: lifecycle and TTL for thread actors.
 - `ThreadRuntime`: actor queue per `ThreadKey`.
-- `RequestRun`: one active model run with explicit `RequestPhase`.
-- `SessionService`: session/worktree/provider bootstrap only.
-- `StatusPublisher`: status/final publish strategy.
-- `EventProjector`: projects stream events into typed status view.
-- `RuntimeStore`: persistence contract.
+- `RequestRun`: one active model run (open request, stream processing, finalize).
+- `KernelRuntimeFacade`: runtime ingress orchestration and delegation to kernel services.
 
 ## Key value objects
 
@@ -31,16 +28,28 @@
 1. `PlatformGateway` emits `RawInboundEvent`.
 2. `RuntimeKernel` resolves `BotRuntime` by `BotKey`.
 3. `BotRuntime` uses platform `InboundAdapter` to evaluate inbound.
-4. `command` routes to `CommandService`.
-5. `message/stop` routes to `ThreadRuntime` via `ThreadRuntimeRegistry`.
+4. `message/stop` routes to `ThreadRuntime` via `ThreadRuntimeRegistry`.
+5. stop handling is delegated to `stop-command` service.
 6. `ThreadRuntime` serializes execution and launches `RequestRun`.
 
 ## Planned removals after parity
 
-- `CoreStateMachine` (phase lives on `RequestRun`).
-- `incoming-message-processor.execute(...)` callback style.
-- `scopeChannelId/parseScopedChannelId` string scoping.
-- monolithic `createCoreRuntime` closure as primary runtime model.
+- `CoreStateMachine` (removed).
+- `incoming-message-processor.execute(...)` callback style (removed).
+- `scopeChannelId/parseScopedChannelId` string scoping (not removed yet).
+- monolithic `createCoreRuntime` closure as primary runtime model (replaced by `KernelRuntimeFacade`).
+
+## Current status
+
+- Kernel-only inbound path is live across Slack/Discord/Lark.
+- Runtime execution lifecycle is consolidated in `packages/core/kernel/request-run.ts`.
+- Session bootstrap, pending-question handling, stop handling, and recovery are in `packages/core/kernel/*`.
+- `packages/core/runtime.ts` is a thin wrapper around `KernelRuntimeFacade`.
+
+## Remaining gaps
+
+- Replace scoped channel string encoding (`scopeChannelId`) with typed `BotKey` + `ThreadKey` end-to-end.
+- Move command parsing/handling behind explicit kernel command service when command routing is fully migrated.
 
 ## Migration slices
 

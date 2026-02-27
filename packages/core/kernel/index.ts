@@ -2,6 +2,8 @@ export * from "./runtime-kernel";
 export * from "./runtime-facade";
 export * from "./runtime-support";
 export * from "./stop-command";
+export * from "./recovery";
 export * from "./session-bootstrap";
 export * from "./pending-question";
+export * from "./request-context";
 export * from "./request-run";

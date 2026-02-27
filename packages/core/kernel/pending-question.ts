@@ -7,7 +7,7 @@ import {
 } from "@/config/local/sessions";
 import { buildQuestionAnswers } from "@/core/runtime/helpers";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
-import type { RuntimeRequestContext } from "@/core/runtime/request-context";
+import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 import { log } from "@/utils";
 
 export async function handlePendingQuestionReply(params: {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { clearActiveRequest, createActiveRequest, deleteSession, loadSession, saveSession } from "@/config/local/sessions";
-import { recoverPendingRequests } from "../runtime/recovery";
+import { recoverPendingRequests } from "../kernel/recovery";
 
 describe("recoverPendingRequests", () => {
   it("updates message and clears recent processing request", async () => {
