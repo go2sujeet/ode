@@ -76,7 +76,7 @@ describe("registerSlackMessageRouter", () => {
     expect(say).toHaveBeenCalledTimes(0);
   });
 
-  it("caches bot identity and avoids auth.test on every message", async () => {
+  it("caches bot identity and avoids auth.test on every message when bot token is known", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const authTest = mock(async () => ({ user_id: "U_BOT", team_id: "T1", enterprise_id: "E1" }));
     const handleInboundEvent = mock(async () => {});
@@ -86,7 +86,7 @@ describe("registerSlackMessageRouter", () => {
           registeredHandler = handler;
         },
       },
-      resolveWorkspaceAuth: () => ({ workspaceId: "ws_123" }),
+      resolveWorkspaceAuth: () => ({ workspaceId: "ws_123", botToken: "xoxb-token-1" }),
       handleInboundEvent,
     });
 
@@ -254,6 +254,69 @@ describe("registerSlackMessageRouter", () => {
     expect(authTestA).toHaveBeenCalledTimes(1);
     expect(authTestB).toHaveBeenCalledTimes(1);
     expect(handleInboundEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reuse bot identity cache across apps when only workspace id is known", async () => {
+    let registeredHandler: ((args: any) => Promise<void>) | undefined;
+    const authTest = mock(async () => {
+      if (authTest.mock.calls.length === 1) {
+        return { user_id: "U_BOT_A", team_id: "T1" };
+      }
+      return { user_id: "U_BOT_B", team_id: "T1" };
+    });
+    const handleInboundEvent = mock(async () => {});
+    const deps = createDeps({
+      app: {
+        message: (handler: (args: any) => Promise<void>) => {
+          registeredHandler = handler;
+        },
+      },
+      resolveWorkspaceAuth: () => ({ workspaceId: "ws_shared" }),
+      handleInboundEvent,
+    });
+
+    registerSlackMessageRouter(deps);
+    expect(registeredHandler).toBeDefined();
+
+    const say = mock(async () => {});
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U1",
+        text: "<@U_BOT_A> hello",
+        ts: "1710000000.000201",
+      },
+      client: {
+        auth: {
+          test: authTest,
+        },
+      },
+      context: {},
+      body: { team_id: "T1" },
+      say,
+    });
+
+    await registeredHandler!({
+      message: {
+        channel: "C1",
+        user: "U2",
+        text: "<@U_BOT_A> still there?",
+        ts: "1710000000.000202",
+      },
+      client: {
+        auth: {
+          test: authTest,
+        },
+      },
+      context: {},
+      body: { team_id: "T1" },
+      say,
+    });
+
+    expect(authTest).toHaveBeenCalledTimes(2);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(1);
+    expect(say).toHaveBeenCalledTimes(0);
   });
 
   it("does not trigger settings launcher for ignored non-mention messages", async () => {

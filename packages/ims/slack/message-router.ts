@@ -227,7 +227,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       const credentialKey =
         contextBotToken
         ?? workspaceAuth?.botToken
-        ?? workspaceAuth?.workspaceId
         ?? undefined;
       const identity = await getBotIdentity({
         client,
