@@ -60,9 +60,9 @@ const discordClientByProcessorId = new Map<string, Client>();
 const statusMessageIndex = new DiscordStatusMessageIndex();
 const discordThreadProcessorByKey = new Map<string, string>();
 const discordProcessorManager = createProcessorManager({
-  createRuntime: () => createCoreRuntime({
+  createRuntime: (processorId) => createCoreRuntime({
     platform: "discord",
-    im: discordAdapter,
+    im: createDiscordAdapter(processorId),
     agent: createAgentAdapter(),
   }),
 });
@@ -180,11 +180,12 @@ async function buildDiscordContext(
 async function sendMessage(
   channelId: string,
   threadId: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<string | undefined> {
   try {
-    const processorId = getRememberedThreadProcessor(channelId, threadId);
-    const channel = await resolveTextChannel(threadId, processorId);
+    const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
+    const channel = await resolveTextChannel(threadId, resolvedProcessorId);
     const chunks = splitForDiscord(text, DISCORD_MESSAGE_LIMIT);
     let firstId: string | undefined;
     for (let index = 0; index < chunks.length; index += 1) {
@@ -218,7 +219,8 @@ async function sendMessage(
 async function updateMessage(
   channelId: string,
   messageId: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<void> {
   const rawChannelId = channelId;
   try {
@@ -232,8 +234,8 @@ async function updateMessage(
     if (!mappedThreadId && persistedThreadId) {
       statusMessageIndex.setThreadId(messageId, persistedThreadId);
     }
-    const processorId = getRememberedThreadProcessor(channelId, threadId);
-    const channel = await resolveTextChannel(threadId, processorId);
+    const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
+    const channel = await resolveTextChannel(threadId, resolvedProcessorId);
     const content = splitForDiscord(text, DISCORD_MESSAGE_LIMIT)[0] ?? text;
     let lastRateLimitError: unknown;
 
@@ -294,24 +296,43 @@ async function updateMessage(
   }
 }
 
-async function deleteMessage(channelId: string, messageId: string): Promise<void> {
+async function deleteMessage(channelId: string, messageId: string, processorId?: string): Promise<void> {
   const rawChannelId = channelId;
   const threadId = statusMessageIndex.getThreadId(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || rawChannelId;
   if (!threadId) return;
-  const processorId = getRememberedThreadProcessor(channelId, threadId);
-  const channel = await resolveTextChannel(threadId, processorId);
+  const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
+  const channel = await resolveTextChannel(threadId, resolvedProcessorId);
   const message = await channel.messages.fetch(messageId);
   await message.delete();
+}
+
+function createDiscordAdapter(processorId?: string): IMAdapter {
+  return {
+    maxEditableMessageChars: DISCORD_MESSAGE_LIMIT,
+    sendMessage: (channelId: string, threadId: string, text: string) =>
+      sendMessage(channelId, threadId, text, processorId),
+    updateMessage: (channelId: string, messageId: string, text: string) =>
+      updateMessage(channelId, messageId, text, processorId),
+    deleteMessage: (channelId: string, messageId: string) =>
+      deleteMessage(channelId, messageId, processorId),
+    fetchThreadHistory: (channelId: string, threadId: string, messageId: string) =>
+      fetchThreadHistory(channelId, threadId, messageId, processorId),
+    renameThread: (channelId: string, threadId: string, name: string) =>
+      renameDiscordThread(channelId, threadId, name, processorId),
+    buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
+      buildDiscordContext(channelId, threadId, userId, threadHistory),
+  };
 }
 
 async function fetchThreadHistory(
   channelId: string,
   threadId: string,
-  messageId: string
+  messageId: string,
+  processorId?: string
 ): Promise<string | null> {
   try {
-    const processorId = getRememberedThreadProcessor(channelId, threadId);
-    const channel = await resolveTextChannel(threadId, processorId);
+    const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
+    const channel = await resolveTextChannel(threadId, resolvedProcessorId);
     const history = await channel.messages.fetch({ limit: 20, before: messageId });
     const ordered = Array.from(history.values() as Iterable<any>).reverse();
     const lines = ordered
@@ -324,16 +345,7 @@ async function fetchThreadHistory(
   }
 }
 
-const discordAdapter: IMAdapter = {
-  maxEditableMessageChars: DISCORD_MESSAGE_LIMIT,
-  sendMessage,
-  updateMessage,
-  deleteMessage,
-  fetchThreadHistory,
-  renameThread: renameDiscordThread,
-  buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
-    buildDiscordContext(channelId, threadId, userId, threadHistory),
-};
+const discordAdapter: IMAdapter = createDiscordAdapter();
 
 const discordRecoveryRuntime = createCoreRuntime({
   platform: "discord",
@@ -367,7 +379,8 @@ function isBotMentioned(message: any, botUserId: string): boolean {
 async function renameDiscordThread(
   channelId: string,
   threadId: string,
-  name: string
+  name: string,
+  processorId?: string
 ): Promise<void> {
   const looksLikeBranch = /^[a-z0-9._\/-]+$/i.test(name.trim());
   const targetName = looksLikeBranch
@@ -376,8 +389,8 @@ async function renameDiscordThread(
   if (!targetName) return;
 
   try {
-    const processorId = getRememberedThreadProcessor(channelId, threadId);
-    const channel = await resolveTextChannel(threadId, processorId);
+    const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
+    const channel = await resolveTextChannel(threadId, resolvedProcessorId);
     if (channel && typeof (channel as any).setName === "function") {
       if ((channel as any).name === targetName) return;
       await (channel as any).setName(targetName);

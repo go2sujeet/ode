@@ -44,9 +44,9 @@ const TRACE_SLACK_ROUTER = process.env.ODE_SLACK_TRACE === "1";
 
 const slackAuthRegistry = new SlackAuthRegistry();
 const slackProcessorManager = createProcessorManager({
-  createRuntime: () => createCoreRuntime({
+  createRuntime: (processorId) => createCoreRuntime({
     platform: "slack",
-    im: slackAdapter,
+    im: createSlackAdapter(processorId),
     agent: createAgentAdapter(),
   }),
   defaultProcessorId: "slack:default",
@@ -157,6 +157,15 @@ export function getSlackBotToken(channelId?: string, threadId?: string): string 
     .map((entry) => entry.token)
     .filter((token) => token && token.trim().length > 0);
   return tokens[0];
+}
+
+function getSlackBotTokenForProcessor(processorId?: string): string | undefined {
+  const normalizedProcessorId = processorId?.trim();
+  if (!normalizedProcessorId) return undefined;
+  return slackAuthRegistry.findBotTokenByProcessorId(
+    normalizedProcessorId,
+    (botToken) => createProcessorId("slack", botToken)
+  );
 }
 
 function truncateToken(token: string): string {
@@ -280,14 +289,15 @@ export async function initializeWorkspaceAuth(): Promise<void> {
 export async function sendMessage(
   channelId: string,
   threadId: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<string | undefined> {
   const rawChannelId = channelId;
   const slackApp = getApp();
   const formattedText = markdownToSlack(text);
   const chunks = splitForSlack(formattedText);
   const workspace = slackAuthRegistry.getChannelWorkspaceName(rawChannelId) || "unknown";
-  const botToken = getSlackBotToken(channelId, threadId);
+  const botToken = getSlackBotTokenForProcessor(processorId) ?? getSlackBotToken(channelId, threadId);
 
   if (!botToken) {
     log.warn("No Slack bot token available for channel", { channelId });
@@ -332,12 +342,15 @@ export async function sendMessage(
 
 export async function deleteMessage(
   channelId: string,
-  messageTs: string
+  messageTs: string,
+  processorId?: string
 ): Promise<void> {
   try {
     const rawChannelId = channelId;
     const slackApp = getApp();
-    const botToken = slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
+    const botToken = getSlackBotTokenForProcessor(processorId)
+      ?? slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs)
+      ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message delete", { channelId });
     }
@@ -354,14 +367,17 @@ export async function deleteMessage(
 export async function updateMessage(
   channelId: string,
   messageTs: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<void> {
   try {
     const rawChannelId = channelId;
     const slackApp = getApp();
     const formattedText = markdownToSlack(text);
     const truncatedText = truncateForSlack(formattedText);
-    const botToken = slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs) ?? getSlackBotToken(channelId);
+    const botToken = getSlackBotTokenForProcessor(processorId)
+      ?? slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs)
+      ?? getSlackBotToken(channelId);
     if (!botToken) {
       log.warn("No Slack bot token available for message update", { channelId });
     }
@@ -384,7 +400,8 @@ export async function updateMessage(
 async function fetchThreadHistory(
   channelId: string,
   threadId: string,
-  messageId: string
+  messageId: string,
+  processorId?: string
 ): Promise<string | null> {
   const rawChannelId = channelId;
   return fetchThreadHistoryByClient({
@@ -392,19 +409,27 @@ async function fetchThreadHistory(
     channelId: rawChannelId,
     threadId,
     messageId,
-    token: getSlackBotToken(channelId, threadId),
+    token: getSlackBotTokenForProcessor(processorId) ?? getSlackBotToken(channelId, threadId),
   });
 }
 
-const slackAdapter: IMAdapter = {
-  maxEditableMessageChars: 35_000,
-  sendMessage,
-  updateMessage,
-  deleteMessage,
-  fetchThreadHistory,
-  buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
-    buildSlackContext(channelId, threadId, userId, threadHistory),
-};
+function createSlackAdapter(processorId?: string): IMAdapter {
+  return {
+    maxEditableMessageChars: 35_000,
+    sendMessage: (channelId: string, threadId: string, text: string) =>
+      sendMessage(channelId, threadId, text, processorId),
+    updateMessage: (channelId: string, messageTs: string, text: string) =>
+      updateMessage(channelId, messageTs, text, processorId),
+    deleteMessage: (channelId: string, messageTs: string) =>
+      deleteMessage(channelId, messageTs, processorId),
+    fetchThreadHistory: (channelId: string, threadId: string, messageId: string) =>
+      fetchThreadHistory(channelId, threadId, messageId, processorId),
+    buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
+      buildSlackContext(channelId, threadId, userId, threadHistory),
+  };
+}
+
+const slackAdapter: IMAdapter = createSlackAdapter();
 
 const slackRecoveryRuntime = createCoreRuntime({
   platform: "slack",

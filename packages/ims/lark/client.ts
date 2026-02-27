@@ -73,10 +73,11 @@ type LarkBotInfoResponse = {
 
 const larkRuntimeState = new LarkRuntimeState();
 const wsClientRegistry = new Map<string, unknown>();
+const larkCredentialsByProcessorId = new Map<string, LarkCredentials>();
 const larkProcessorManager = createProcessorManager({
-  createRuntime: () => createCoreRuntime({
+  createRuntime: (processorId) => createCoreRuntime({
     platform: "lark",
-    im: larkAdapter,
+    im: createLarkAdapter(processorId),
     agent: createAgentAdapter(),
   }),
 });
@@ -86,11 +87,12 @@ function getLarkProcessorRuntime(processorId: string): ReturnType<typeof createC
   return larkProcessorManager.getRuntime(processorId);
 }
 
-function getConfiguredLarkCredentials(): Array<{ appId: string; appSecret: string }> {
-  const uniqueCredentials = new Map<string, { appId: string; appSecret: string }>();
+function getConfiguredLarkCredentials(): LarkCredentials[] {
+  const uniqueCredentials = new Map<string, LarkCredentials>();
   for (const workspace of getLarkAppCredentials()) {
     if (!uniqueCredentials.has(workspace.appId)) {
       uniqueCredentials.set(workspace.appId, {
+        workspaceId: workspace.workspaceId,
         appId: workspace.appId,
         appSecret: workspace.appSecret,
       });
@@ -143,6 +145,20 @@ function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null
     appId: first.appId,
     appSecret: first.appSecret,
   };
+}
+
+function registerLarkProcessorCredentials(processorId: string, creds: LarkCredentials): void {
+  if (!processorId || !creds.appId || !creds.appSecret) return;
+  larkCredentialsByProcessorId.set(processorId, creds);
+}
+
+function getLarkCredentialsForProcessor(processorId: string | undefined, channelId: string): LarkCredentials | null {
+  const normalizedProcessorId = processorId?.trim() || "";
+  if (normalizedProcessorId) {
+    const mapped = larkCredentialsByProcessorId.get(normalizedProcessorId);
+    if (mapped) return mapped;
+  }
+  return getLarkCredentialsForChannel(channelId);
 }
 
 async function getLarkTenantAccessToken(creds: LarkCredentials): Promise<string> {
@@ -218,9 +234,10 @@ async function sendLarkMessage(params: {
   threadId: string;
   msgType: LarkMessageType;
   content: Record<string, unknown>;
+  creds?: LarkCredentials;
 }): Promise<string | undefined> {
   const rawChannelId = params.channelId;
-  const creds = getLarkCredentialsForChannel(params.channelId);
+  const creds = params.creds ?? getLarkCredentialsForChannel(params.channelId);
   if (!creds) {
     log.warn("No Lark credentials available for sendLarkMessage", { channelId: rawChannelId });
     return undefined;
@@ -342,13 +359,17 @@ async function buildLarkContext(
 async function sendMessage(
   channelId: string,
   threadId: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<string | undefined> {
+  const creds = getLarkCredentialsForProcessor(processorId, channelId);
+  if (!creds) return undefined;
   return sendLarkMessage({
     channelId,
     threadId: threadId || "",
     msgType: "post",
     content: buildLarkPostContent(text),
+    creds,
   });
 }
 
@@ -373,10 +394,11 @@ async function sendSettingsCard(channelId: string, threadId: string, userId = ""
 async function updateMessage(
   channelId: string,
   messageId: string,
-  text: string
+  text: string,
+  processorId?: string
 ): Promise<string | undefined> {
   const rawChannelId = channelId;
-  const creds = getLarkCredentialsForChannel(channelId);
+  const creds = getLarkCredentialsForProcessor(processorId, channelId);
   if (!creds) return;
   const token = await getLarkTenantAccessToken(creds);
 
@@ -384,8 +406,8 @@ async function updateMessage(
   if (editCount >= MAX_LARK_MESSAGE_EDITS) {
     const trackedThreadId = larkRuntimeState.getMessageThread(messageId)?.threadId || findReplyThreadIdByStatusMessageTs(messageId) || "";
     try {
-      await deleteMessage(channelId, messageId);
-      const replacementMessageId = await sendMessage(channelId, trackedThreadId, text);
+      await deleteMessage(channelId, messageId, processorId);
+      const replacementMessageId = await sendMessage(channelId, trackedThreadId, text, processorId);
       if (replacementMessageId) {
         larkRuntimeState.moveMessageEditCount(messageId, replacementMessageId);
         log.info("Lark message edit limit reached; replaced status message", {
@@ -480,8 +502,8 @@ async function updateMessage(
   }
 }
 
-async function deleteMessage(channelId: string, messageId: string): Promise<void> {
-  const creds = getLarkCredentialsForChannel(channelId);
+async function deleteMessage(channelId: string, messageId: string, processorId?: string): Promise<void> {
+  const creds = getLarkCredentialsForProcessor(processorId, channelId);
   if (!creds) return;
   const token = await getLarkTenantAccessToken(creds);
   try {
@@ -500,10 +522,11 @@ async function deleteMessage(channelId: string, messageId: string): Promise<void
 async function fetchThreadHistory(
   channelId: string,
   threadId: string,
-  messageId: string
+  messageId: string,
+  processorId?: string
 ): Promise<string | null> {
   const rawChannelId = channelId;
-  const creds = getLarkCredentialsForChannel(channelId);
+  const creds = getLarkCredentialsForProcessor(processorId, channelId);
   if (!creds) return null;
   const token = await getLarkTenantAccessToken(creds);
   try {
@@ -554,15 +577,23 @@ async function fetchThreadHistory(
   }
 }
 
-const larkAdapter: IMAdapter = {
-  maxEditableMessageChars: 30_000,
-  sendMessage,
-  updateMessage,
-  deleteMessage,
-  fetchThreadHistory,
-  buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
-    buildLarkContext(channelId, threadId, userId, threadHistory),
-};
+function createLarkAdapter(processorId?: string): IMAdapter {
+  return {
+    maxEditableMessageChars: 30_000,
+    sendMessage: (channelId: string, threadId: string, text: string) =>
+      sendMessage(channelId, threadId, text, processorId),
+    updateMessage: (channelId: string, messageId: string, text: string) =>
+      updateMessage(channelId, messageId, text, processorId),
+    deleteMessage: (channelId: string, messageId: string) =>
+      deleteMessage(channelId, messageId, processorId),
+    fetchThreadHistory: (channelId: string, threadId: string, messageId: string) =>
+      fetchThreadHistory(channelId, threadId, messageId, processorId),
+    buildAgentContext: async ({ channelId, threadId, userId, threadHistory }) =>
+      buildLarkContext(channelId, threadId, userId, threadHistory),
+  };
+}
+
+const larkAdapter: IMAdapter = createLarkAdapter();
 
 const larkRecoveryRuntime = createCoreRuntime({
   platform: "lark",
@@ -1030,6 +1061,12 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
 
   const inferredAppId = processorAppId ?? getLarkCredentialsForChannel(channelId)?.appId;
   const processorId = createProcessorId("lark", inferredAppId ?? "");
+  const mappedCreds = getLarkAppCredentials().find((entry) => entry.appId === inferredAppId)
+    ?? getLarkCredentialsForChannel(channelId)
+    ?? null;
+  if (mappedCreds) {
+    registerLarkProcessorCredentials(processorId, mappedCreds);
+  }
   const runtime = getLarkProcessorRuntime(processorId);
 
   const botOpenId = await getBotOpenIdForChannel(channelId);
@@ -1133,6 +1170,8 @@ async function startLarkLongConnections(reason: string): Promise<void> {
 
   for (const creds of configuredCredentials) {
     const appId = creds.appId;
+    const processorId = createProcessorId("lark", appId);
+    registerLarkProcessorCredentials(processorId, creds);
     if (wsClientRegistry.has(appId)) {
       continue;
     }
@@ -1180,6 +1219,7 @@ async function startLarkLongConnections(reason: string): Promise<void> {
 async function stopLarkLongConnections(reason: string): Promise<void> {
   const entries = Array.from(wsClientRegistry.entries());
   wsClientRegistry.clear();
+  larkCredentialsByProcessorId.clear();
   for (const [appId, client] of entries) {
     try {
       const wsClient = client as { stop?: () => unknown | Promise<unknown> };
