@@ -50,6 +50,36 @@ function createFakeIm(logs: {
   };
 }
 
+function toInboundEvent(params: {
+  platform: "slack" | "discord" | "lark";
+  botId?: string;
+  channelId: string;
+  threadId: string;
+  userId: string;
+  messageId: string;
+  text: string;
+  isTopLevel?: boolean;
+  mentionedBot?: boolean;
+  activeThread?: boolean;
+}): RawInboundEvent {
+  return {
+    platform: params.platform,
+    botId: params.botId ?? "default",
+    channelId: params.channelId,
+    rawChannelId: params.channelId,
+    threadId: params.threadId,
+    replyThreadId: params.threadId,
+    messageId: params.messageId,
+    userId: params.userId,
+    isTopLevel: params.isTopLevel ?? false,
+    mentionedBot: params.mentionedBot ?? true,
+    activeThread: params.activeThread ?? true,
+    rawText: params.text,
+    normalizedText: params.text,
+    receivedAtMs: Date.now(),
+  };
+}
+
 function createFakeAgent(params?: {
   onSend?: (message: string) => Promise<void> | void;
   responses?: Array<{ text: string; messageType: "assistant" }>;
@@ -113,8 +143,22 @@ describe("core runtime e2e", () => {
       messageId: uniqueId("ME2E"),
     };
 
-    await runtime.handleIncomingMessage(context, "hello runtime");
-    await runtime.handleIncomingMessage(context, "hello runtime duplicate");
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId: context.channelId,
+      threadId: context.threadId,
+      userId: context.userId,
+      messageId: context.messageId,
+      text: "hello runtime",
+    }));
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId: context.channelId,
+      threadId: context.threadId,
+      userId: context.userId,
+      messageId: context.messageId,
+      text: "hello runtime duplicate",
+    }));
 
     await waitFor(() => sentPrompts.length === 1);
     await waitFor(() => logs.updates.some((entry) => entry.text.includes("Hello from fake agent")));
@@ -153,8 +197,22 @@ describe("core runtime e2e", () => {
       userId: "UE2E-2",
     };
 
-    await runtime.handleIncomingMessage({ ...baseContext, messageId: uniqueId("ME2E-Q1") }, "first");
-    await runtime.handleIncomingMessage({ ...baseContext, messageId: uniqueId("ME2E-Q2") }, "second");
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId: baseContext.channelId,
+      threadId: baseContext.threadId,
+      userId: baseContext.userId,
+      messageId: uniqueId("ME2E-Q1"),
+      text: "first",
+    }));
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId: baseContext.channelId,
+      threadId: baseContext.threadId,
+      userId: baseContext.userId,
+      messageId: uniqueId("ME2E-Q2"),
+      text: "second",
+    }));
 
     await waitFor(() => sentPrompts.length === 2);
 
@@ -197,16 +255,14 @@ describe("core runtime e2e", () => {
     setPendingQuestion(channelId, threadId, pending);
 
     const runtime = createCoreRuntime({ platform: "slack", im, agent });
-    await runtime.handleIncomingMessage(
-      {
-        channelId,
-        replyThreadId: threadId,
-        threadId,
-        userId: ownerUserId,
-        messageId: uniqueId("ME2E-PQ"),
-      },
-      "first\nsecond"
-    );
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId,
+      threadId,
+      userId: ownerUserId,
+      messageId: uniqueId("ME2E-PQ"),
+      text: "first\nsecond",
+    }));
 
     await waitFor(() => replyCalls.length === 1);
 
@@ -233,15 +289,15 @@ describe("core runtime e2e", () => {
     const runtimeFromMessage = createCoreRuntime({ platform: "discord", im: messageIm, agent: messageAgent.agent });
     const channelIdMessage = uniqueId("CE2E-DIS-MSG");
     const threadIdMessage = uniqueId("TE2E-DIS-MSG");
-    await runtimeFromMessage.handleIncomingMessage({
+    await runtimeFromMessage.handleInboundEvent(toInboundEvent({
+      platform: "discord",
+      botId: "bot-1",
       channelId: channelIdMessage,
-      rawChannelId: channelIdMessage,
-      replyThreadId: threadIdMessage,
       threadId: threadIdMessage,
       userId: "UE2E-dis",
       messageId: uniqueId("ME2E-dis-msg"),
-      botToken: "bot-1",
-    }, "hello discord");
+      text: "hello discord",
+    }));
     await waitFor(() => messageAgent.sentPrompts.length === 1);
     deleteSession(channelIdMessage, threadIdMessage);
 

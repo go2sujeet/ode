@@ -8,6 +8,7 @@ import {
   saveSession,
 } from "@/config/local/sessions";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
+import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -127,6 +128,31 @@ function createFakeAgent(params?: {
   return { agent, sentPrompts };
 }
 
+function toInboundEvent(params: {
+  channelId: string;
+  threadId: string;
+  userId: string;
+  messageId: string;
+  text: string;
+}): RawInboundEvent {
+  return {
+    platform: "slack",
+    botId: "default",
+    channelId: params.channelId,
+    rawChannelId: params.channelId,
+    threadId: params.threadId,
+    replyThreadId: params.threadId,
+    messageId: params.messageId,
+    userId: params.userId,
+    isTopLevel: false,
+    mentionedBot: true,
+    activeThread: true,
+    rawText: params.text,
+    normalizedText: params.text,
+    receivedAtMs: Date.now(),
+  };
+}
+
 describe("core runtime resilience e2e", () => {
   const previousCi = process.env.CI;
 
@@ -165,7 +191,13 @@ describe("core runtime resilience e2e", () => {
       messageId: uniqueId("ME2E-429"),
     };
 
-      await runtime.handleIncomingMessage(context, "trigger rate limit flow");
+      await runtime.handleInboundEvent(toInboundEvent({
+        channelId: context.channelId,
+        threadId: context.threadId,
+        userId: context.userId,
+        messageId: context.messageId,
+        text: "trigger rate limit flow",
+      }));
       await waitFor(() => logs.sends.some((entry) => entry.text === "final from agent"), 8000);
 
       expect(logs.updates.length).toBeGreaterThan(0);
@@ -199,7 +231,13 @@ describe("core runtime resilience e2e", () => {
       messageId: uniqueId("ME2E-stop"),
     };
 
-    await runtime.handleIncomingMessage(context, "please stop soon");
+    await runtime.handleInboundEvent(toInboundEvent({
+      channelId: context.channelId,
+      threadId: context.threadId,
+      userId: context.userId,
+      messageId: context.messageId,
+      text: "please stop soon",
+    }));
     await waitFor(() => logs.updates.some((entry) => entry.text === "_Done_"));
 
     expect(logs.updates.some((entry) => entry.text === "_Done_")).toBe(true);

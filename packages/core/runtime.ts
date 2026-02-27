@@ -273,7 +273,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     if (!responses) return;
   }
 
-  async function handleIncomingMessage(context: CoreMessageContext, text: string): Promise<void> {
+  async function dispatchCoreMessage(context: CoreMessageContext, text: string): Promise<void> {
     if (isMessageProcessed(context.channelId, context.threadId, context.messageId)) {
       log.debug("Skipping duplicate message", { messageId: context.messageId });
       return;
@@ -329,7 +329,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     }
 
     markThreadActive(event.channelId, event.threadId);
-    await handleIncomingMessage(
+    await dispatchCoreMessage(
       {
         channelId: event.channelId,
         rawChannelId: event.rawChannelId,
@@ -387,17 +387,22 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     messageTs: string;
   }): Promise<void> {
     const { channelId, rawChannelId, replyThreadId, threadId, userId, selection, messageTs } = params;
-    await handleIncomingMessage(
-      {
-        channelId,
-        rawChannelId,
-        replyThreadId,
-        threadId,
-        userId,
-        messageId: messageTs,
-      },
-      selection
-    );
+    await handleInboundEvent({
+      platform: deps.platform,
+      botId: "default",
+      channelId,
+      rawChannelId,
+      threadId,
+      replyThreadId,
+      messageId: messageTs,
+      userId,
+      isTopLevel: false,
+      mentionedBot: true,
+      activeThread: true,
+      rawText: selection,
+      normalizedText: selection,
+      receivedAtMs: Date.now(),
+    });
   }
 
   async function recoverPendingRequests(): Promise<void> {
@@ -405,9 +410,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
   }
 
   return {
-    handleIncomingMessage,
     handleInboundEvent,
-    handleStopCommand,
     handleButtonSelection,
     recoverPendingRequests,
   };
