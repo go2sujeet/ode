@@ -4,13 +4,11 @@ import {
   getSlackTargetChannels,
   getSlackBotTokens,
   invalidateOdeConfigCache,
-  getChannelAgentProvider,
   getGitHubInfoForUser,
   getChannelSystemMessage,
 } from "@/config";
 import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
 import {
-  markThreadActive,
   isThreadActive,
 } from "@/config/local/sessions";
 import { createCoreRuntime } from "@/core/runtime";
@@ -450,25 +448,14 @@ export function setupMessageHandlers(): void {
         slackAuthRegistry.setChannelWorkspaceAuthByBotToken(channelId, auth.botToken);
       },
       isThreadActive,
-      markThreadActive,
       postGeneralSettingsLauncher: postSlackGeneralSettingsLauncher,
       describeSettingsIssues: describeSlackSettingsIssues,
-      getChannelAgentProvider,
-      handleStopCommand: (channelId, threadId) => {
-        const processorId = getScopedProcessorId(channelId);
-        return getSlackProcessorRuntime(processorId).handleStopCommand(channelId, threadId);
-      },
-      handleIncomingMessage: (context, text) => {
-        if (context.botToken) {
-          const rawChannelId = context.rawChannelId ?? unscopeChannelId(context.channelId);
-          slackAuthRegistry.setThreadBotToken(rawChannelId, context.replyThreadId, context.botToken);
-          slackAuthRegistry.setThreadBotToken(rawChannelId, context.threadId, context.botToken);
-        }
-        const processorId = getScopedProcessorId(context.channelId)
-          ?? createProcessorId("slack", context.botToken ?? "");
-        return getSlackProcessorRuntime(processorId).handleIncomingMessage(context, text);
-      },
       handleInboundEvent: async (event) => {
+        const rawChannelId = event.rawChannelId ?? unscopeChannelId(event.channelId);
+        if (event.botId) {
+          slackAuthRegistry.setThreadBotToken(rawChannelId, event.replyThreadId, event.botId);
+          slackAuthRegistry.setThreadBotToken(rawChannelId, event.threadId, event.botId);
+        }
         const processorId = createProcessorId("slack", event.botId ?? "");
         await getSlackProcessorRuntime(processorId).handleInboundEvent(event);
       },

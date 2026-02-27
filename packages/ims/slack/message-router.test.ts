@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from "bun:test";
 import { registerSlackMessageRouter } from "./message-router";
 
 function createDeps(overrides: Partial<Parameters<typeof registerSlackMessageRouter>[0]> = {}) {
-  const handleIncomingMessage = mock(async () => {});
+  const handleInboundEvent = mock(async () => {});
 
   return {
     app: {
@@ -15,29 +15,24 @@ function createDeps(overrides: Partial<Parameters<typeof registerSlackMessageRou
     setChannelWorkspaceName: () => {},
     setChannelWorkspaceAuth: () => {},
     isThreadActive: () => false,
-    markThreadActive: () => {},
     postGeneralSettingsLauncher: async () => {},
     describeSettingsIssues: () => [],
-    getChannelAgentProvider: () => "opencode" as const,
-    handleStopCommand: async () => false,
-    handleIncomingMessage,
+    handleInboundEvent,
     ...overrides,
   };
 }
 
 describe("registerSlackMessageRouter", () => {
-  it("only treats exact 'stop' as stop command", async () => {
+  it("forwards stop-like messages to runtime kernel", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
-    const handleStopCommand = mock(async () => true);
-    const handleIncomingMessage = mock(async () => {});
+    const handleInboundEvent = mock(async () => {});
     const deps = createDeps({
       app: {
         message: (handler: (args: any) => Promise<void>) => {
           registeredHandler = handler;
         },
       },
-      handleStopCommand,
-      handleIncomingMessage,
+      handleInboundEvent,
     });
 
     registerSlackMessageRouter(deps);
@@ -65,8 +60,7 @@ describe("registerSlackMessageRouter", () => {
       },
     });
 
-    expect(handleStopCommand).toHaveBeenCalledTimes(0);
-    expect(handleIncomingMessage).toHaveBeenCalledTimes(1);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(1);
 
     await registeredHandler!({
       ...basePayload,
@@ -78,15 +72,14 @@ describe("registerSlackMessageRouter", () => {
       },
     });
 
-    expect(handleStopCommand).toHaveBeenCalledTimes(1);
-    expect(handleIncomingMessage).toHaveBeenCalledTimes(1);
-    expect(say).toHaveBeenCalledWith({ text: "Request stopped.", thread_ts: "1710000000.000009" });
+    expect(handleInboundEvent).toHaveBeenCalledTimes(2);
+    expect(say).toHaveBeenCalledTimes(0);
   });
 
   it("caches bot identity and avoids auth.test on every message", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const authTest = mock(async () => ({ user_id: "U_BOT", team_id: "T1", enterprise_id: "E1" }));
-    const handleIncomingMessage = mock(async () => {});
+    const handleInboundEvent = mock(async () => {});
     const deps = createDeps({
       app: {
         message: (handler: (args: any) => Promise<void>) => {
@@ -94,7 +87,7 @@ describe("registerSlackMessageRouter", () => {
         },
       },
       resolveWorkspaceAuth: () => ({ workspaceId: "ws_123" }),
-      handleIncomingMessage,
+      handleInboundEvent,
     });
 
     registerSlackMessageRouter(deps);
@@ -137,7 +130,7 @@ describe("registerSlackMessageRouter", () => {
     });
 
     expect(authTest).toHaveBeenCalledTimes(1);
-    expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(2);
   });
 
   it("does not cache bot identity when team metadata is missing", async () => {
@@ -148,14 +141,14 @@ describe("registerSlackMessageRouter", () => {
     ];
     let callCount = 0;
     const authTest = mock(async () => identities[callCount++] ?? identities[identities.length - 1]);
-    const handleIncomingMessage = mock(async () => {});
+    const handleInboundEvent = mock(async () => {});
     const deps = createDeps({
       app: {
         message: (handler: (args: any) => Promise<void>) => {
           registeredHandler = handler;
         },
       },
-      handleIncomingMessage,
+      handleInboundEvent,
     });
 
     registerSlackMessageRouter(deps);
@@ -198,14 +191,14 @@ describe("registerSlackMessageRouter", () => {
     });
 
     expect(authTest).toHaveBeenCalledTimes(2);
-    expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(2);
   });
 
   it("caches bot identity per bot token within same workspace", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const authTestA = mock(async () => ({ user_id: "U_BOT_A", team_id: "T1" }));
     const authTestB = mock(async () => ({ user_id: "U_BOT_B", team_id: "T1" }));
-    const handleIncomingMessage = mock(async () => {});
+    const handleInboundEvent = mock(async () => {});
     const deps = createDeps({
       app: {
         message: (handler: (args: any) => Promise<void>) => {
@@ -216,7 +209,7 @@ describe("registerSlackMessageRouter", () => {
         workspaceId: "ws_shared",
         botToken: credentialKey,
       }),
-      handleIncomingMessage,
+      handleInboundEvent,
     });
 
     registerSlackMessageRouter(deps);
@@ -260,7 +253,7 @@ describe("registerSlackMessageRouter", () => {
 
     expect(authTestA).toHaveBeenCalledTimes(1);
     expect(authTestB).toHaveBeenCalledTimes(1);
-    expect(handleIncomingMessage).toHaveBeenCalledTimes(2);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(2);
   });
 
   it("does not trigger settings launcher for ignored non-mention messages", async () => {
@@ -309,7 +302,7 @@ describe("registerSlackMessageRouter", () => {
           registeredHandler = handler;
         },
       },
-      handleIncomingMessage: async () => {
+      handleInboundEvent: async () => {
         throw new Error("boom");
       },
     });

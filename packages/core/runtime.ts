@@ -19,7 +19,6 @@ import {
 } from "@/utils";
 import { CoreStateMachine } from "@/core/state-machine";
 import type { AgentAdapter, CoreMessageContext, IMAdapter } from "@/core/types";
-import { ThreadMessageQueue } from "@/core/runtime/thread-queue";
 import { handlePendingQuestionReply } from "@/core/runtime/pending-question";
 import { recoverPendingRequests as recoverPendingRequestsInternal } from "@/core/runtime/recovery";
 import { prepareRuntimeSession } from "@/core/runtime/session-bootstrap";
@@ -95,12 +94,6 @@ async function maybeSyncBranchAndThread(params: {
   }
 }
 
-function isEnabled(raw: string | undefined): boolean {
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
-
 export function createCoreRuntime(deps: RuntimeDeps) {
   const runtimeDeps: RuntimeDeps = {
     ...deps,
@@ -121,11 +114,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     return machine;
   }
 
-  const threadQueue = new ThreadMessageQueue<CoreMessageContext>({
-    getKey: (context) => `${context.channelId}-${context.threadId}`,
-    process: (context, text) => handleUserMessageInternal(context, text),
-  });
-  const useRuntimeKernel = !isEnabled(process.env.LEGACY_INBOUND_PATH);
   const threadRuntimeRegistry = new ThreadRuntimeRegistry({
     ttlMs: 30 * 60 * 1000,
     sweepIntervalMs: 5 * 60 * 1000,
@@ -305,11 +293,6 @@ export function createCoreRuntime(deps: RuntimeDeps) {
     }
 
     markMessageProcessed(context.channelId, context.threadId, context.messageId);
-    if (!useRuntimeKernel) {
-      threadQueue.enqueue(context, text);
-      return;
-    }
-
     await runtimeKernel.handleInbound({
       platform: deps.platform,
       botId: context.botToken ?? "default",

@@ -79,25 +79,6 @@ function createFakeAgent(params?: {
   return { agent, sentPrompts, replyCalls };
 }
 
-async function withEnv<T>(name: string, value: string | undefined, run: () => Promise<T>): Promise<T> {
-  const previous = process.env[name];
-  if (value === undefined) {
-    delete process.env[name];
-  } else {
-    process.env[name] = value;
-  }
-
-  try {
-    return await run();
-  } finally {
-    if (previous === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = previous;
-    }
-  }
-}
-
 describe("core runtime e2e", () => {
   const previousCi = process.env.CI;
 
@@ -235,64 +216,60 @@ describe("core runtime e2e", () => {
     deleteSession(channelId, threadId);
   });
 
-  it("keeps dispatch parity for Discord between legacy and inbound-event paths", async () => {
-    const legacyLogs = { sends: [], updates: [] } as {
+  it("keeps dispatch parity for Discord between message and inbound-event entry points", async () => {
+    const messageLogs = { sends: [], updates: [] } as {
       sends: Array<{ channelId: string; threadId: string; text: string }>;
       updates: Array<{ channelId: string; messageTs: string; text: string }>;
     };
-    const kernelLogs = { sends: [], updates: [] } as {
+    const eventLogs = { sends: [], updates: [] } as {
       sends: Array<{ channelId: string; threadId: string; text: string }>;
       updates: Array<{ channelId: string; messageTs: string; text: string }>;
     };
-    const legacyIm = createFakeIm(legacyLogs);
-    const kernelIm = createFakeIm(kernelLogs);
-    const legacyAgent = createFakeAgent();
-    const kernelAgent = createFakeAgent();
+    const messageIm = createFakeIm(messageLogs);
+    const eventIm = createFakeIm(eventLogs);
+    const messageAgent = createFakeAgent();
+    const eventAgent = createFakeAgent();
 
-    await withEnv("LEGACY_INBOUND_PATH", "1", async () => {
-      const runtime = createCoreRuntime({ platform: "discord", im: legacyIm, agent: legacyAgent.agent });
-      const channelId = uniqueId("CE2E-DIS-LEGACY");
-      const threadId = uniqueId("TE2E-DIS-LEGACY");
-      await runtime.handleIncomingMessage({
-        channelId,
-        rawChannelId: channelId,
-        replyThreadId: threadId,
-        threadId,
-        userId: "UE2E-dis",
-        messageId: uniqueId("ME2E-dis-legacy"),
-        botToken: "bot-1",
-      }, "hello discord");
-      await waitFor(() => legacyAgent.sentPrompts.length === 1);
-      deleteSession(channelId, threadId);
-    });
+    const runtimeFromMessage = createCoreRuntime({ platform: "discord", im: messageIm, agent: messageAgent.agent });
+    const channelIdMessage = uniqueId("CE2E-DIS-MSG");
+    const threadIdMessage = uniqueId("TE2E-DIS-MSG");
+    await runtimeFromMessage.handleIncomingMessage({
+      channelId: channelIdMessage,
+      rawChannelId: channelIdMessage,
+      replyThreadId: threadIdMessage,
+      threadId: threadIdMessage,
+      userId: "UE2E-dis",
+      messageId: uniqueId("ME2E-dis-msg"),
+      botToken: "bot-1",
+    }, "hello discord");
+    await waitFor(() => messageAgent.sentPrompts.length === 1);
+    deleteSession(channelIdMessage, threadIdMessage);
 
-    await withEnv("LEGACY_INBOUND_PATH", undefined, async () => {
-      const runtime = createCoreRuntime({ platform: "discord", im: kernelIm, agent: kernelAgent.agent });
-      const channelId = uniqueId("CE2E-DIS-KERNEL");
-      const threadId = uniqueId("TE2E-DIS-KERNEL");
-      const event: RawInboundEvent = {
-        platform: "discord",
-        botId: "bot-1",
-        channelId,
-        rawChannelId: channelId,
-        threadId,
-        replyThreadId: threadId,
-        messageId: uniqueId("ME2E-dis-kernel"),
-        userId: "UE2E-dis",
-        isTopLevel: false,
-        mentionedBot: true,
-        activeThread: true,
-        rawText: "hello discord",
-        normalizedText: "hello discord",
-        receivedAtMs: Date.now(),
-      };
-      await runtime.handleInboundEvent(event);
-      await waitFor(() => kernelAgent.sentPrompts.length === 1);
-      deleteSession(channelId, threadId);
-    });
+    const runtimeFromEvent = createCoreRuntime({ platform: "discord", im: eventIm, agent: eventAgent.agent });
+    const channelIdEvent = uniqueId("CE2E-DIS-EVT");
+    const threadIdEvent = uniqueId("TE2E-DIS-EVT");
+    const event: RawInboundEvent = {
+      platform: "discord",
+      botId: "bot-1",
+      channelId: channelIdEvent,
+      rawChannelId: channelIdEvent,
+      threadId: threadIdEvent,
+      replyThreadId: threadIdEvent,
+      messageId: uniqueId("ME2E-dis-evt"),
+      userId: "UE2E-dis",
+      isTopLevel: false,
+      mentionedBot: true,
+      activeThread: true,
+      rawText: "hello discord",
+      normalizedText: "hello discord",
+      receivedAtMs: Date.now(),
+    };
+    await runtimeFromEvent.handleInboundEvent(event);
+    await waitFor(() => eventAgent.sentPrompts.length === 1);
+    deleteSession(channelIdEvent, threadIdEvent);
 
-    expect(legacyAgent.sentPrompts).toEqual(["hello discord"]);
-    expect(kernelAgent.sentPrompts).toEqual(["hello discord"]);
+    expect(messageAgent.sentPrompts).toEqual(["hello discord"]);
+    expect(eventAgent.sentPrompts).toEqual(["hello discord"]);
   });
 
   it("keeps dispatch parity for Lark and ignores unmentioned top-level messages", async () => {
@@ -303,48 +280,46 @@ describe("core runtime e2e", () => {
     const im = createFakeIm(logs);
     const { agent, sentPrompts } = createFakeAgent();
 
-    await withEnv("LEGACY_INBOUND_PATH", undefined, async () => {
-      const runtime = createCoreRuntime({ platform: "lark", im, agent });
-      const channelId = uniqueId("CE2E-LARK");
-      const threadId = uniqueId("TE2E-LARK");
+    const runtime = createCoreRuntime({ platform: "lark", im, agent });
+    const channelId = uniqueId("CE2E-LARK");
+    const threadId = uniqueId("TE2E-LARK");
 
-      await runtime.handleInboundEvent({
-        platform: "lark",
-        botId: "bot-lark",
-        channelId,
-        rawChannelId: channelId,
-        threadId,
-        replyThreadId: threadId,
-        messageId: uniqueId("ME2E-lark-ignore"),
-        userId: "UE2E-lark",
-        isTopLevel: true,
-        mentionedBot: false,
-        activeThread: false,
-        rawText: "random text",
-        normalizedText: "random text",
-        receivedAtMs: Date.now(),
-      });
-
-      await runtime.handleInboundEvent({
-        platform: "lark",
-        botId: "bot-lark",
-        channelId,
-        rawChannelId: channelId,
-        threadId,
-        replyThreadId: threadId,
-        messageId: uniqueId("ME2E-lark-forward"),
-        userId: "UE2E-lark",
-        isTopLevel: false,
-        mentionedBot: true,
-        activeThread: true,
-        rawText: "hello lark",
-        normalizedText: "hello lark",
-        receivedAtMs: Date.now(),
-      });
-
-      await waitFor(() => sentPrompts.length === 1);
-      deleteSession(channelId, threadId);
+    await runtime.handleInboundEvent({
+      platform: "lark",
+      botId: "bot-lark",
+      channelId,
+      rawChannelId: channelId,
+      threadId,
+      replyThreadId: threadId,
+      messageId: uniqueId("ME2E-lark-ignore"),
+      userId: "UE2E-lark",
+      isTopLevel: true,
+      mentionedBot: false,
+      activeThread: false,
+      rawText: "random text",
+      normalizedText: "random text",
+      receivedAtMs: Date.now(),
     });
+
+    await runtime.handleInboundEvent({
+      platform: "lark",
+      botId: "bot-lark",
+      channelId,
+      rawChannelId: channelId,
+      threadId,
+      replyThreadId: threadId,
+      messageId: uniqueId("ME2E-lark-forward"),
+      userId: "UE2E-lark",
+      isTopLevel: false,
+      mentionedBot: true,
+      activeThread: true,
+      rawText: "hello lark",
+      normalizedText: "hello lark",
+      receivedAtMs: Date.now(),
+    });
+
+    await waitFor(() => sentPrompts.length === 1);
+    deleteSession(channelId, threadId);
 
     expect(sentPrompts).toEqual(["hello lark"]);
   });
