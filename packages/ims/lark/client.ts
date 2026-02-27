@@ -28,9 +28,7 @@ import {
 } from "@/ims/shared/incoming-message-processor";
 import {
   createProcessorId,
-  getScopedProcessorId,
-  unscopeChannelId,
-} from "@/ims/shared/processor-scope";
+} from "@/ims/shared/processor-id";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
 import {
   buildLarkSettingsDetailCard,
@@ -115,24 +113,7 @@ function logLarkEvent(message: string, payload: Record<string, unknown>): void {
 }
 
 function getLarkCredentialsForChannel(channelId: string): LarkCredentials | null {
-  const rawChannelId = unscopeChannelId(channelId);
-  const scopedProcessorId = getScopedProcessorId(channelId);
-  const channel = rawChannelId.trim();
-
-  if (scopedProcessorId) {
-    for (const workspace of getWorkspaces()) {
-      if (workspace.type !== "lark") continue;
-      const appId = workspace.larkAppKey?.trim() || workspace.larkAppId?.trim() || "";
-      const appSecret = workspace.larkAppSecret?.trim() ?? "";
-      if (!appId || !appSecret) continue;
-      if (createProcessorId("lark", appId) !== scopedProcessorId) continue;
-      return {
-        workspaceId: workspace.id,
-        appId,
-        appSecret,
-      };
-    }
-  }
+  const channel = channelId.trim();
 
   if (channel.length > 0) {
     for (const workspace of getWorkspaces()) {
@@ -233,7 +214,7 @@ async function sendLarkMessage(params: {
   msgType: LarkMessageType;
   content: Record<string, unknown>;
 }): Promise<string | undefined> {
-  const rawChannelId = unscopeChannelId(params.channelId);
+  const rawChannelId = params.channelId;
   const creds = getLarkCredentialsForChannel(params.channelId);
   if (!creds) {
     log.warn("No Lark credentials available for sendLarkMessage", { channelId: rawChannelId });
@@ -339,17 +320,16 @@ async function buildLarkContext(
   userId: string,
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
-  const rawChannelId = unscopeChannelId(channelId);
   return {
     threadHistory: threadHistory || undefined,
     slack: {
       platform: "lark",
-      channelId: rawChannelId,
+      channelId,
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
-      channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
+      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
     },
   };
 }
@@ -390,7 +370,7 @@ async function updateMessage(
   messageId: string,
   text: string
 ): Promise<string | undefined> {
-  const rawChannelId = unscopeChannelId(channelId);
+  const rawChannelId = channelId;
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return;
   const token = await getLarkTenantAccessToken(creds);
@@ -517,7 +497,7 @@ async function fetchThreadHistory(
   threadId: string,
   messageId: string
 ): Promise<string | null> {
-  const rawChannelId = unscopeChannelId(channelId);
+  const rawChannelId = channelId;
   const creds = getLarkCredentialsForChannel(channelId);
   if (!creds) return null;
   const token = await getLarkTenantAccessToken(creds);

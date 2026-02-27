@@ -48,7 +48,6 @@
 
 ## Remaining gaps
 
-- Remove legacy scoped-channel parsing helpers (`unscopeChannelId` / `getScopedProcessorId`) from platform clients.
 - Move command parsing/handling behind explicit kernel command service when command routing is fully migrated.
 
 ## Migration slices

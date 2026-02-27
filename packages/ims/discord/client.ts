@@ -21,7 +21,7 @@ import {
   parseIncomingCommand,
 } from "@/ims/shared/incoming-message-processor";
 import { createRuntimeController } from "@/ims/shared/runtime-controller";
-import { createProcessorId, getScopedProcessorId, unscopeChannelId } from "@/ims/shared/processor-scope";
+import { createProcessorId } from "@/ims/shared/processor-id";
 import {
   DISCORD_LAUNCHER_COMMANDS,
   handleDiscordSettingsInteraction,
@@ -53,6 +53,7 @@ const DISCORD_UPDATE_RETRY_BASE_MS = 400;
 const discordClients = new Map<string, Client>();
 const discordClientByProcessorId = new Map<string, Client>();
 const statusMessageIndex = new DiscordStatusMessageIndex();
+const discordThreadProcessorByKey = new Map<string, string>();
 const discordProcessorManager = createProcessorManager({
   createRuntime: () => createCoreRuntime({
     platform: "discord",
@@ -63,6 +64,18 @@ const discordProcessorManager = createProcessorManager({
 
 function getDiscordProcessorRuntime(processorId: string): ReturnType<typeof createCoreRuntime> {
   return discordProcessorManager.getRuntime(processorId);
+}
+
+function getThreadKey(channelId: string, threadId: string): string {
+  return `${channelId}:${threadId}`;
+}
+
+function rememberThreadProcessor(channelId: string, threadId: string, processorId: string): void {
+  discordThreadProcessorByKey.set(getThreadKey(channelId, threadId), processorId);
+}
+
+function getRememberedThreadProcessor(channelId: string, threadId: string): string | undefined {
+  return discordThreadProcessorByKey.get(getThreadKey(channelId, threadId));
 }
 
 function getConfiguredDiscordRuntimeBots(): Array<{ workspaceId: string; token: string }> {
@@ -127,17 +140,16 @@ async function buildDiscordContext(
   userId: string,
   threadHistory?: string | null
 ): Promise<OpenCodeMessageContext> {
-  const rawChannelId = unscopeChannelId(channelId);
   return {
     threadHistory: threadHistory || undefined,
     slack: {
       platform: "discord",
-      channelId: rawChannelId,
+      channelId,
       threadId,
       userId,
       threadHistory: threadHistory || undefined,
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
-      channelSystemMessage: getChannelSystemMessage(rawChannelId) ?? undefined,
+      channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
     },
   };
 }
@@ -148,7 +160,7 @@ async function sendMessage(
   text: string
 ): Promise<string | undefined> {
   try {
-    const processorId = getScopedProcessorId(channelId);
+    const processorId = getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, processorId);
     const chunks = splitForDiscord(text, DISCORD_MESSAGE_LIMIT);
     let firstId: string | undefined;
@@ -185,8 +197,7 @@ async function updateMessage(
   messageId: string,
   text: string
 ): Promise<void> {
-  const rawChannelId = unscopeChannelId(channelId);
-  const processorId = getScopedProcessorId(channelId);
+  const rawChannelId = channelId;
   try {
     const mappedThreadId = statusMessageIndex.getThreadId(messageId);
     const persistedThreadId = findReplyThreadIdByStatusMessageTs(messageId);
@@ -198,6 +209,7 @@ async function updateMessage(
     if (!mappedThreadId && persistedThreadId) {
       statusMessageIndex.setThreadId(messageId, persistedThreadId);
     }
+    const processorId = getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, processorId);
     const content = splitForDiscord(text, DISCORD_MESSAGE_LIMIT)[0] ?? text;
     let lastRateLimitError: unknown;
@@ -260,10 +272,10 @@ async function updateMessage(
 }
 
 async function deleteMessage(channelId: string, messageId: string): Promise<void> {
-  const rawChannelId = unscopeChannelId(channelId);
-  const processorId = getScopedProcessorId(channelId);
+  const rawChannelId = channelId;
   const threadId = statusMessageIndex.getThreadId(messageId) || findReplyThreadIdByStatusMessageTs(messageId) || rawChannelId;
   if (!threadId) return;
+  const processorId = getRememberedThreadProcessor(channelId, threadId);
   const channel = await resolveTextChannel(threadId, processorId);
   const message = await channel.messages.fetch(messageId);
   await message.delete();
@@ -275,7 +287,7 @@ async function fetchThreadHistory(
   messageId: string
 ): Promise<string | null> {
   try {
-    const processorId = getScopedProcessorId(channelId);
+    const processorId = getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, processorId);
     const history = await channel.messages.fetch({ limit: 20, before: messageId });
     const ordered = Array.from(history.values() as Iterable<any>).reverse();
@@ -341,7 +353,7 @@ async function renameDiscordThread(
   if (!targetName) return;
 
   try {
-    const processorId = getScopedProcessorId(channelId);
+    const processorId = getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, processorId);
     if (channel && typeof (channel as any).setName === "function") {
       if ((channel as any).name === targetName) return;
@@ -448,6 +460,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               normalizedText,
               receivedAtMs: Date.now(),
             };
+            rememberThreadProcessor(parentId, threadId, processorId);
             await runtime.handleInboundEvent(inboundEvent);
             return;
           }
@@ -508,6 +521,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
           });
 
           markThreadActive(parentId, thread.id);
+          rememberThreadProcessor(parentId, thread.id, processorId);
           await runtime.handleInboundEvent({
             platform: "discord",
             botId: processorId,
