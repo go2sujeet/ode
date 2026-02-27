@@ -36,7 +36,7 @@
 
 - `CoreStateMachine` (removed).
 - `incoming-message-processor.execute(...)` callback style (removed).
-- `scopeChannelId/parseScopedChannelId` string scoping (not removed yet).
+- `scopeChannelId/parseScopedChannelId` string scoping (removed).
 - monolithic `createCoreRuntime` closure as primary runtime model (replaced by `KernelRuntimeFacade`).
 
 ## Current status
@@ -49,6 +49,20 @@
 ## Remaining gaps
 
 - Move command parsing/handling behind explicit kernel command service when command routing is fully migrated.
+
+## Not yet completed (important)
+
+- `packages/ims/shared/platform-gateway.ts` currently defines only the interface contract (`start/stop`) and has no concrete `SlackGateway` / `DiscordGateway` / `LarkGateway` implementations yet.
+- `packages/ims/shared/inbound-adapter.ts` is still an interface-level contract; only Slack has a concrete adapter (`packages/ims/slack/slack-inbound-adapter.ts`).
+- Discord and Lark still use inline policy logic in client files; they are not fully extracted into dedicated adapter classes.
+- `BotRuntime` command branch is wired with a placeholder handler (`handleCommand: async () => {}`) and is not yet connected to a real kernel command service.
+
+## Suggested next slice
+
+1. Implement concrete platform gateways (`slack/discord/lark`) against `PlatformGateway`.
+2. Add `DiscordInboundAdapter` and `LarkInboundAdapter` and move inline rules out of clients.
+3. Introduce a real kernel `CommandService` and route setting commands through it.
+4. Keep one parity test per platform for ignore/stop/forward behavior before removing remaining inline logic.
 
 ## Migration slices
 
