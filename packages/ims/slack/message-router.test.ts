@@ -232,7 +232,7 @@ describe("registerSlackMessageRouter", () => {
     expect(say).toHaveBeenCalledTimes(0);
   });
 
-  it("requires mention in multi-bot thread even for owner", async () => {
+  it("allows active owner replies without mention in multi-bot thread", async () => {
     let registeredHandler: ((args: any) => Promise<void>) | undefined;
     const handleInboundEvent = mock(async () => {});
     const deps = createDeps({
@@ -269,7 +269,7 @@ describe("registerSlackMessageRouter", () => {
       say,
     });
 
-    expect(handleInboundEvent).toHaveBeenCalledTimes(0);
+    expect(handleInboundEvent).toHaveBeenCalledTimes(1);
     expect(say).toHaveBeenCalledTimes(0);
   });
 

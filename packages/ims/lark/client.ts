@@ -1086,7 +1086,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
   const isMentioned = botOpenId
     ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
     : false;
-  const active = isThreadActive(channelId, threadId);
+  const active = isThreadActive(channelId, threadId, processorId);
   const threadSession = loadSession(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
   const inboundEvent: RawInboundEvent = {

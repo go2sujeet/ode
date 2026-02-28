@@ -27,7 +27,7 @@ type RouterDeps = {
   ) => void;
   isThreadOwner: (channelId: string, threadId: string, userId: string) => boolean;
   getThreadParticipantBotCount: (channelId: string, threadId: string) => number;
-  isThreadActive: (channelId: string, threadId: string) => boolean;
+  isThreadActive: (channelId: string, threadId: string, botId?: string) => boolean;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
   handleInboundEvent: (event: RawInboundEvent) => Promise<void>;
@@ -295,13 +295,14 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         workspaceAuth,
       });
 
+      const runtimeBotId = contextBotToken ?? workspaceAuth?.botToken ?? "default";
       const isTopLevel = threadId === messageId;
       const threadOwnerMessage = deps.isThreadOwner(channelId, threadId, userId);
       const threadParticipantBotCount = deps.getThreadParticipantBotCount(channelId, threadId);
-      const threadActive = deps.isThreadActive(channelId, threadId);
+      const threadActive = deps.isThreadActive(channelId, threadId, runtimeBotId);
       const inboundEvent: RawInboundEvent = {
         platform: "slack",
-        botId: contextBotToken ?? workspaceAuth?.botToken ?? "default",
+        botId: runtimeBotId,
         channelId,
         rawChannelId: channelId,
         threadId,
@@ -380,7 +381,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
           flowResult.reason === "not_mentioned_and_inactive"
           || flowResult.reason === "self_message"
           || flowResult.reason === "not_thread_owner"
-          || flowResult.reason === "mention_required_in_multi_bot_thread"
         ) {
           logSlackTrace(formatIncomingDropMessage(flowResult.reason), {
             channelId,

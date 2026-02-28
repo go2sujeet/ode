@@ -473,7 +473,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               return;
             }
             const mentioned = isBotMentioned(message, client.user.id);
-            const active = isThreadActive(parentId, threadId);
+            const active = isThreadActive(parentId, threadId, processorId);
             const normalizedText = mentioned ? cleanBotMention(text, client.user.id) : text;
             const threadSession = loadSession(parentId, threadId);
             const inboundEvent: RawInboundEvent = {
@@ -545,7 +545,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             autoArchiveDuration: 60,
           });
 
-          markThreadActive(parentId, thread.id);
+          markThreadActive(parentId, thread.id, processorId);
           rememberThreadProcessor(parentId, thread.id, processorId);
           await runtime.handleInboundEvent({
             platform: "discord",

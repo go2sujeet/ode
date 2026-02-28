@@ -127,7 +127,7 @@ export class KernelRuntimeFacade {
       return;
     }
 
-    markThreadActive(event.channelId, event.threadId);
+    markThreadActive(event.channelId, event.threadId, event.botId);
     await this.dispatchCoreMessage(
       {
         channelId: event.channelId,

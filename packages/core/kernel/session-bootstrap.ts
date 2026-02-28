@@ -122,6 +122,7 @@ export async function prepareRuntimeSession(params: {
       participantBotIds: [context.botToken ?? "default"],
       createdAt: Date.now(),
       lastActivityAt: Date.now(),
+      lastActivityBotId: context.botToken ?? "default",
     };
   } else if (session.sessionId !== sessionId) {
     session.sessionId = sessionId;
@@ -149,6 +150,7 @@ export async function prepareRuntimeSession(params: {
     participantBotIds.push(currentBotId);
     session.participantBotIds = participantBotIds;
   }
+  session.lastActivityBotId = currentBotId;
   saveSession(session);
 
   return {
