@@ -9,7 +9,6 @@ import {
 } from "@/config";
 import { markdownToSlack, splitForSlack, truncateForSlack } from "./formatter";
 import {
-  getThreadParticipantBotIds,
   isThreadActive,
   loadSession,
 } from "@/config/local/sessions";
@@ -482,7 +481,6 @@ export function setupMessageHandlers(): void {
         const session = loadSession(channelId, threadId);
         return session?.threadOwnerUserId === userId;
       },
-      getThreadParticipantBotCount: (channelId, threadId) => getThreadParticipantBotIds(channelId, threadId).length,
       isThreadActive,
       postGeneralSettingsLauncher: postSlackGeneralSettingsLauncher,
       describeSettingsIssues: describeSlackSettingsIssues,

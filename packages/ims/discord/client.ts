@@ -15,7 +15,6 @@ import {
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import {
-  getThreadParticipantBotIds,
   isThreadActive,
   loadSession,
   markThreadActive,
@@ -464,6 +463,8 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
 
             const threadId = message.channel.id;
             const text = message.content.trim();
+            const mentioned = isBotMentioned(message, client.user.id);
+            const hasAnyMention = (message?.mentions?.users?.size ?? 0) > 0;
             if (await maybeHandleLauncherCommand({
               text,
               message,
@@ -472,7 +473,6 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             })) {
               return;
             }
-            const mentioned = isBotMentioned(message, client.user.id);
             const active = isThreadActive(parentId, threadId, processorId);
             const normalizedText = mentioned ? cleanBotMention(text, client.user.id) : text;
             const threadSession = loadSession(parentId, threadId);
@@ -487,8 +487,8 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
               userId: message.author.id,
               selfMessage: false,
               threadOwnerMessage: threadSession?.threadOwnerUserId === message.author.id,
-              threadParticipantBotCount: getThreadParticipantBotIds(parentId, threadId).length,
               isTopLevel: false,
+              hasAnyMention,
               mentionedBot: mentioned,
               activeThread: active,
               rawText: text,
@@ -554,14 +554,14 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             rawChannelId: parentId,
             threadId: thread.id,
             replyThreadId: thread.id,
-            messageId: message.id,
-            userId: message.author.id,
-             selfMessage: false,
-             threadOwnerMessage: true,
-             threadParticipantBotCount: getThreadParticipantBotIds(parentId, thread.id).length,
-             isTopLevel: false,
-             mentionedBot: true,
-            activeThread: false,
+             messageId: message.id,
+             userId: message.author.id,
+              selfMessage: false,
+              threadOwnerMessage: true,
+              isTopLevel: false,
+              hasAnyMention: true,
+              mentionedBot: true,
+             activeThread: false,
             rawText: message.content,
             normalizedText: topLevelText,
             receivedAtMs: Date.now(),

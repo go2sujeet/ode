@@ -146,7 +146,6 @@ function toInboundEvent(params: {
     userId: params.userId,
     selfMessage: false,
     threadOwnerMessage: true,
-    threadParticipantBotCount: 1,
     isTopLevel: false,
     mentionedBot: true,
     activeThread: true,

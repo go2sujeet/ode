@@ -15,7 +15,6 @@ function createDeps(overrides: Partial<Parameters<typeof registerSlackMessageRou
     setChannelWorkspaceName: () => {},
     setChannelWorkspaceAuth: () => {},
     isThreadOwner: () => false,
-    getThreadParticipantBotCount: () => 1,
     isThreadActive: () => false,
     postGeneralSettingsLauncher: async () => {},
     describeSettingsIssues: () => [],
@@ -243,7 +242,6 @@ describe("registerSlackMessageRouter", () => {
       },
       isThreadActive: () => true,
       isThreadOwner: () => true,
-      getThreadParticipantBotCount: () => 2,
       handleInboundEvent,
     });
 

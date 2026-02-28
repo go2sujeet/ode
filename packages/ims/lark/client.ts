@@ -20,7 +20,6 @@ import {
 } from "@/config";
 import { findReplyThreadIdByStatusMessageTs } from "@/config/local/sessions";
 import {
-  getThreadParticipantBotIds,
   isThreadActive,
   loadSession,
   markThreadActive,
@@ -1086,6 +1085,7 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
   const isMentioned = botOpenId
     ? (mentions.includes(botOpenId) || isBotMentionedInText(rawText, botOpenId))
     : false;
+  const hasAnyMention = mentions.length > 0;
   const active = isThreadActive(channelId, threadId, processorId);
   const threadSession = loadSession(channelId, threadId);
   const text = stripLarkMentionMarkup(rawText);
@@ -1100,8 +1100,8 @@ async function processLarkIncomingEvent(event: LarkIncomingEvent, processorAppId
     userId: senderOpenId,
     selfMessage: isSelfMessage,
     threadOwnerMessage: threadSession?.threadOwnerUserId === senderOpenId,
-    threadParticipantBotCount: getThreadParticipantBotIds(channelId, threadId).length,
     isTopLevel: topLevelMessage,
+    hasAnyMention,
     mentionedBot: isMentioned,
     activeThread: active,
     rawText,

@@ -26,7 +26,6 @@ type RouterDeps = {
     auth: { workspaceId?: string; workspaceName?: string; botToken?: string; [key: string]: unknown } | undefined
   ) => void;
   isThreadOwner: (channelId: string, threadId: string, userId: string) => boolean;
-  getThreadParticipantBotCount: (channelId: string, threadId: string) => number;
   isThreadActive: (channelId: string, threadId: string, botId: string) => boolean;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
@@ -116,15 +115,6 @@ function extractIncomingMessageData(message: any): IncomingMessageData | null {
     threadId: message.thread_ts || message.ts,
     messageId: message.ts,
   };
-}
-
-function shouldDropForOtherMentions(text: string, isMention: boolean): boolean {
-  return extractMentionedUserIds(text).length > 0 && !isMention;
-}
-
-function tokenLast6(token?: string): string | undefined {
-  if (!token) return undefined;
-  return token.slice(-6);
 }
 
 async function maybeRefreshWorkspaceForMention(params: {
@@ -275,6 +265,7 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         || (Boolean(identity.botId) && (messageBotId === identity.botId || messageBotProfileId === identity.botId));
 
       const mentionedUserIds = extractMentionedUserIds(text);
+      const hasAnyMention = mentionedUserIds.length > 0;
       const isMention = currentBotUserId ? mentionedUserIds.includes(currentBotUserId) : false;
       const cleanText = stripBotMention(text, currentBotUserId);
       logSlackTrace("Slack mention parse", {
@@ -298,7 +289,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       const runtimeBotId = contextBotToken ?? workspaceAuth?.botToken ?? "default";
       const isTopLevel = threadId === messageId;
       const threadOwnerMessage = deps.isThreadOwner(channelId, threadId, userId);
-      const threadParticipantBotCount = deps.getThreadParticipantBotCount(channelId, threadId);
       const threadActive = deps.isThreadActive(channelId, threadId, runtimeBotId);
       const inboundEvent: RawInboundEvent = {
         platform: "slack",
@@ -311,8 +301,8 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         userId,
         selfMessage,
         threadOwnerMessage,
-        threadParticipantBotCount,
         isTopLevel,
+        hasAnyMention,
         mentionedBot: isMention,
         activeThread: threadActive,
         rawText: text,
@@ -328,7 +318,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         mentionedUserIds,
         isMention,
         threadOwnerMessage,
-        threadParticipantBotCount,
         threadActive,
         flowType: flowResult.type,
         flowReason: flowResult.type === "ignore" ? flowResult.reason : undefined,
@@ -345,20 +334,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
           messageBotId,
           messageBotProfileId,
         });
-      }
-
-      if (shouldDropForOtherMentions(text, isMention)) {
-        log.info("[DROP] Mentions other user", {
-          channelId,
-          threadId,
-          messageId,
-          imName: workspaceAuth?.workspaceName ?? deps.getChannelWorkspaceName(channelId) ?? "unknown",
-          botTokenLast6: tokenLast6(workspaceAuth?.botToken),
-          botUserId: currentBotUserId || "unknown",
-          mentionedUserIds,
-          isMention,
-        });
-        return;
       }
 
       if (await maybeHandleLauncherCommand({
