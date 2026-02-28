@@ -376,10 +376,9 @@ function isBotMentioned(message: any, botUserId: string): boolean {
   return content.includes(`<@${botUserId}>`) || content.includes(`<@!${botUserId}>`);
 }
 
-function shouldDropForOtherBotMentions(message: any, isCurrentBotMentioned: boolean): boolean {
+function shouldDropForOtherMentions(message: any, isCurrentBotMentioned: boolean): boolean {
   const mentionedUsers = Array.from(message?.mentions?.users?.values?.() ?? []);
-  const mentionsAnyBot = mentionedUsers.some((user: any) => Boolean(user?.bot));
-  return mentionsAnyBot && !isCurrentBotMentioned;
+  return mentionedUsers.length > 0 && !isCurrentBotMentioned;
 }
 
 async function renameDiscordThread(
@@ -471,7 +470,7 @@ async function startDiscordRuntimeInternal(reason: string): Promise<boolean> {
             const threadId = message.channel.id;
             const text = message.content.trim();
             const mentioned = isBotMentioned(message, client.user.id);
-            if (shouldDropForOtherBotMentions(message, mentioned)) {
+            if (shouldDropForOtherMentions(message, mentioned)) {
               log.debug(formatIncomingDropMessage("not_mentioned_and_inactive"), {
                 platform: "discord",
                 channelId: parentId,
