@@ -426,6 +426,13 @@ export async function runTrackedRequest(
   let progressTimer: ReturnType<typeof setInterval> | null = null;
   let stopWatcher: (() => void) | null = null;
 
+  const waitForProgressDrain = async (): Promise<void> => {
+    const deadline = Date.now() + Math.max(progressIntervalMs, 1_000);
+    while (progressInFlight && Date.now() < deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+  };
+
   const runProgressTick = async (): Promise<void> => {
     if (request.state !== "processing") return;
     if (progressInFlight) return;
@@ -461,6 +468,12 @@ export async function runTrackedRequest(
       stopSignal.promise.then(() => ({ type: "stop" as const })),
     ]);
 
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    await waitForProgressDrain();
+
     if (isExternallySettled(request)) {
       liveEventHistory.delete(getStatusMessageKey(request));
       liveParsedState.delete(getStatusMessageKey(request));
@@ -468,6 +481,7 @@ export async function runTrackedRequest(
     }
 
     request.state = "completed";
+    request.statusFrozen = true;
 
     liveEventHistory.delete(getStatusMessageKey(request));
     liveParsedState.delete(getStatusMessageKey(request));
