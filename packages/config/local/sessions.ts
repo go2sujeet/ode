@@ -75,6 +75,7 @@ export interface PersistedSession {
   threadNameSyncedWithBranch?: string;
   createdAt: number;
   lastActivityAt: number;
+  lastActivityBotId?: string;
   activeRequest?: ActiveRequest;
   pendingQuestion?: PendingQuestion;
 }
@@ -572,16 +573,18 @@ export interface ActiveThreadInfo {
   lastActiveAt: number;
 }
 
-export function markThreadActive(channelId: string, threadId: string): void {
+export function markThreadActive(channelId: string, threadId: string, botId: string): void {
   const session = loadSession(channelId, threadId);
   if (!session) return;
   session.lastActivityAt = Date.now();
+  session.lastActivityBotId = botId;
   saveSession(session, { immediate: false });
 }
 
-export function isThreadActive(channelId: string, threadId: string): boolean {
+export function isThreadActive(channelId: string, threadId: string, botId: string): boolean {
   const session = loadSession(channelId, threadId);
   if (!session) return false;
+  if (session.lastActivityBotId !== botId) return false;
   return Date.now() - getSessionLastActiveAt(session) < ACTIVE_THREAD_WINDOW_MS;
 }
 

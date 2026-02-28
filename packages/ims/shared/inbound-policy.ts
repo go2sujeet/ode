@@ -21,9 +21,6 @@ export function defaultInboundPolicy(params: {
     if (!params.threadOwnerMessage) {
       return { kind: "ignore", reason: "not_thread_owner" };
     }
-    if (params.threadParticipantBotCount > 1) {
-      return { kind: "ignore", reason: "mention_required_in_multi_bot_thread" };
-    }
   }
 
   const shouldProcess = params.isTopLevel
