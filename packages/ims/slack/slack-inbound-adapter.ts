@@ -8,7 +8,6 @@ export class SlackInboundAdapter implements InboundAdapter {
     return defaultInboundPolicy({
       selfMessage: event.selfMessage,
       threadOwnerMessage: event.threadOwnerMessage,
-      threadParticipantBotCount: event.threadParticipantBotCount,
       isTopLevel: event.isTopLevel,
       hasAnyMention: event.hasAnyMention ?? event.mentionedBot,
       mentionedBot: event.mentionedBot,

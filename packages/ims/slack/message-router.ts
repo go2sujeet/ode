@@ -26,7 +26,6 @@ type RouterDeps = {
     auth: { workspaceId?: string; workspaceName?: string; botToken?: string; [key: string]: unknown } | undefined
   ) => void;
   isThreadOwner: (channelId: string, threadId: string, userId: string) => boolean;
-  getThreadParticipantBotCount: (channelId: string, threadId: string) => number;
   isThreadActive: (channelId: string, threadId: string, botId: string) => boolean;
   postGeneralSettingsLauncher: (channelId: string, userId: string, client: any) => Promise<void>;
   describeSettingsIssues: (channelId: string) => string[];
@@ -290,7 +289,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       const runtimeBotId = contextBotToken ?? workspaceAuth?.botToken ?? "default";
       const isTopLevel = threadId === messageId;
       const threadOwnerMessage = deps.isThreadOwner(channelId, threadId, userId);
-      const threadParticipantBotCount = deps.getThreadParticipantBotCount(channelId, threadId);
       const threadActive = deps.isThreadActive(channelId, threadId, runtimeBotId);
       const inboundEvent: RawInboundEvent = {
         platform: "slack",
@@ -303,7 +301,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         userId,
         selfMessage,
         threadOwnerMessage,
-        threadParticipantBotCount,
         isTopLevel,
         hasAnyMention,
         mentionedBot: isMention,
@@ -321,7 +318,6 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         mentionedUserIds,
         isMention,
         threadOwnerMessage,
-        threadParticipantBotCount,
         threadActive,
         flowType: flowResult.type,
         flowReason: flowResult.type === "ignore" ? flowResult.reason : undefined,

@@ -84,7 +84,6 @@ export class KernelRuntimeFacade {
       evaluate: (event) => defaultInboundPolicy({
         selfMessage: event.selfMessage,
         threadOwnerMessage: event.threadOwnerMessage,
-        threadParticipantBotCount: event.threadParticipantBotCount,
         isTopLevel: event.isTopLevel,
         hasAnyMention: event.hasAnyMention ?? event.mentionedBot,
         mentionedBot: event.mentionedBot,
@@ -105,7 +104,6 @@ export class KernelRuntimeFacade {
     const decision = defaultInboundPolicy({
       selfMessage: event.selfMessage,
       threadOwnerMessage: event.threadOwnerMessage,
-      threadParticipantBotCount: event.threadParticipantBotCount,
       isTopLevel: event.isTopLevel,
       hasAnyMention: event.hasAnyMention ?? event.mentionedBot,
       mentionedBot: event.mentionedBot,
@@ -165,7 +163,6 @@ export class KernelRuntimeFacade {
       userId,
       selfMessage: false,
       threadOwnerMessage: true,
-      threadParticipantBotCount: 1,
       isTopLevel: false,
       hasAnyMention: false,
       mentionedBot: true,
@@ -270,7 +267,6 @@ export class KernelRuntimeFacade {
       userId: context.userId,
       selfMessage: false,
       threadOwnerMessage: true,
-      threadParticipantBotCount: 1,
       isTopLevel: false,
       hasAnyMention: false,
       mentionedBot: true,

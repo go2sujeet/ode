@@ -6,7 +6,6 @@ describe("defaultInboundPolicy", () => {
     const decision = defaultInboundPolicy({
       selfMessage: false,
       threadOwnerMessage: true,
-      threadParticipantBotCount: 2,
       isTopLevel: false,
       hasAnyMention: true,
       mentionedBot: false,
@@ -21,7 +20,6 @@ describe("defaultInboundPolicy", () => {
     const decision = defaultInboundPolicy({
       selfMessage: false,
       threadOwnerMessage: true,
-      threadParticipantBotCount: 2,
       isTopLevel: false,
       hasAnyMention: false,
       mentionedBot: false,

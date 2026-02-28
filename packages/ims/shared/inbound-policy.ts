@@ -3,7 +3,6 @@ import type { InboundDecision } from "@/core/model/inbound-decision";
 export function defaultInboundPolicy(params: {
   selfMessage: boolean;
   threadOwnerMessage: boolean;
-  threadParticipantBotCount: number;
   isTopLevel: boolean;
   hasAnyMention: boolean;
   mentionedBot: boolean;
