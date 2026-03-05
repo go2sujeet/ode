@@ -372,9 +372,10 @@
           <Label for="workspace-app-token">Slack App Token</Label>
           <Input
             id="workspace-app-token"
-            type="text"
+            type="password"
             value={selectedWorkspace.slackAppToken ?? ""}
             on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "slackAppToken", event)}
+            autocomplete="new-password"
           />
         </div>
 
@@ -382,9 +383,10 @@
           <Label for="workspace-bot-token">Slack Bot Token</Label>
           <Input
             id="workspace-bot-token"
-            type="text"
+            type="password"
             value={selectedWorkspace.slackBotToken ?? ""}
             on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "slackBotToken", event)}
+            autocomplete="new-password"
           />
         </div>
       {:else if selectedWorkspace.type === "discord"}
@@ -392,9 +394,10 @@
           <Label for="workspace-discord-bot-token">Discord Bot Token</Label>
           <Input
             id="workspace-discord-bot-token"
-            type="text"
+            type="password"
             value={selectedWorkspace.discordBotToken ?? ""}
             on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "discordBotToken", event)}
+            autocomplete="new-password"
           />
         </div>
       {:else}
@@ -412,9 +415,10 @@
           <Label for="workspace-lark-app-secret">Lark App Secret</Label>
           <Input
             id="workspace-lark-app-secret"
-            type="text"
+            type="password"
             value={selectedWorkspace.larkAppSecret ?? ""}
             on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "larkAppSecret", event)}
+            autocomplete="new-password"
           />
         </div>
       {/if}

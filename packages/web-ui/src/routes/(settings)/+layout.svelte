@@ -306,9 +306,10 @@
             <Label for="new-workspace-app-token">Slack App Token</Label>
             <Input
               id="new-workspace-app-token"
-              type="text"
+              type="password"
               value={pendingSlackAppToken}
               on:input={onPendingSlackAppTokenInput}
+              autocomplete="new-password"
               placeholder="xapp-..."
             />
           </div>
@@ -316,9 +317,10 @@
             <Label for="new-workspace-bot-token">Slack Bot Token</Label>
             <Input
               id="new-workspace-bot-token"
-              type="text"
+              type="password"
               value={pendingSlackBotToken}
               on:input={onPendingSlackBotTokenInput}
+              autocomplete="new-password"
               placeholder="xoxb-..."
             />
           </div>
@@ -327,9 +329,10 @@
             <Label for="new-workspace-discord-bot-token">Discord Bot Token</Label>
             <Input
               id="new-workspace-discord-bot-token"
-              type="text"
+              type="password"
               value={pendingDiscordBotToken}
               on:input={onPendingDiscordBotTokenInput}
+              autocomplete="new-password"
               placeholder="Bot token"
             />
           </div>
@@ -349,9 +352,10 @@
             <Label for="new-workspace-lark-app-secret">Lark App Secret</Label>
             <Input
               id="new-workspace-lark-app-secret"
-              type="text"
+              type="password"
               value={pendingLarkAppSecret}
               on:input={onPendingLarkAppSecretInput}
+              autocomplete="new-password"
               placeholder="app secret"
             />
           </div>
