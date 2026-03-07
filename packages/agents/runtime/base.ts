@@ -17,7 +17,7 @@ type RunCliJsonCommandParams<TRecord> = {
   cwd: string;
   env: SessionEnvironment;
   entry: ActiveRequestEntry;
-  timeoutMs: number;
+  timeoutMs?: number;
   onRecord?: (record: TRecord) => void;
   onSpawn?: (pid: number | undefined) => void;
   onExit?: (code: number | null, signal: NodeJS.Signals | null) => void;
@@ -78,13 +78,19 @@ export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams
 
     child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
 
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`${providerName} CLI timed out`));
-    }, timeoutMs);
+    const effectiveTimeoutMs =
+      typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : null;
+    const timeout = effectiveTimeoutMs === null
+      ? null
+      : setTimeout(() => {
+        child.kill("SIGTERM");
+        reject(new Error(`${providerName} CLI timed out`));
+      }, effectiveTimeoutMs);
 
     child.on("error", (err) => {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       reject(err);
     });
 
@@ -97,7 +103,7 @@ export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams
     });
 
     child.on("close", (code) => {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       if (stdoutBuffer.trim().length > 0) {
         flushLine(stdoutBuffer);
       }

@@ -51,6 +51,7 @@ export interface IMAdapter {
   ): Promise<string | undefined | void>;
   wasRateLimited?(channelId: string, messageTs: string): boolean;
   getRateLimitError?(channelId: string, messageTs: string): string | undefined;
+  takeUpdateError?(channelId: string, messageTs: string): string | undefined;
   deleteMessage(channelId: string, messageTs: string): Promise<void>;
   fetchThreadHistory(channelId: string, threadId: string, messageId: string): Promise<string | null>;
   buildAgentContext(params: AgentContextBuilderParams): Promise<OpenCodeMessageContext>;

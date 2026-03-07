@@ -295,19 +295,11 @@ async function runKiroCommand(
 
     child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
 
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error("Kiro CLI timed out"));
-    }, 10 * 60 * 1000);
-
     child.on("error", (err) => {
-      clearTimeout(timeout);
       reject(err);
     });
 
     child.on("close", (code) => {
-      clearTimeout(timeout);
-
       const stdout = Buffer.concat(stdoutChunks).toString("utf-8").trim();
       const stderr = Buffer.concat(stderrChunks).toString("utf-8").trim();
 

@@ -342,7 +342,6 @@ export async function sendMessage(
         cwd: workingPath,
         env: envOverrides,
         entry,
-        timeoutMs: 10 * 60 * 1000,
         onRecord: (record) => {
         publishKiloRecordAsSessionEvents(record, sessionId);
         const recordSessionId = getRecordSessionId(record, sessionId);

@@ -26,7 +26,7 @@ export function categorizeRuntimeError(
 ): { message: string; suggestion: string } {
   const errorStr = err instanceof Error ? err.message : String(err);
 
-  if (errorStr.includes("timeout") || errorStr.includes("ETIMEDOUT")) {
+  if (errorStr.includes("timeout") || errorStr.includes("timed out") || errorStr.includes("ETIMEDOUT")) {
     return {
       message: "Request timed out",
       suggestion: "The operation took too long. Try a simpler request or break it into smaller steps.",

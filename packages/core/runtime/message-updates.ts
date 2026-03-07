@@ -14,6 +14,7 @@ export function createRateLimitedImAdapter(
 ): IMAdapter {
   const rateLimitedMessages = new Set<string>();
   const rateLimitErrors = new Map<string, string>();
+  const updateErrors = new Map<string, string>();
 
   function key(channelId: string, messageTs: string): string {
     return `${channelId}:${messageTs}`;
@@ -24,22 +25,25 @@ export function createRateLimitedImAdapter(
     async ({ channelId, messageId }, text) => {
       try {
         const maybeUpdatedTs = await im.updateMessage(channelId, messageId, text);
+        updateErrors.delete(key(channelId, messageId));
         return typeof maybeUpdatedTs === "string" ? maybeUpdatedTs : undefined;
       } catch (error) {
+        const errorText = String(error);
+        const updateErrorKey = key(channelId, messageId);
+        updateErrors.set(updateErrorKey, errorText);
         if (isRateLimitError(error)) {
-          const rateLimitKey = key(channelId, messageId);
-          rateLimitedMessages.add(rateLimitKey);
-          rateLimitErrors.set(rateLimitKey, String(error));
+          rateLimitedMessages.add(updateErrorKey);
+          rateLimitErrors.set(updateErrorKey, errorText);
           log.warn("IM message update hit rate limit (429)", {
             channelId,
             messageTs: messageId,
-            error: String(error),
+            error: errorText,
           });
         }
         log.debug("IM message update failed", {
           channelId,
           messageTs: messageId,
-          error: String(error),
+          error: errorText,
         });
         return undefined;
       }
@@ -60,6 +64,20 @@ export function createRateLimitedImAdapter(
         if (upstream) return upstream;
       }
       return rateLimitErrors.get(key(channelId, messageTs));
+    },
+    takeUpdateError: (channelId: string, messageTs: string): string | undefined => {
+      const updateErrorKey = key(channelId, messageTs);
+      if (typeof im.takeUpdateError === "function") {
+        const upstream = im.takeUpdateError(channelId, messageTs);
+        if (upstream) {
+          updateErrors.delete(updateErrorKey);
+          return upstream;
+        }
+      }
+      const captured = updateErrors.get(updateErrorKey);
+      if (!captured) return undefined;
+      updateErrors.delete(updateErrorKey);
+      return captured;
     },
     updateMessage: async (
       channelId: string,

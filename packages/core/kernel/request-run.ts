@@ -371,6 +371,28 @@ export async function runOpenRequest(
           statusTs = updatedStatusTs;
           request.statusMessageTs = updatedStatusTs;
         }
+
+        const updateError = deps.im.takeUpdateError?.(context.channelId, statusTs);
+        if (updateError) {
+          const compactError = updateError.replace(/\s+/g, " ").trim().slice(0, 180);
+          const fallbackNotice = compactError.length > 0
+            ? `Status update failed: ${compactError}`
+            : "Status update failed due to an unknown error.";
+          await deps.im.sendMessage(
+            context.channelId,
+            context.replyThreadId,
+            `${fallbackNotice}\nSwitching to a new status message below.`
+          );
+          const replacementStatusTs = await deps.im.sendMessage(
+            context.channelId,
+            context.replyThreadId,
+            statusText
+          );
+          if (typeof replacementStatusTs === "string" && replacementStatusTs.length > 0) {
+            statusTs = replacementStatusTs;
+            request.statusMessageTs = replacementStatusTs;
+          }
+        }
       }
       updateActiveRequest(context.channelId, context.threadId, {
         statusMessageTs: request.statusMessageTs,

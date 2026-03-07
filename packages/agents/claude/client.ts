@@ -218,7 +218,6 @@ async function runClaudeCommand(
     cwd,
     env,
     entry,
-    timeoutMs: 5 * 60 * 1000,
     onRecord,
     onSpawn: (pid) => {
       log.info("Claude CLI spawned", { pid });

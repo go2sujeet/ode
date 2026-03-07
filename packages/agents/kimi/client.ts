@@ -181,7 +181,6 @@ export async function sendMessage(
         cwd: workingPath,
         env: envOverrides,
         entry,
-        timeoutMs: 10 * 60 * 1000,
         onRecord: (record) => {
           publishKimiEvent(sessionId, record);
         },

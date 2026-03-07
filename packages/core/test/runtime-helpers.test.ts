@@ -48,4 +48,9 @@ describe("runtime helpers", () => {
     expect(result.message).toContain("http://127.0.0.1:4096");
     expect(result.suggestion).toContain("OpenCode server");
   });
+
+  it("categorizes timed out phrasing as timeout", () => {
+    const result = categorizeRuntimeError(new Error("Codex CLI timed out"));
+    expect(result.message).toBe("Request timed out");
+  });
 });
