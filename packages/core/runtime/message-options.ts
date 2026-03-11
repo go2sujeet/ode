@@ -1,4 +1,4 @@
-import { DEFAULT_CODEX_MODEL, getChannelModel } from "@/config";
+import { getChannelModel } from "@/config";
 import type { OpenCodeOptions } from "@/agents";
 
 type ProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
@@ -24,7 +24,7 @@ export function buildMessageOptions(params: {
 
   const channelModel = getChannelModel(channelId)?.trim();
   const codexModel = providerId === "codex"
-    ? (channelModel && channelModel.length > 0 ? channelModel : DEFAULT_CODEX_MODEL)
+    ? (channelModel && channelModel.length > 0 ? channelModel : undefined)
     : undefined;
   const kiloModel = providerId === "kilo" ? toKiloModel(channelModel) : undefined;
 

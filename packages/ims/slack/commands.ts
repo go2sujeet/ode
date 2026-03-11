@@ -291,7 +291,6 @@ function buildSettingsModal(params: {
   blocks.push({
     type: "input" as const,
     block_id: WORKING_DIR_BLOCK,
-    optional: true,
     label: { type: "plain_text" as const, text: "Working Directory" },
     element: {
       type: "plain_text_input" as const,
@@ -698,6 +697,10 @@ export function setupInteractiveHandlers(): void {
       })) {
         errors[MODEL_BLOCK] = "Model not available in local Kilo model list.";
       }
+    }
+
+    if (!workingDirectory.trim()) {
+      errors[WORKING_DIR_BLOCK] = "Enter a working directory.";
     }
 
     if (Object.keys(errors).length > 0) {

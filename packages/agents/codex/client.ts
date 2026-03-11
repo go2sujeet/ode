@@ -40,7 +40,7 @@ type CodexJsonEvent = {
 function getCodexModel(options?: OpenCodeOptions): string | undefined {
   const configured = options?.model?.modelID?.trim();
   if (configured) return configured;
-  return DEFAULT_CODEX_MODEL;
+  return undefined;
 }
 
 type CodexModelCatalog = {

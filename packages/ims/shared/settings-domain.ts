@@ -66,9 +66,9 @@ export function describeChannelSettingsIssues(channelId: string): string[] {
         ? lists.codex
         : lists.kilo;
     const modelSet = new Set(models.map(normalizeModel));
-    if (!model) {
+    if (!model && provider !== "codex") {
       issues.push("Model not configured.");
-    } else if (!modelSet.has(normalizeModel(model))) {
+    } else if (model && !modelSet.has(normalizeModel(model))) {
       issues.push(`Model not available in configured ${getAgentProviderLabel(provider)} models.`);
     }
   }

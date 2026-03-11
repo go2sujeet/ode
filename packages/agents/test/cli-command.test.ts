@@ -139,6 +139,18 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("'plan this change'");
   });
 
+  it("omits the Codex model flag when no model is configured", () => {
+    const args = buildCodexCommandArgs({
+      sessionId: "session-3",
+      prompt: "hello from codex",
+    });
+    const command = buildCodexCommand(args);
+
+    expect(command).not.toContain("--model");
+    expect(command).toContain("session-3");
+    expect(command).toContain("'hello from codex'");
+  });
+
   it("builds the Kimi print command", () => {
     const args = buildKimiCommandArgs({
       sessionId: "session-4",
