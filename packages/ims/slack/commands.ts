@@ -49,8 +49,7 @@ import {
   type StatusMessageFormat,
   type GitStrategy,
 } from "@/config";
-import { startServer as startOpenCodeServer } from "@/agents/opencode";
-import { startServer as startCodexServer } from "@/agents/codex";
+import { refreshSettingsProviderData } from "@/ims/shared/settings-provider-data";
 
 const SETTINGS_LAUNCH_ACTION = "open_settings_modal";
 const SETTINGS_MODAL_ID = "settings_modal";
@@ -513,25 +512,14 @@ export function setupInteractiveHandlers(): void {
     const triggerId = getActionTriggerId(actionBody);
     if (!channelId || !triggerId) return;
 
-    try {
-      await startOpenCodeServer();
-    } catch {
-      // Fall back to models currently stored in local config.
-    }
-    try {
-      await startCodexServer();
-    } catch {
-      // Fall back to models currently stored in local config.
-    }
-
-    const enabledProviders = getSelectableProviders();
+    const refreshedData = await refreshSettingsProviderData(toSelectableProvider(getChannelAgentProvider(channelId)));
 
     const view = buildSettingsModal({
       channelId,
-      enabledProviders,
-      opencodeModels: getOpenCodeModels(),
-      codexModels: getCodexModels(),
-      kiloModels: getKiloModels(),
+      enabledProviders: refreshedData.enabledProviders,
+      opencodeModels: refreshedData.opencodeModels,
+      codexModels: refreshedData.codexModels,
+      kiloModels: refreshedData.kiloModels,
       selectedProvider: toSelectableProvider(getChannelAgentProvider(channelId)),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
@@ -606,19 +594,7 @@ export function setupInteractiveHandlers(): void {
     if (!channelId) return;
     const selectedOption = getActionSelectedOptionValue(actionBody);
     const selectedProvider = parseAgentProvider(selectedOption);
-    if (selectedProvider === "opencode") {
-      try {
-        await startOpenCodeServer();
-      } catch {
-        // Fall back to models currently stored in local config.
-      }
-    } else if (selectedProvider === "codex") {
-      try {
-        await startCodexServer();
-      } catch {
-        // Fall back to models currently stored in local config.
-      }
-    }
+    const refreshedData = await refreshSettingsProviderData(selectedProvider);
     const selectedModel = view.state?.values?.[MODEL_BLOCK]?.[MODEL_ACTION]?.selected_option?.value
       || getChannelModel(channelId)
       || undefined;
@@ -632,10 +608,10 @@ export function setupInteractiveHandlers(): void {
 
     const updatedView = buildSettingsModal({
       channelId,
-      enabledProviders: getSelectableProviders(),
-      opencodeModels: getOpenCodeModels(),
-      codexModels: getCodexModels(),
-      kiloModels: getKiloModels(),
+      enabledProviders: refreshedData.enabledProviders,
+      opencodeModels: refreshedData.opencodeModels,
+      codexModels: refreshedData.codexModels,
+      kiloModels: refreshedData.kiloModels,
       selectedProvider,
       selectedModel,
       workingDirectory,

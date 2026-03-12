@@ -18,6 +18,7 @@ import {
   getProviderModelListsFromConfig,
   SETTINGS_LAUNCHER_ITEMS,
 } from "@/ims/shared/settings-domain";
+import type { SettingsProviderData } from "@/ims/shared/settings-provider-data";
 
 export type LarkSettingsCardAction =
   | "open_settings_launcher"
@@ -155,8 +156,9 @@ export function buildLarkSettingsDetailCard(params: {
   threadId: string;
   userId: string;
   notice?: string;
+  providerData?: SettingsProviderData;
 }): Record<string, unknown> {
-  const { action, channelId, threadId, userId, notice } = params;
+  const { action, channelId, threadId, userId, notice, providerData } = params;
 
   if (action === "open_general_settings_modal") {
     const general = getUserGeneralSettings();
@@ -290,11 +292,17 @@ export function buildLarkSettingsDetailCard(params: {
     const cwd = resolveChannelCwd(channelId).workingDirectory || "(not set)";
     const baseBranch = getChannelBaseBranch(channelId);
     const systemMessage = getChannelSystemMessage(channelId) || "(none)";
-    const providerOptions = getEnabledProvidersWithFallback().map((item) => ({
+    const providerOptions = (providerData?.enabledProviders ?? getEnabledProvidersWithFallback()).map((item) => ({
       text: { tag: "plain_text", content: item },
       value: item,
     }));
-    const modelLists = getProviderModelListsFromConfig();
+    const modelLists = providerData
+      ? {
+          opencode: providerData.opencodeModels,
+          codex: providerData.codexModels,
+          kilo: providerData.kiloModels,
+        }
+      : getProviderModelListsFromConfig();
     const providerModels = provider === "codex"
       ? modelLists.codex
       : provider === "kilo"

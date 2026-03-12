@@ -2,6 +2,7 @@ import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents/types";
 import * as Lark from "@larksuiteoapi/node-sdk";
 import {
+  getChannelAgentProvider,
   getChannelSystemMessage,
   getGitHubInfoForUser,
   getLarkAppCredentials,
@@ -39,6 +40,7 @@ import {
   resolveLarkSettingsCardAction,
   sendLarkSettingsCard,
 } from "./settings";
+import { refreshSettingsProviderData } from "@/ims/shared/settings-provider-data";
 import { createProcessorManager } from "@/ims/shared/processor-manager";
 import {
   extractFormValues,
@@ -958,31 +960,37 @@ async function processLarkCardAction(payload: unknown): Promise<void> {
     return;
   }
 
+  const detailAction = (
+    action === "set_general_settings"
+    || action === "set_general_status_format"
+    || action === "set_general_status_frequency"
+    || action === "set_general_git_strategy"
+    || action === "set_general_auto_update"
+    || action === "set_channel_settings"
+    || action === "set_github_info"
+    || action === "clear_github_info"
+  )
+    ? (
+      action === "set_channel_settings"
+        ? "open_settings_modal"
+        : action === "set_github_info" || action === "clear_github_info"
+          ? "open_github_token_modal"
+          : "open_general_settings_modal"
+    )
+    : action;
+
+  const providerData = detailAction === "open_settings_modal"
+    ? await refreshSettingsProviderData(getChannelAgentProvider(channelId))
+    : undefined;
+
   const card = action === "open_settings_launcher"
     ? null
     : buildLarkSettingsDetailCard({
-      action: (
-        action === "set_general_settings"
-        ||
-        action === "set_general_status_format"
-        || action === "set_general_status_frequency"
-        || action === "set_general_git_strategy"
-        || action === "set_general_auto_update"
-        || action === "set_channel_settings"
-        || action === "set_github_info"
-        || action === "clear_github_info"
-      )
-        ? (
-          action === "set_channel_settings"
-            ? "open_settings_modal"
-            : action === "set_github_info" || action === "clear_github_info"
-              ? "open_github_token_modal"
-              : "open_general_settings_modal"
-        )
-        : action,
+      action: detailAction,
       channelId,
       threadId,
       userId: userId || "",
+      providerData,
       notice: (
         action === "set_general_settings"
         ||

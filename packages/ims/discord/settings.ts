@@ -20,6 +20,10 @@ import {
   type SettingsLauncherAction,
 } from "@/ims/shared/settings-domain";
 import {
+  refreshSettingsProviderData,
+  type SettingsProviderData,
+} from "@/ims/shared/settings-provider-data";
+import {
   AGENT_PROVIDERS,
   isAgentProviderId,
   providerSupportsModelSelection,
@@ -31,7 +35,6 @@ import {
   getChannelModel,
   getChannelBaseBranch,
   resolveChannelCwd,
-  isAgentEnabled,
   setChannelAgentProvider,
   setChannelModel,
   setChannelWorkingDirectory,
@@ -147,8 +150,16 @@ function parseProvider(value: string): AgentProviderId | null {
   return isAgentProviderId(normalized) ? normalized : null;
 }
 
-function getProviderModels(provider: AgentProviderId): string[] {
-  return getProviderModelList(provider, getProviderModelListsFromConfig());
+function getProviderModels(provider: AgentProviderId, providerData?: SettingsProviderData): string[] {
+  if (!providerData) {
+    return getProviderModelList(provider, getProviderModelListsFromConfig());
+  }
+
+  return getProviderModelList(provider, {
+    opencode: providerData.opencodeModels,
+    codex: providerData.codexModels,
+    kilo: providerData.kiloModels,
+  });
 }
 
 function draftKey(userId: string, channelId: string): string {
@@ -170,13 +181,15 @@ function getDraftOrInitial(userId: string, channelId: string): { provider: Agent
 function buildChannelSettingsPickerPayload(params: {
   channelId: string;
   userId: string;
+  providerData?: SettingsProviderData;
 }): {
   content: string;
   components: Array<ActionRowBuilder<StringSelectMenuBuilder> | ActionRowBuilder<ButtonBuilder>>;
 } {
-  const { channelId, userId } = params;
+  const { channelId, userId, providerData } = params;
   const draft = getDraftOrInitial(userId, channelId);
-  const providerOptions = AGENT_PROVIDERS.map((provider) => ({
+  const enabledProviders = providerData?.enabledProviders ?? AGENT_PROVIDERS;
+  const providerOptions = enabledProviders.map((provider) => ({
     label: provider,
     value: provider,
     default: provider === draft.provider,
@@ -191,7 +204,7 @@ function buildChannelSettingsPickerPayload(params: {
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(providerSelect),
   ];
 
-  const models = getProviderModels(draft.provider);
+  const models = getProviderModels(draft.provider, providerData);
   if (providerSupportsModelSelection(draft.provider)) {
     const selectedModel = findMatchingModel(models, draft.model) ?? "";
     const modelOptions = models.length > 0
@@ -418,25 +431,26 @@ function stringSelectLabel(params: {
   return label;
 }
 
-function buildChannelSettingsModal(channelId: string): ModalBuilder {
+function buildChannelSettingsModal(channelId: string, providerData?: SettingsProviderData): ModalBuilder {
   const provider = getChannelAgentProvider(channelId);
   const model = getChannelModel(channelId) || "";
-  const providerModels = getProviderModels(provider);
+  const providerModels = getProviderModels(provider, providerData);
   const selectedModel = findMatchingModel(providerModels, model) ?? providerModels[0] ?? "";
   const baseBranch = getChannelBaseBranch(channelId) || "main";
   const workingDirectory = resolveChannelCwd(channelId).workingDirectory || "";
   const systemMessage = getChannelSystemMessage(channelId) || "";
+  const enabledProviders = providerData?.enabledProviders ?? AGENT_PROVIDERS;
 
   const modalLabels: LabelBuilder[] = [
     stringSelectLabel({
       id: "agent_provider",
       label: "Agent provider",
-      options: AGENT_PROVIDERS.map((item) => ({
+      options: enabledProviders.map((item) => ({
         label: item,
         value: item,
         default: item === provider,
       })),
-      placeholder: AGENT_PROVIDERS.join(", "),
+      placeholder: enabledProviders.join(", "),
     }),
   ];
 
@@ -595,7 +609,8 @@ async function handleLauncherButtonInteraction(interaction: any): Promise<boolea
       channelId,
       userId: interaction.user.id,
     });
-    await interaction.showModal(buildChannelSettingsModal(channelId));
+    const providerData = await refreshSettingsProviderData(getChannelAgentProvider(channelId));
+    await interaction.showModal(buildChannelSettingsModal(channelId, providerData));
     return true;
   }
 
@@ -623,9 +638,10 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
   if (modalKind === DISCORD_MODAL_CHANNEL) {
     const providerValue = (getModalSelectValue(interaction, "agent_provider") || getModalValue(interaction, "agent_provider")).trim();
     const parsedProvider = parseProvider(providerValue);
-    if (!parsedProvider || !isAgentEnabled(parsedProvider)) {
+    const providerData = parsedProvider ? await refreshSettingsProviderData(parsedProvider) : null;
+    if (!parsedProvider || !providerData?.enabledProviders.includes(parsedProvider)) {
       await interaction.reply({
-        content: `Invalid provider. Use one of: ${AGENT_PROVIDERS.join(", ")}`,
+        content: `Invalid provider. Use one of: ${(providerData?.enabledProviders ?? AGENT_PROVIDERS).join(", ")}`,
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -633,14 +649,6 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
 
     const modelInputRaw = (getModalSelectValue(interaction, "model") || getModalValue(interaction, "model")).trim();
     const modelInput = modelInputRaw === PROVIDER_DEFAULT_MODEL_VALUE ? "" : modelInputRaw;
-    const providerModels = getProviderModels(parsedProvider);
-    if (providerModels.length > 0 && modelInput && !findMatchingModel(providerModels, modelInput)) {
-      await interaction.reply({
-        content: "Model is not available for the selected provider.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
 
     const workingDirectory = getModalValue(interaction, "working_directory").trim();
     const baseBranch = getModalValue(interaction, "base_branch").trim() || "main";
@@ -650,7 +658,11 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
     setChannelModel(channelId, resolveStoredModelForProvider({
       provider: parsedProvider,
       selectedModel: modelInput,
-      lists: getProviderModelListsFromConfig(),
+      lists: {
+        opencode: providerData.opencodeModels,
+        codex: providerData.codexModels,
+        kilo: providerData.kiloModels,
+      },
     }));
     setChannelWorkingDirectory(channelId, workingDirectory.length > 0 ? workingDirectory : null);
     setChannelBaseBranch(channelId, baseBranch);
@@ -838,17 +850,18 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
   if (action === "provider") {
     const selected = interaction.values?.[0] as string | undefined;
     const parsed = selected ? parseProvider(selected) : null;
-    if (!parsed || !isAgentEnabled(parsed)) {
+    const providerData = parsed ? await refreshSettingsProviderData(parsed) : null;
+    if (!parsed || !providerData?.enabledProviders.includes(parsed)) {
       await interaction.reply({ content: "Selected provider is invalid or disabled.", flags: MessageFlags.Ephemeral });
       return true;
     }
-    const models = getProviderModels(parsed);
+    const models = getProviderModels(parsed, providerData);
     const nextDraft = {
       provider: parsed,
       model: models.length > 0 ? (findMatchingModel(models, draft.model) ?? models[0]!) : "",
     };
     channelSettingsDrafts.set(key, nextDraft);
-    await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId }));
+    await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId, providerData }));
     return true;
   }
 
@@ -860,22 +873,23 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
         model: selected === PROVIDER_DEFAULT_MODEL_VALUE ? "" : selected,
       });
     }
-    await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId }));
+    const providerData = await refreshSettingsProviderData(draft.provider);
+    await interaction.update(buildChannelSettingsPickerPayload({ channelId, userId, providerData }));
     return true;
   }
 
   if (action === "save") {
-    const models = getProviderModels(draft.provider);
-    if (models.length > 0 && draft.model && !findMatchingModel(models, draft.model)) {
-      await interaction.reply({ content: "Selected model is no longer available.", flags: MessageFlags.Ephemeral });
-      return true;
-    }
+    const providerData = await refreshSettingsProviderData(draft.provider);
 
     setChannelAgentProvider(channelId, draft.provider);
     setChannelModel(channelId, resolveStoredModelForProvider({
       provider: draft.provider,
       selectedModel: draft.model,
-      lists: getProviderModelListsFromConfig(),
+      lists: {
+        opencode: providerData.opencodeModels,
+        codex: providerData.codexModels,
+        kilo: providerData.kiloModels,
+      },
     }));
     channelSettingsDrafts.delete(key);
     await interaction.reply({ content: "Channel provider/model updated.", flags: MessageFlags.Ephemeral });
@@ -883,7 +897,8 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
   }
 
   if (action === "edit") {
-    await interaction.showModal(buildChannelSettingsModal(channelId));
+    const providerData = await refreshSettingsProviderData(draft.provider);
+    await interaction.showModal(buildChannelSettingsModal(channelId, providerData));
     return true;
   }
 
