@@ -1,6 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { createCoreRuntime } from "@/core/runtime";
 import { loadOdeConfig, updateOdeConfig } from "@/config";
+import {
+  clearInboxRecordsForTests,
+  closeInboxDatabaseForTests,
+} from "@/config/local/inbox";
 import {
   createActiveRequest,
   deleteSession,
@@ -9,12 +13,17 @@ import {
 } from "@/config/local/sessions";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 let sequence = 0;
+const tempInboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "ode-runtime-resilience-inbox-test-"));
+const tempInboxDbFile = path.join(tempInboxDir, "inbox.db");
 
 function uniqueId(prefix: string): string {
   sequence += 1;
@@ -164,12 +173,25 @@ function toInboundEvent(params: {
 
 describe("core runtime resilience e2e", () => {
   const previousCi = process.env.CI;
+  const previousInboxDbFile = process.env.ODE_INBOX_DB_FILE;
 
   beforeAll(() => {
     process.env.CI = "1";
+    process.env.ODE_INBOX_DB_FILE = tempInboxDbFile;
+  });
+
+  beforeEach(() => {
+    clearInboxRecordsForTests();
   });
 
   afterAll(() => {
+    closeInboxDatabaseForTests();
+    if (previousInboxDbFile === undefined) {
+      delete process.env.ODE_INBOX_DB_FILE;
+    } else {
+      process.env.ODE_INBOX_DB_FILE = previousInboxDbFile;
+    }
+    fs.rmSync(tempInboxDir, { recursive: true, force: true });
     if (previousCi === undefined) {
       delete process.env.CI;
       return;
@@ -179,26 +201,26 @@ describe("core runtime resilience e2e", () => {
 
   it("falls back to sending final message when status updates are rate-limited", async () => {
     await withFastMessageUpdates(async () => {
-    const logs = { sends: [], updates: [] } as {
-      sends: Array<{ channelId: string; threadId: string; text: string; messageTs: string }>;
-      updates: Array<{ channelId: string; messageTs: string; text: string }>;
-    };
-    const im = createFakeIm(logs, { failUpdateWith429: true });
-    const { agent } = createFakeAgent({
-      delayMs: 5200,
-      responseText: "final from agent",
-    });
-    const runtime = createCoreRuntime({ platform: "slack", im, agent });
-    const channelId = uniqueId("CE2E-RES-429");
-    const threadId = uniqueId("TE2E-RES-429");
+      const logs = { sends: [], updates: [] } as {
+        sends: Array<{ channelId: string; threadId: string; text: string; messageTs: string }>;
+        updates: Array<{ channelId: string; messageTs: string; text: string }>;
+      };
+      const im = createFakeIm(logs, { failUpdateWith429: true });
+      const { agent } = createFakeAgent({
+        delayMs: 5200,
+        responseText: "final from agent",
+      });
+      const runtime = createCoreRuntime({ platform: "slack", im, agent });
+      const channelId = uniqueId("CE2E-RES-429");
+      const threadId = uniqueId("TE2E-RES-429");
 
-    const context = {
-      channelId,
-      replyThreadId: threadId,
-      threadId,
-      userId: "UE2E-429",
-      messageId: uniqueId("ME2E-429"),
-    };
+      const context = {
+        channelId,
+        replyThreadId: threadId,
+        threadId,
+        userId: "UE2E-429",
+        messageId: uniqueId("ME2E-429"),
+      };
 
       await runtime.handleInboundEvent(toInboundEvent({
         channelId: context.channelId,
