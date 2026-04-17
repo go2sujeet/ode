@@ -14,14 +14,19 @@ import {
   type TrackedTodo,
   type TrackedTool,
 } from "@/config/local/sessions";
-import { completeInboxRecord, failInboxRecord } from "@/config/local/inbox";
+import {
+  completeAgentResult,
+  failAgentResult,
+  recordAgentQuestion,
+  completeAgentQuestion,
+} from "@/config/local/inbox";
 import { getMessageUpdateIntervalMs, getUserGeneralSettings } from "@/config";
 import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "@/core/runtime/helpers";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { maybeGenerateSessionTitle } from "@/core/runtime/session-title";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import type { RuntimeRequestContext } from "@/core/kernel/request-context";
-import { formatQuestionPrompt } from "@/core/runtime/helpers";
+import { formatSingleQuestionPrompt } from "@/core/runtime/helpers";
 import {
   buildSessionMessageState,
   extractEventSessionId,
@@ -46,7 +51,8 @@ type RunOpenRequestParams = {
   message: string;
   agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
   options?: OpenCodeOptions;
-  inboxRecordId: string;
+  agentResultDetailId: string | null;
+  threadKey: string;
   isFirstMessageInThread: boolean;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
@@ -70,7 +76,8 @@ export type RunTrackedRequestParams = {
   onFail: (message: string) => void;
   publishFinalText: (text: string) => Promise<void>;
   failureLogLabel: string;
-  inboxRecordId: string;
+  agentResultDetailId: string | null;
+  threadKey: string;
   sessionId: string;
   providerId: string;
   model: string | null;
@@ -87,38 +94,52 @@ function isExternallySettled(request: ActiveRequest): boolean {
 
 const EVENT_STATE_MERGE_INTERVAL_MS = 1000;
 
-function tryCompleteInboxRecord(params: {
-  id: string;
+function tryCompleteAgentResult(params: {
+  detailId: string | null;
   resultText: string;
   sessionId: string;
   providerId: string;
   model: string | null;
   workingDirectory: string;
 }): void {
+  if (!params.detailId) return;
   try {
-    completeInboxRecord(params);
+    completeAgentResult({
+      detailId: params.detailId,
+      resultText: params.resultText,
+      providerId: params.providerId,
+      model: params.model,
+      workingDirectory: params.workingDirectory,
+    });
   } catch (error) {
-    log.warn("Failed to complete inbox record", {
-      inboxRecordId: params.id,
+    log.warn("Failed to complete agent result detail", {
+      detailId: params.detailId,
       sessionId: params.sessionId,
       error: String(error),
     });
   }
 }
 
-function tryFailInboxRecord(params: {
-  id: string;
+function tryFailAgentResult(params: {
+  detailId: string | null;
   errorText: string;
   sessionId: string;
   providerId: string;
   model: string | null;
   workingDirectory: string;
 }): void {
+  if (!params.detailId) return;
   try {
-    failInboxRecord(params);
+    failAgentResult({
+      detailId: params.detailId,
+      errorText: params.errorText,
+      providerId: params.providerId,
+      model: params.model,
+      workingDirectory: params.workingDirectory,
+    });
   } catch (error) {
-    log.warn("Failed to mark inbox record as failed", {
-      inboxRecordId: params.id,
+    log.warn("Failed to mark agent result detail as failed", {
+      detailId: params.detailId,
       sessionId: params.sessionId,
       error: String(error),
     });
@@ -134,6 +155,8 @@ async function startKernelEventStreamWatcher(params: {
   workingPath: string;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
+  threadKey: string | null;
+  model: string | null;
   onUpdate: () => void;
   onStop?: () => void;
 }): Promise<() => void> {
@@ -143,6 +166,8 @@ async function startKernelEventStreamWatcher(params: {
     workingPath,
     liveEventHistory,
     liveParsedState,
+    threadKey,
+    model,
     onUpdate,
     onStop,
   } = params;
@@ -254,6 +279,16 @@ async function startKernelEventStreamWatcher(params: {
         if (!requestId || requestId !== pendingQuestion.requestId) {
           return;
         }
+        if (threadKey && pendingQuestion.questionDetailId) {
+          try {
+            completeAgentQuestion({ detailId: pendingQuestion.questionDetailId });
+          } catch (err) {
+            log.warn("Failed to complete agent_question detail", {
+              detailId: pendingQuestion.questionDetailId,
+              error: String(err),
+            });
+          }
+        }
         clearPendingQuestion(request.channelId, request.threadId);
         flushStateUpdates(true);
         return;
@@ -280,9 +315,31 @@ async function startKernelEventStreamWatcher(params: {
       if (normalized.length === 0) return;
 
       request.statusFrozen = true;
-      const prompt = formatQuestionPrompt(normalized);
+      const prompt = formatSingleQuestionPrompt(normalized[0]!, 0, normalized.length);
       request.currentText = prompt;
       onUpdate();
+
+      let questionDetailId: string | null = null;
+      if (threadKey) {
+        try {
+          const detail = recordAgentQuestion({
+            threadKey,
+            requestMessageId: request.statusMessageTs,
+            questionRequestId: requestId,
+            questions: normalized,
+            providerId,
+            model,
+            workingDirectory: workingPath,
+          });
+          questionDetailId = detail.id;
+        } catch (err) {
+          log.warn("Failed to record agent_question detail", {
+            threadKey,
+            requestId,
+            error: String(err),
+          });
+        }
+      }
 
       void (async () => {
         try {
@@ -307,6 +364,8 @@ async function startKernelEventStreamWatcher(params: {
             askedAt: Date.now(),
             questions: normalized,
             messageTs: request.statusMessageTs,
+            collectedAnswers: [],
+            questionDetailId,
           });
         } catch (err) {
           // Fire-and-forget update for an ask_user prompt. If this throws,
@@ -344,7 +403,8 @@ export async function runOpenRequest(
     message,
     agentContext,
     options,
-    inboxRecordId,
+    agentResultDetailId,
+    threadKey,
     isFirstMessageInThread,
     liveEventHistory,
     liveParsedState,
@@ -515,7 +575,8 @@ export async function runOpenRequest(
       });
     },
     failureLogLabel: "Request failed",
-    inboxRecordId,
+    agentResultDetailId,
+    threadKey,
     sessionId,
     providerId,
     model: resolvedModel,
@@ -544,7 +605,8 @@ export async function runTrackedRequest(
     onFail,
     publishFinalText,
     failureLogLabel,
-    inboxRecordId,
+    agentResultDetailId,
+    threadKey,
     sessionId,
     providerId,
     model,
@@ -595,6 +657,8 @@ export async function runTrackedRequest(
       workingPath,
       liveEventHistory,
       liveParsedState,
+      threadKey,
+      model,
       onUpdate: () => {},
       onStop: () => {
         stopSignal.resolve();
@@ -629,8 +693,8 @@ export async function runTrackedRequest(
       const fallbackText = request.currentText?.trim();
       const finalText = fallbackText || "_Done_";
       await publishFinalText(finalText);
-      tryCompleteInboxRecord({
-        id: inboxRecordId,
+      tryCompleteAgentResult({
+        detailId: agentResultDetailId,
         resultText: finalText,
         sessionId,
         providerId,
@@ -657,8 +721,8 @@ export async function runTrackedRequest(
 
     const finalText = buildFinalResponseText(result.responses) ?? (request.currentText?.trim() || "_Done_");
     await publishFinalText(finalText);
-    tryCompleteInboxRecord({
-      id: inboxRecordId,
+    tryCompleteAgentResult({
+      detailId: agentResultDetailId,
       resultText: finalText,
       sessionId,
       providerId,
@@ -684,8 +748,8 @@ export async function runTrackedRequest(
     liveParsedState.delete(getStatusMessageKey(request));
 
     const errorStatus = `Error: ${message}\n_${suggestion}_`;
-    tryFailInboxRecord({
-      id: inboxRecordId,
+    tryFailAgentResult({
+      detailId: agentResultDetailId,
       errorText: message,
       sessionId,
       providerId,

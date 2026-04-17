@@ -291,7 +291,13 @@ async function main(): Promise<void> {
   }
 
   // Handle shutdown gracefully
+  let shuttingDown = false;
   const shutdown = async (signal: string) => {
+    if (shuttingDown) {
+      log.debug("Shutdown already in progress, ignoring signal", { signal });
+      return;
+    }
+    shuttingDown = true;
     log.debug("Shutting down...", { signal });
 
     try {

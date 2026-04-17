@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createCoreRuntime } from "@/core/runtime";
 import {
-  clearInboxRecordsForTests,
-  closeInboxDatabaseForTests,
-  createInboxRecordId,
-  getInboxRecordById,
+  buildThreadKey,
+  clearMessageStoreForTests,
+  closeMessageDatabaseForTests,
+  getMessageThreadById,
 } from "@/config/local/inbox";
 import {
   deleteSession,
@@ -134,7 +134,7 @@ describe("core runtime e2e", () => {
   });
 
   afterAll(() => {
-    closeInboxDatabaseForTests();
+    closeMessageDatabaseForTests();
     delete process.env.ODE_INBOX_DB_FILE;
     fs.rmSync(tempInboxDir, { recursive: true, force: true });
     if (previousCi === undefined) {
@@ -145,7 +145,7 @@ describe("core runtime e2e", () => {
   });
 
   it("handles a full incoming flow and deduplicates duplicate message ids", async () => {
-    clearInboxRecordsForTests();
+    clearMessageStoreForTests();
     const logs = { sends: [], updates: [], deletes: [] } as {
       sends: Array<{ channelId: string; threadId: string; text: string }>;
       updates: Array<{ channelId: string; messageTs: string; text: string }>;
@@ -191,15 +191,13 @@ describe("core runtime e2e", () => {
     expect(logs.sends.some((entry) => entry.text.includes("Hello from fake agent"))).toBe(true);
     // The original status message is deleted after the final result is posted.
     expect(logs.deletes.length).toBeGreaterThan(0);
-    const inboxRecord = getInboxRecordById(createInboxRecordId({
-      channelId: context.channelId,
-      threadId: context.threadId,
-      messageId: context.messageId,
-    }));
-    expect(inboxRecord).not.toBeNull();
-    expect(inboxRecord?.promptText).toBe("hello runtime");
-    expect(inboxRecord?.resultText).toBe("Hello from fake agent");
-    expect(inboxRecord?.status).toBe("completed");
+    const thread = getMessageThreadById(buildThreadKey(context.channelId, context.threadId));
+    expect(thread).not.toBeNull();
+    const userPrompt = thread?.details.find((d) => d.kind === "user_prompt");
+    const agentResult = thread?.details.find((d) => d.kind === "agent_result");
+    expect(userPrompt?.promptText).toBe("hello runtime");
+    expect(agentResult?.resultText).toBe("Hello from fake agent");
+    expect(agentResult?.status).toBe("completed");
 
     deleteSession(context.channelId, context.threadId);
   });
@@ -273,6 +271,7 @@ describe("core runtime e2e", () => {
       sessionId: "session-e2e-pq",
       askedAt: Date.now(),
       questions: [{ question: "Q1" }, { question: "Q2" }],
+      collectedAnswers: [],
     };
 
     saveSession({
@@ -290,13 +289,31 @@ describe("core runtime e2e", () => {
     setPendingQuestion(channelId, threadId, pending);
 
     const runtime = createCoreRuntime({ platform: "slack", im, agent });
+
+    // First reply — should not submit; should post follow-up Q2 to the thread.
     await runtime.handleInboundEvent(toInboundEvent({
       platform: "slack",
       channelId,
       threadId,
       userId: ownerUserId,
-      messageId: uniqueId("ME2E-PQ"),
-      text: "first\nsecond",
+      messageId: uniqueId("ME2E-PQ-1"),
+      text: "first",
+    }));
+
+    await waitFor(() =>
+      logs.sends.some((entry) => entry.channelId === channelId && entry.text.includes("(2/2)"))
+    );
+    expect(replyCalls.length).toBe(0);
+    expect(sentPrompts.length).toBe(0);
+
+    // Second reply — now the accumulated answers should be submitted.
+    await runtime.handleInboundEvent(toInboundEvent({
+      platform: "slack",
+      channelId,
+      threadId,
+      userId: ownerUserId,
+      messageId: uniqueId("ME2E-PQ-2"),
+      text: "second",
     }));
 
     await waitFor(() => replyCalls.length === 1);

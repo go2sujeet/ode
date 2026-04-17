@@ -22,7 +22,8 @@ function buildRequest(): ActiveRequest {
 
 function buildRunParams() {
   return {
-    inboxRecordId: "inbox-1",
+    agentResultDetailId: null,
+    threadKey: "C1:T1",
     sessionId: "s1",
     providerId: "opencode",
     model: null,

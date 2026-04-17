@@ -4,6 +4,7 @@ import {
   buildQuestionAnswers,
   categorizeRuntimeError,
   formatQuestionPrompt,
+  formatSingleQuestionPrompt,
 } from "../runtime/helpers";
 
 describe("runtime helpers", () => {
@@ -34,13 +35,33 @@ describe("runtime helpers", () => {
     expect(prompt).toContain("2. Need tests?");
   });
 
-  it("maps multi-line user answers to multiple questions", () => {
-    const answers = buildQuestionAnswers(
-      [{ question: "Q1" }, { question: "Q2" }, { question: "Q3" }],
-      "first\n\nsecond"
+  it("formats a single-question prompt with i/N prefix in multi-question flows", () => {
+    const prompt = formatSingleQuestionPrompt(
+      { question: "Need tests?", options: ["yes", "no"] },
+      1,
+      2
     );
 
-    expect(answers).toEqual([["first"], ["second"], [""]]);
+    expect(prompt).toContain("(2/2)");
+    expect(prompt).toContain("Need tests?");
+    expect(prompt).toContain("Options: yes / no");
+  });
+
+  it("omits i/N prefix for single-question flows", () => {
+    const prompt = formatSingleQuestionPrompt(
+      { question: "Proceed?", options: ["yes", "no"] },
+      0,
+      1
+    );
+
+    expect(prompt).not.toContain("(1/1)");
+    expect(prompt.startsWith("Proceed?")).toBe(true);
+  });
+
+  it("wraps accumulated answers into the nested shape expected by agents", () => {
+    const answers = buildQuestionAnswers(["first", "second", "third"]);
+
+    expect(answers).toEqual([["first"], ["second"], ["third"]]);
   });
 
   it("categorizes network errors with server override", () => {

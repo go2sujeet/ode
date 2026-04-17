@@ -5,10 +5,13 @@ import {
   closeCronJobDatabaseForTests,
 } from "@/config/local/cron-jobs";
 import {
-  clearInboxRecordsForTests,
-  closeInboxDatabaseForTests,
-  createInboxRecordId,
-  recordInboxRequest,
+  buildThreadKey,
+  clearMessageStoreForTests,
+  closeMessageDatabaseForTests,
+  ensureMessageThread,
+  recordUserPrompt,
+  startAgentResult,
+  completeAgentResult,
 } from "@/config/local/inbox";
 import { createWebApp } from "@/core/web/app";
 import { collapseTextDeltas } from "@/core/web/session-events";
@@ -62,47 +65,63 @@ describe("web app routing", () => {
     expect(payload.error?.startsWith("Missing Slack")).toBe(true);
   });
 
-  it("returns paginated inbox records and record detail", async () => {
-    clearInboxRecordsForTests();
-    const inboxId = createInboxRecordId({
-      channelId: "C-web",
-      threadId: "T-web",
-      messageId: "M-web",
-    });
-    recordInboxRequest({
-      id: inboxId,
+  it("returns paginated message threads and a thread's detail timeline", async () => {
+    clearMessageStoreForTests();
+    const threadKey = buildThreadKey("C-web", "T-web");
+    ensureMessageThread({
       platform: "slack",
       channelId: "C-web",
       threadId: "T-web",
       replyThreadId: "T-web",
-      promptText: "show me the latest build failures",
       providerId: "opencode",
+    });
+    recordUserPrompt({
+      threadKey,
+      messageId: "M-web",
+      userId: "U-web",
+      promptText: "show me the latest build failures",
+    });
+    const agentDetail = startAgentResult({
+      threadKey,
+      requestMessageId: "M-web",
+      providerId: "opencode",
+    });
+    completeAgentResult({
+      detailId: agentDetail.id,
+      resultText: "All builds green.",
     });
 
     const app = createWebApp();
-    const listResponse = await app.handle(new Request("http://localhost/api/inbox?page=1&pageSize=5"));
+    const listResponse = await app.handle(new Request("http://localhost/api/message-threads?page=1&pageSize=5"));
     expect(listResponse.status).toBe(200);
     const listPayload = await listResponse.json() as {
       ok: boolean;
       result?: {
         total: number;
-        items: Array<{ id: string; promptSummary: string }>;
+        items: Array<{ id: string; latestPromptPreview: string | null; latestResultPreview: string | null }>;
       };
     };
     expect(listPayload.ok).toBe(true);
     expect(listPayload.result?.total).toBe(1);
-    expect(listPayload.result?.items[0]?.id).toBe(inboxId);
-    expect(listPayload.result?.items[0]?.promptSummary).toContain("latest build failures");
+    expect(listPayload.result?.items[0]?.id).toBe(threadKey);
+    expect(listPayload.result?.items[0]?.latestPromptPreview).toContain("latest build failures");
+    expect(listPayload.result?.items[0]?.latestResultPreview).toContain("All builds green");
 
-    const detailResponse = await app.handle(new Request(`http://localhost/api/inbox/${encodeURIComponent(inboxId)}`));
+    const detailResponse = await app.handle(new Request(`http://localhost/api/message-threads/${encodeURIComponent(threadKey)}`));
     expect(detailResponse.status).toBe(200);
     const detailPayload = await detailResponse.json() as {
       ok: boolean;
-      result?: { id: string; promptText: string };
+      result?: {
+        id: string;
+        details: Array<{ kind: string; promptText: string | null; resultText: string | null }>;
+      };
     };
     expect(detailPayload.ok).toBe(true);
-    expect(detailPayload.result?.id).toBe(inboxId);
-    expect(detailPayload.result?.promptText).toBe("show me the latest build failures");
+    expect(detailPayload.result?.id).toBe(threadKey);
+    const userPrompt = detailPayload.result?.details.find((d) => d.kind === "user_prompt");
+    const agentResult = detailPayload.result?.details.find((d) => d.kind === "agent_result");
+    expect(userPrompt?.promptText).toBe("show me the latest build failures");
+    expect(agentResult?.resultText).toBe("All builds green.");
   });
 
   it("returns cron job list payload", async () => {
@@ -168,7 +187,7 @@ describe("collapseTextDeltas", () => {
 
 afterAll(() => {
   closeCronJobDatabaseForTests();
-  closeInboxDatabaseForTests();
+  closeMessageDatabaseForTests();
   delete process.env.ODE_INBOX_DB_FILE;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });

@@ -14,6 +14,7 @@ type PendingItem<TResult, TPayload> = {
 export class CoalescedUpdateQueue<TResult, TPayload = string> {
   private readonly limiter: Bottleneck;
   private readonly pendingByKey = new Map<string, PendingItem<TResult, TPayload>>();
+  private stopped = false;
 
   constructor(
     minTimeMs: number,
@@ -30,6 +31,12 @@ export class CoalescedUpdateQueue<TResult, TPayload = string> {
     this.resolvePending(dedupKey);
 
     return new Promise<TResult>((resolve) => {
+      if (this.stopped) {
+        // Queue was already torn down; resolve immediately so callers don't
+        // hang on a stopped limiter.
+        resolve(undefined as TResult);
+        return;
+      }
       this.pendingByKey.set(dedupKey, {
         key,
         payload,
@@ -49,11 +56,19 @@ export class CoalescedUpdateQueue<TResult, TPayload = string> {
     this.resolvePending(this.buildKey(key));
   }
 
+  /**
+   * Tear down the queue. Idempotent — calling `clear()` more than once (for
+   * example when a shutdown runs twice because the operator hit Ctrl+C
+   * twice) is a no-op, because `Bottleneck.stop()` itself is single-shot and
+   * throws if invoked again.
+   */
   clear(): void {
     for (const pending of this.pendingByKey.values()) {
       pending.resolve(undefined as TResult);
     }
     this.pendingByKey.clear();
+    if (this.stopped) return;
+    this.stopped = true;
     void this.limiter.stop({ dropWaitingJobs: true });
   }
 

@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { createCoreRuntime } from "@/core/runtime";
 import { loadOdeConfig, updateOdeConfig } from "@/config";
 import {
-  clearInboxRecordsForTests,
-  closeInboxDatabaseForTests,
+  clearMessageStoreForTests,
+  closeMessageDatabaseForTests,
 } from "@/config/local/inbox";
 import {
   createActiveRequest,
@@ -198,11 +198,11 @@ describe("core runtime resilience e2e", () => {
   });
 
   beforeEach(() => {
-    clearInboxRecordsForTests();
+    clearMessageStoreForTests();
   });
 
   afterAll(() => {
-    closeInboxDatabaseForTests();
+    closeMessageDatabaseForTests();
     if (previousInboxDbFile === undefined) {
       delete process.env.ODE_INBOX_DB_FILE;
     } else {

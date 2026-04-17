@@ -15,9 +15,12 @@ import {
   markCronJobTriggered,
 } from "@/config/local/cron-jobs";
 import {
-  completeInboxRecord,
-  failInboxRecord,
-  recordInboxRequest,
+  buildThreadKey,
+  completeAgentResult,
+  ensureMessageThread,
+  failAgentResult,
+  recordUserPrompt,
+  startAgentResult,
 } from "@/config/local/inbox";
 import {
   loadSession,
@@ -46,8 +49,8 @@ function getCronUserId(jobId: string): string {
   return `cron-job:${jobId}`;
 }
 
-function buildInboxRecordId(jobId: string, minuteStartMs: number): string {
-  return `cron:${jobId}:${minuteStartMs}`;
+function getCronMessageId(minuteStartMs: number): string {
+  return String(minuteStartMs);
 }
 
 function resolveInboxModelForCron(job: CronJobRecord, options: ReturnType<typeof buildMessageOptions>): string | null {
@@ -151,7 +154,10 @@ async function prepareCronSession(job: CronJobRecord): Promise<{
 
 async function runCronJob(job: CronJobRecord, minuteStartMs: number): Promise<void> {
   const agent = createAgentAdapter();
-  const inboxRecordId = buildInboxRecordId(job.id, minuteStartMs);
+  const cronThreadId = getCronThreadId(job.id);
+  const cronMessageId = getCronMessageId(minuteStartMs);
+  const threadKey = buildThreadKey(job.channelId, cronThreadId);
+  let agentResultDetailId: string | null = null;
 
   try {
     const { session, sessionId, cwd } = await prepareCronSession(job);
@@ -161,31 +167,56 @@ async function runCronJob(job: CronJobRecord, minuteStartMs: number): Promise<vo
       channelId: job.channelId,
       providerId,
     });
+    const model = resolveInboxModelForCron(job, options);
 
-    recordInboxRequest({
-      id: inboxRecordId,
-      platform: job.platform,
-      sourceKind: "cron_job",
-      cronJobId: job.id,
-      cronJobTitle: job.title,
-      channelId: job.channelId,
-      threadId: getCronThreadId(job.id),
-      replyThreadId: getCronThreadId(job.id),
-      sessionId,
-      userId: getCronUserId(job.id),
-      messageId: String(minuteStartMs),
-      providerId,
-      model: resolveInboxModelForCron(job, options),
-      workingDirectory: cwd,
-      promptText: job.messageText,
-      context: {
+    try {
+      ensureMessageThread({
+        platform: job.platform,
+        channelId: job.channelId,
+        threadId: cronThreadId,
+        replyThreadId: cronThreadId,
+        sessionId,
+        providerId,
+        model,
+        workingDirectory: cwd,
+        threadOwnerUserId: getCronUserId(job.id),
+        branchName: session.branchName,
         sourceKind: "cron_job",
         cronJobId: job.id,
         cronJobTitle: job.title,
-        scheduledMinuteStartMs: minuteStartMs,
-        isFirstMessageInThread: false,
-      },
-    });
+        context: {
+          sourceKind: "cron_job",
+          cronJobId: job.id,
+          cronJobTitle: job.title,
+        },
+      });
+      recordUserPrompt({
+        threadKey,
+        messageId: cronMessageId,
+        userId: getCronUserId(job.id),
+        promptText: job.messageText,
+        context: {
+          scheduledMinuteStartMs: minuteStartMs,
+        },
+      });
+      const detail = startAgentResult({
+        threadKey,
+        requestMessageId: cronMessageId,
+        providerId,
+        model,
+        workingDirectory: cwd,
+        context: {
+          scheduledMinuteStartMs: minuteStartMs,
+          cronJobId: job.id,
+        },
+      });
+      agentResultDetailId = detail.id;
+    } catch (error) {
+      log.warn("Failed to record cron inbox message", {
+        cronJobId: job.id,
+        error: String(error),
+      });
+    }
 
     const responses = await agent.sendMessage(
       job.channelId,
@@ -198,21 +229,38 @@ async function runCronJob(job: CronJobRecord, minuteStartMs: number): Promise<vo
     const finalText = buildFinalResponseText(responses) ?? "_Done_";
 
     await sendResultToChannel(job, finalText);
-    completeInboxRecord({
-      id: inboxRecordId,
-      resultText: finalText,
-      sessionId,
-      providerId,
-      model: resolveInboxModelForCron(job, options),
-      workingDirectory: cwd,
-    });
+    if (agentResultDetailId) {
+      try {
+        completeAgentResult({
+          detailId: agentResultDetailId,
+          resultText: finalText,
+          providerId,
+          model,
+          workingDirectory: cwd,
+        });
+      } catch (error) {
+        log.warn("Failed to complete cron agent_result detail", {
+          detailId: agentResultDetailId,
+          error: String(error),
+        });
+      }
+    }
     markCronJobCompleted(job.id);
   } catch (error) {
     const { message } = categorizeRuntimeError(error);
-    failInboxRecord({
-      id: inboxRecordId,
-      errorText: message,
-    });
+    if (agentResultDetailId) {
+      try {
+        failAgentResult({
+          detailId: agentResultDetailId,
+          errorText: message,
+        });
+      } catch (failError) {
+        log.warn("Failed to mark cron agent_result detail as failed", {
+          detailId: agentResultDetailId,
+          error: String(failError),
+        });
+      }
+    }
     markCronJobFailed(job.id, message);
     log.warn("Cron job execution failed", {
       cronJobId: job.id,

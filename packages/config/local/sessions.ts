@@ -60,6 +60,19 @@ export interface PendingQuestion {
     custom?: boolean;
   }>;
   messageTs?: string;
+  /**
+   * Answers the user has already provided for questions in index order.
+   * `collectedAnswers.length` is the index of the question we're currently
+   * waiting on. When it reaches `questions.length`, all answers are ready
+   * to be submitted back to the agent in one call.
+   */
+  collectedAnswers?: string[];
+  /**
+   * Id of the `agent_question` message_detail row associated with this
+   * pending question. Accumulated replies are linked back to this detail
+   * via `question_source_id` for later debugging.
+   */
+  questionDetailId?: string | null;
 }
 
 export interface PersistedSession {

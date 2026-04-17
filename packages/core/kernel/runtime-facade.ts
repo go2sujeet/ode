@@ -5,8 +5,10 @@ import {
   getPendingQuestion,
 } from "@/config/local/sessions";
 import {
-  createInboxRecordId,
-  recordInboxRequest,
+  ensureMessageThread,
+  recordUserPrompt,
+  startAgentResult,
+  buildThreadKey,
 } from "@/config/local/inbox";
 import { getChannelModel } from "@/config";
 import { type SessionEvent, type SessionMessageState, log } from "@/utils";
@@ -57,7 +59,7 @@ function resolveInboxModel(options: OpenCodeOptions | undefined, fallbackModel: 
   return normalizedFallback && normalizedFallback.length > 0 ? normalizedFallback : null;
 }
 
-function buildInboxContextSnapshot(params: {
+function buildThreadContextSnapshot(params: {
   created: boolean;
   threadOwnerUserId: string;
   botToken?: string;
@@ -65,7 +67,14 @@ function buildInboxContextSnapshot(params: {
   agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
   options?: OpenCodeOptions;
 }): Record<string, unknown> {
-  const { created, threadOwnerUserId, botToken, branchName, agentContext, options } = params;
+  const {
+    created,
+    threadOwnerUserId,
+    botToken,
+    branchName,
+    agentContext,
+    options,
+  } = params;
   const platformContext = agentContext.slack;
   const threadHistory = agentContext.threadHistory ?? platformContext?.threadHistory;
 
@@ -88,6 +97,17 @@ function buildInboxContextSnapshot(params: {
           userId: platformContext.userId,
         }
       : null,
+  };
+}
+
+function buildAgentDetailContext(params: {
+  options?: OpenCodeOptions;
+  created: boolean;
+}): Record<string, unknown> {
+  return {
+    isFirstMessageInThread: params.created,
+    agent: params.options?.agent ?? null,
+    reasoningEffort: params.options?.reasoningEffort ?? null,
   };
 }
 
@@ -257,37 +277,50 @@ export class KernelRuntimeFacade {
       channelId,
       providerId,
     });
-    let inboxRecordId = createInboxRecordId({
-      channelId: context.channelId,
-      threadId: context.threadId,
-      messageId: context.messageId,
+    const threadContextSnapshot = buildThreadContextSnapshot({
+      created,
+      threadOwnerUserId,
+      botToken: context.botToken,
+      branchName: session.branchName,
+      agentContext,
+      options,
     });
+    const resolvedModel = resolveInboxModel(options, getChannelModel(rawChannelId));
+    const threadKey = buildThreadKey(context.channelId, context.threadId);
+    let agentResultDetailId: string | null = null;
     try {
-      inboxRecordId = recordInboxRequest({
-        id: inboxRecordId,
+      ensureMessageThread({
         platform: this.deps.platform,
         channelId: context.channelId,
         rawChannelId,
         threadId: context.threadId,
         replyThreadId: context.replyThreadId,
         sessionId,
-        userId: context.userId,
-        messageId: context.messageId,
         providerId,
-        model: resolveInboxModel(options, getChannelModel(rawChannelId)),
+        model: resolvedModel,
         workingDirectory: cwd,
-        promptText: text,
-        context: buildInboxContextSnapshot({
-          created,
-          threadOwnerUserId,
-          botToken: context.botToken,
-          branchName: session.branchName,
-          agentContext,
-          options,
-        }),
+        threadOwnerUserId,
+        branchName: session.branchName,
+        sourceKind: "user",
+        context: threadContextSnapshot,
       });
+      recordUserPrompt({
+        threadKey,
+        messageId: context.messageId,
+        userId: context.userId,
+        promptText: text,
+      });
+      const agentDetail = startAgentResult({
+        threadKey,
+        requestMessageId: context.messageId,
+        providerId,
+        model: resolvedModel,
+        workingDirectory: cwd,
+        context: buildAgentDetailContext({ options, created }),
+      });
+      agentResultDetailId = agentDetail.id;
     } catch (error) {
-      log.warn("Failed to record inbox request", {
+      log.warn("Failed to record inbox message", {
         channelId: context.channelId,
         threadId: context.threadId,
         messageId: context.messageId,
@@ -308,7 +341,8 @@ export class KernelRuntimeFacade {
       isFirstMessageInThread: created,
       agentContext,
       options,
-      inboxRecordId,
+      agentResultDetailId,
+      threadKey,
       liveEventHistory: this.state.liveEventHistory,
       liveParsedState: this.state.liveParsedState,
       publishFinalText: async (params) => {

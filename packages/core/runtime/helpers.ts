@@ -88,22 +88,30 @@ export function formatQuestionPrompt(questions: NormalizedQuestion[]): string {
   return lines.join("\n\n");
 }
 
-export function buildQuestionAnswers(
-  questions: NormalizedQuestion[],
-  responseText: string
-): Array<Array<string>> {
-  const trimmed = responseText.trim();
-  if (questions.length <= 1) {
-    return [[trimmed]];
-  }
+/**
+ * Format a single question in a multi-question flow. Shows a `(i/N)` marker
+ * so the user knows how many answers are still expected.
+ */
+export function formatSingleQuestionPrompt(
+  question: NormalizedQuestion,
+  index: number,
+  total: number
+): string {
+  const prefix = total > 1 ? `(${index + 1}/${total}) ` : "";
+  const optionText = question.options?.length
+    ? `\nOptions: ${question.options.join(" / ")}`
+    : "";
+  return `${prefix}${question.question}${optionText}`;
+}
 
-  const lines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  return questions.map((_, index) => {
-    const line = lines[index] ?? "";
-    return [line];
-  });
+/**
+ * Wrap an array of per-question answer strings into the nested shape that
+ * `AgentAdapter.replyToQuestion` expects (`Array<Array<string>>`).
+ *
+ * We no longer split a single incoming message by newlines to spread it
+ * across multiple questions — multi-question flows ask one at a time and
+ * accumulate answers, so each entry here is already one user reply.
+ */
+export function buildQuestionAnswers(answers: string[]): Array<Array<string>> {
+  return answers.map((answer) => [answer]);
 }
