@@ -285,28 +285,40 @@ async function startKernelEventStreamWatcher(params: {
       onUpdate();
 
       void (async () => {
-        const updatedStatusTs = await deps.im.updateMessage(
-          request.channelId,
-          request.statusMessageTs,
-          buildStatusMessageForAgent({
-            agent: deps.agent,
-            request,
-            workingPath,
-            state: liveParsedState.get(messageKey),
-            statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
-          })
-        );
-        if (typeof updatedStatusTs === "string" && updatedStatusTs !== request.statusMessageTs) {
-          request.statusMessageTs = updatedStatusTs;
-          updateActiveRequest(request.channelId, request.threadId, { statusMessageTs: updatedStatusTs });
+        try {
+          const updatedStatusTs = await deps.im.updateMessage(
+            request.channelId,
+            request.statusMessageTs,
+            buildStatusMessageForAgent({
+              agent: deps.agent,
+              request,
+              workingPath,
+              state: liveParsedState.get(messageKey),
+              statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
+            })
+          );
+          if (typeof updatedStatusTs === "string" && updatedStatusTs !== request.statusMessageTs) {
+            request.statusMessageTs = updatedStatusTs;
+            updateActiveRequest(request.channelId, request.threadId, { statusMessageTs: updatedStatusTs });
+          }
+          setPendingQuestion(request.channelId, request.threadId, {
+            requestId,
+            sessionId: properties.sessionID ?? request.sessionId,
+            askedAt: Date.now(),
+            questions: normalized,
+            messageTs: request.statusMessageTs,
+          });
+        } catch (err) {
+          // Fire-and-forget update for an ask_user prompt. If this throws,
+          // we want to still register the pending question so the reply
+          // handler works; just surface the edit failure.
+          log.warn("Failed to refresh status for ask_user prompt", {
+            channelId: request.channelId,
+            threadId: request.threadId,
+            requestId,
+            error: String(err),
+          });
         }
-        setPendingQuestion(request.channelId, request.threadId, {
-          requestId,
-          sessionId: properties.sessionID ?? request.sessionId,
-          askedAt: Date.now(),
-          questions: normalized,
-          messageTs: request.statusMessageTs,
-        });
       })();
       return;
     }
@@ -341,11 +353,25 @@ export async function runOpenRequest(
 
   const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
-  const initialStatusTs = await deps.im.sendMessage(
-    context.channelId,
-    context.replyThreadId,
-    `${providerLabel} is running...`
-  );
+  let initialStatusTs: string | undefined;
+  try {
+    initialStatusTs = await deps.im.sendMessage(
+      context.channelId,
+      context.replyThreadId,
+      `${providerLabel} is running...`
+    );
+  } catch (err) {
+    // Swallow initial-status send failure so the request lifecycle below never
+    // gets skipped by an unhandled rejection. A transient Slack error on the
+    // very first chat.postMessage should not abort the whole run: the user
+    // already sent us a message and is waiting for agent output.
+    log.error("Initial status message send threw", {
+      channelId: context.channelId,
+      threadId: context.replyThreadId,
+      error: String(err),
+    });
+    initialStatusTs = undefined;
+  }
 
   if (!initialStatusTs) {
     log.error("Failed to send status message");
@@ -422,24 +448,48 @@ export async function runOpenRequest(
         }
 
         const updateError = deps.im.takeUpdateError?.(context.channelId, statusTs);
-        if (updateError) {
+        // Only post a fallback replacement if the request is still processing.
+        // A stop command or failure could have transitioned us to "failed"
+        // between the update attempt and now; posting a replacement status
+        // after stop would ghost-write the status back into the channel.
+        if (updateError && request.state === "processing") {
           const compactError = updateError.replace(/\s+/g, " ").trim().slice(0, 180);
           const fallbackNotice = compactError.length > 0
             ? `Status update failed: ${compactError}`
             : "Status update failed due to an unknown error.";
-          await deps.im.sendMessage(
-            context.channelId,
-            context.replyThreadId,
-            `${fallbackNotice}\nSwitching to a new status message below.`
-          );
-          const replacementStatusTs = await deps.im.sendMessage(
-            context.channelId,
-            context.replyThreadId,
-            statusText
-          );
-          if (typeof replacementStatusTs === "string" && replacementStatusTs.length > 0) {
-            statusTs = replacementStatusTs;
-            request.statusMessageTs = replacementStatusTs;
+          try {
+            await deps.im.sendMessage(
+              context.channelId,
+              context.replyThreadId,
+              `${fallbackNotice}\nSwitching to a new status message below.`
+            );
+            const replacementStatusTs = await deps.im.sendMessage(
+              context.channelId,
+              context.replyThreadId,
+              statusText
+            );
+            if (typeof replacementStatusTs === "string" && replacementStatusTs.length > 0) {
+              statusTs = replacementStatusTs;
+              request.statusMessageTs = replacementStatusTs;
+              // Persist the new statusTs immediately so a crash before the
+              // next debounced save doesn't leave disk pointing at the old
+              // rate-limited TS (which would mis-route recovery edits).
+              updateActiveRequest(
+                context.channelId,
+                context.threadId,
+                { statusMessageTs: replacementStatusTs },
+                { immediate: true }
+              );
+            }
+          } catch (err) {
+            // Replacement send failed (likely also rate-limited or channel-
+            // level throttled). Don't crash the tick — keep statusTs pointing
+            // at the old message; the next tick will try to update again.
+            log.warn("Fallback status replacement send failed", {
+              channelId: context.channelId,
+              threadId: context.replyThreadId,
+              error: String(err),
+            });
           }
         }
       }
@@ -518,6 +568,16 @@ export async function runTrackedRequest(
     progressInFlight = true;
     try {
       await onProgressTick();
+    } catch (err) {
+      // A throw from onProgressTick would otherwise become an unhandled
+      // rejection via `void runProgressTick()` in setInterval below, leaving
+      // the status message frozen for the rest of the run. Log and continue;
+      // the next tick will retry.
+      log.warn("Progress tick failed", {
+        sessionId: request.sessionId,
+        channelId: request.channelId,
+        error: String(err),
+      });
     } finally {
       progressInFlight = false;
     }

@@ -12,6 +12,16 @@ describe("incoming message flow helpers", () => {
     expect(parseIncomingCommand("help")).toBeNull();
   });
 
+  it("parses stats command variants", () => {
+    expect(parseIncomingCommand("<@U123> stats")).toBe("stats");
+    expect(parseIncomingCommand("@ode: stats")).toBe("stats");
+    expect(parseIncomingCommand("／stats")).toBe("stats");
+    expect(parseIncomingCommand("/stats")).toBe("stats");
+    expect(parseIncomingCommand("<@U123> debug stats")).toBe("stats");
+    expect(parseIncomingCommand("stats")).toBe("stats");
+    expect(parseIncomingCommand("statsy")).toBeNull();
+  });
+
   it("formats drop reason messages", () => {
     expect(formatIncomingDropMessage("not_mentioned_and_inactive")).toContain("Not mentioned");
     expect(formatIncomingDropMessage("self_message")).toContain("Self message");

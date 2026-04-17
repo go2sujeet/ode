@@ -381,7 +381,8 @@ export function createActiveRequest(
 export function updateActiveRequest(
   channelId: string,
   threadId: string,
-  updates: Partial<ActiveRequest>
+  updates: Partial<ActiveRequest>,
+  options?: { immediate?: boolean }
 ): void {
   const session = loadSession(channelId, threadId);
   if (!session?.activeRequest) return;
@@ -389,7 +390,7 @@ export function updateActiveRequest(
   const sanitized = { ...updates } as Partial<ActiveRequest>;
   delete sanitized.tools;
   Object.assign(session.activeRequest, sanitized, { lastUpdatedAt: Date.now() });
-  saveSession(session, { immediate: false });
+  saveSession(session, { immediate: options?.immediate ?? false });
 }
 
 export function completeActiveRequest(

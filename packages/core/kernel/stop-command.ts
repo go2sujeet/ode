@@ -29,8 +29,17 @@ export async function handleStopCommand(params: {
   try {
     const cwd = session.workingDirectory;
     await deps.agent.abortSession(session.sessionId, cwd);
-  } catch {
-    // Ignore abort errors
+  } catch (err) {
+    // An abort failure means the agent may keep emitting events and burning
+    // tokens while the user thinks the request is stopped. Surface it so we
+    // can investigate, but don't fail the stop path — delete/clear below is
+    // still the right thing.
+    log.warn("Failed to abort agent session on stop", {
+      sessionId: session.sessionId,
+      channelId,
+      threadId,
+      error: String(err),
+    });
   }
 
   if (!request || request.state !== "processing") {

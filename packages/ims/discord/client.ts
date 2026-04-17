@@ -101,7 +101,7 @@ async function maybeHandleLauncherCommand(params: {
   logContext: "thread" | "parent channel" | "mention";
 }): Promise<boolean> {
   const command = parseIncomingCommand(params.text);
-  if (!command) return false;
+  if (command !== "setting") return false;
   await sendLauncherReplyForMessage({
     message: params.message,
     command,

@@ -11,6 +11,7 @@ import {
   stopDiscordRuntime,
   startLarkRuntime,
   stopLarkRuntime,
+  deliveryStats,
 } from "@/ims";
 import { type ChildProcess } from "child_process";
 import { watchFile, unwatchFile } from "fs";
@@ -32,6 +33,7 @@ import { markRuntimeReady, scheduleUpgradeRestart } from "@/core/daemon/control"
 import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
 import { runOnboardingIfNeeded } from "./onboarding";
 import { startCronJobScheduler, stopCronJobScheduler } from "@/core/cron/scheduler";
+import { initSentry, shutdownSentry } from "@/core/observability/sentry";
 import packageJson from "../../package.json" with { type: "json" };
 
 const CONFIG_WATCH_INTERVAL_MS = 1000;
@@ -255,6 +257,8 @@ function startLocalConfigWatcher(): void {
 }
 
 async function main(): Promise<void> {
+  initSentry({ release: `ode@${CURRENT_VERSION}` });
+
   let defaultCwd: string | null = null;
   try {
     defaultCwd = getDefaultCwd();
@@ -306,6 +310,15 @@ async function main(): Promise<void> {
       }
       stopAutoUpgradeScheduler();
       await stopAllServers();
+      try {
+        const dumpPath = deliveryStats.dumpToFileSync();
+        log.info("Delivery stats snapshot written", { dumpPath });
+      } catch (err) {
+        log.warn("Failed to write delivery stats snapshot on shutdown", {
+          error: String(err),
+        });
+      }
+      await shutdownSentry();
       log.debug("Cleanup complete");
       process.exit(0);
     } catch (err) {

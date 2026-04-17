@@ -2,11 +2,7 @@ import type { IMAdapter } from "@/core/types";
 import { getMessageUpdateIntervalMs } from "@/config";
 import { log } from "@/utils";
 import { CoalescedUpdateQueue } from "@/shared/queue/coalesced-update-queue";
-
-function isRateLimitError(error: unknown): boolean {
-  const message = String(error || "").toLowerCase();
-  return message.includes("429") || message.includes("rate limit") || message.includes("ratelimit") || message.includes("rate_limited");
-}
+import { isRateLimitError } from "@/shared/delivery/rate-limit";
 
 export function createRateLimitedImAdapter(
   im: IMAdapter,

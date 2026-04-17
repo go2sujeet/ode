@@ -29,6 +29,7 @@ import {
 import { createProcessorManager } from "@/ims/shared/processor-manager";
 import { SlackAuthRegistry, type WorkspaceAuth } from "@/ims/slack/state/auth-registry";
 import { SlackMessageUpdateManager } from "@/ims/slack/message-update-manager";
+import { deliveryStats, isRateLimitError } from "@/ims/shared/delivery-stats";
 
 export interface MessageContext {
   channelId: string;
@@ -330,16 +331,51 @@ export async function sendMessage(
 
   let lastTs: string | undefined;
   for (const chunk of chunks) {
-    const result = await slackApp.client.chat.postMessage({
-      channel: rawChannelId,
-      thread_ts: threadId,
-      text: chunk,
-      token: botToken,
+    deliveryStats.recordAttempt({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "send",
+      processorId,
     });
-    lastTs = result.ts;
-    if (botToken && result.ts) {
-      slackAuthRegistry.setThreadBotToken(rawChannelId, threadId, botToken);
-      slackAuthRegistry.setMessageBotToken(rawChannelId, result.ts, botToken);
+    try {
+      const result = await slackApp.client.chat.postMessage({
+        channel: rawChannelId,
+        thread_ts: threadId,
+        text: chunk,
+        token: botToken,
+      });
+      deliveryStats.recordSuccess({
+        platform: "slack",
+        channelId: rawChannelId,
+        op: "send",
+        processorId,
+      });
+      lastTs = result.ts;
+      if (botToken && result.ts) {
+        slackAuthRegistry.setThreadBotToken(rawChannelId, threadId, botToken);
+        slackAuthRegistry.setMessageBotToken(rawChannelId, result.ts, botToken);
+      }
+    } catch (err) {
+      const rateLimited = isRateLimitError(err);
+      deliveryStats.recordFailure({
+        platform: "slack",
+        channelId: rawChannelId,
+        op: "send",
+        error: err,
+        rateLimited,
+        processorId,
+      });
+      deliveryStats.logThrottledWarn(
+        `slack-send:${rawChannelId}`,
+        "Slack sendMessage failed",
+        {
+          channelId: rawChannelId,
+          threadId,
+          rateLimited,
+          error: String(err),
+        },
+      );
+      throw err;
     }
   }
   return lastTs;
@@ -375,14 +411,48 @@ export async function sendChannelMessage(
 
   let lastTs: string | undefined;
   for (const chunk of chunks) {
-    const result = await slackApp.client.chat.postMessage({
-      channel: rawChannelId,
-      text: chunk,
-      token: botToken,
+    deliveryStats.recordAttempt({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "send",
+      processorId,
     });
-    lastTs = result.ts;
-    if (botToken && result.ts) {
-      slackAuthRegistry.setMessageBotToken(rawChannelId, result.ts, botToken);
+    try {
+      const result = await slackApp.client.chat.postMessage({
+        channel: rawChannelId,
+        text: chunk,
+        token: botToken,
+      });
+      deliveryStats.recordSuccess({
+        platform: "slack",
+        channelId: rawChannelId,
+        op: "send",
+        processorId,
+      });
+      lastTs = result.ts;
+      if (botToken && result.ts) {
+        slackAuthRegistry.setMessageBotToken(rawChannelId, result.ts, botToken);
+      }
+    } catch (err) {
+      const rateLimited = isRateLimitError(err);
+      deliveryStats.recordFailure({
+        platform: "slack",
+        channelId: rawChannelId,
+        op: "send",
+        error: err,
+        rateLimited,
+        processorId,
+      });
+      deliveryStats.logThrottledWarn(
+        `slack-send-channel:${rawChannelId}`,
+        "Slack sendChannelMessage failed",
+        {
+          channelId: rawChannelId,
+          rateLimited,
+          error: String(err),
+        },
+      );
+      throw err;
     }
   }
   return lastTs;
@@ -393,8 +463,14 @@ export async function deleteMessage(
   messageTs: string,
   processorId?: string
 ): Promise<void> {
+  const rawChannelId = channelId;
+  deliveryStats.recordAttempt({
+    platform: "slack",
+    channelId: rawChannelId,
+    op: "delete",
+    processorId,
+  });
   try {
-    const rawChannelId = channelId;
     const slackApp = getApp();
     const botToken = getSlackBotTokenForProcessor(processorId)
       ?? slackAuthRegistry.getMessageBotToken(rawChannelId, messageTs)
@@ -407,8 +483,34 @@ export async function deleteMessage(
       ts: messageTs,
       token: botToken,
     });
-  } catch {
-    // Ignore delete failures
+    deliveryStats.recordSuccess({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "delete",
+      processorId,
+    });
+  } catch (err) {
+    const rateLimited = isRateLimitError(err);
+    deliveryStats.recordFailure({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "delete",
+      error: err,
+      rateLimited,
+      processorId,
+      messageTs,
+    });
+    deliveryStats.logThrottledWarn(
+      `slack-delete:${rawChannelId}`,
+      "Slack deleteMessage failed",
+      {
+        channelId: rawChannelId,
+        messageTs,
+        rateLimited,
+        error: String(err),
+      },
+    );
+    // Ignore delete failures for callers; recorded in stats instead.
   }
 }
 
@@ -418,8 +520,14 @@ async function performSlackMessageUpdate(
   text: string,
   processorId?: string
 ): Promise<void> {
+  const rawChannelId = channelId;
+  deliveryStats.recordAttempt({
+    platform: "slack",
+    channelId: rawChannelId,
+    op: "update",
+    processorId,
+  });
   try {
-    const rawChannelId = channelId;
     const slackApp = getApp();
     const formattedText = markdownToSlack(text);
     const truncatedText = truncateForSlack(formattedText);
@@ -435,13 +543,43 @@ async function performSlackMessageUpdate(
       text: truncatedText,
       token: botToken,
     });
+    deliveryStats.recordSuccess({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "update",
+      processorId,
+    });
   } catch (err) {
+    const rateLimited = isRateLimitError(err);
+    deliveryStats.recordFailure({
+      platform: "slack",
+      channelId: rawChannelId,
+      op: "update",
+      error: err,
+      rateLimited,
+      processorId,
+      messageTs,
+    });
     const message = String(err);
     log.debug("Failed to update message", { error: message });
-    const normalized = message.toLowerCase();
-    if (normalized.includes("429") || normalized.includes("rate_limited") || normalized.includes("rate limit")) {
+    if (rateLimited) {
+      // Rate-limit errors are rethrown so the core layer can mark the message
+      // as 429-ed and switch to the "post final result as a new message"
+      // fallback path in runtime-support.ts.
       throw err;
     }
+    // Non-429 update failures used to be silently swallowed at DEBUG level,
+    // which hid "status message disappeared" bugs. Surface them at WARN,
+    // throttled per channel to avoid flooding the logs on a flapping channel.
+    deliveryStats.logThrottledWarn(
+      `slack-update:${rawChannelId}`,
+      "Slack updateMessage failed (non-429)",
+      {
+        channelId: rawChannelId,
+        messageTs,
+        error: message,
+      },
+    );
   }
 }
 

@@ -9,7 +9,7 @@ export type IncomingFlowResult =
   | { type: "stop"; text: string }
   | { type: "forward"; text: string };
 
-export type IncomingCommand = "setting";
+export type IncomingCommand = "setting" | "stats";
 
 export function formatIncomingDropMessage(reason: IncomingIgnoreReason): string {
   switch (reason) {
@@ -31,5 +31,6 @@ export function parseIncomingCommand(text: string): IncomingCommand | null {
     .replace(/^(?:<@[^>]+>|@[^\s:：,，]+)[:：,，]?\s+/g, "")
     .toLowerCase();
   if (/^\/?settings?\b/.test(normalized)) return "setting";
+  if (/^\/?(?:debug\s+)?stats\b/.test(normalized)) return "stats";
   return null;
 }

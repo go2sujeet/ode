@@ -8,6 +8,10 @@ import type { InboundDecision } from "@/core/model/inbound-decision";
 import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
 import { RuntimeCache } from "@/shared/cache/runtime-cache";
 import { SlackInboundAdapter } from "@/ims/slack/slack-inbound-adapter";
+import {
+  deliveryStats,
+  renderDeliveryStatsForSlack,
+} from "@/ims/shared/delivery-stats";
 
 type RouterDeps = {
   app: any;
@@ -163,27 +167,71 @@ async function maybeHandleLauncherCommand(params: {
   cleanText: string;
   isMention: boolean;
   channelId: string;
+  threadId: string;
   userId: string;
   client: any;
+  say: any;
 }): Promise<boolean> {
-  const { deps, cleanText, isMention, channelId, userId, client } = params;
+  const { deps, cleanText, isMention, channelId, threadId, userId, client, say } = params;
   const command = parseIncomingCommand(cleanText);
-  if (command !== "setting") return false;
-  if (isMention) {
-    log.info("Slack settings launcher command matched", {
-      channelId,
-      userId,
-      cleanText,
-    });
-    await deps.postGeneralSettingsLauncher(channelId, userId, client);
-  } else {
-    log.debug("Slack settings command ignored because bot was not mentioned", {
-      channelId,
-      userId,
-      cleanText,
-    });
+  if (command === "setting") {
+    if (isMention) {
+      log.info("Slack settings launcher command matched", {
+        channelId,
+        userId,
+        cleanText,
+      });
+      await deps.postGeneralSettingsLauncher(channelId, userId, client);
+    } else {
+      log.debug("Slack settings command ignored because bot was not mentioned", {
+        channelId,
+        userId,
+        cleanText,
+      });
+    }
+    return true;
   }
-  return true;
+  if (command === "stats") {
+    if (isMention) {
+      log.info("Slack delivery stats command matched", {
+        channelId,
+        userId,
+        cleanText,
+      });
+      await handleStatsCommand({ channelId, threadId, say });
+    } else {
+      log.debug("Slack stats command ignored because bot was not mentioned", {
+        channelId,
+        userId,
+        cleanText,
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
+async function handleStatsCommand(params: {
+  channelId: string;
+  threadId: string;
+  say: any;
+}): Promise<void> {
+  const { channelId, threadId, say } = params;
+  const rendered = renderDeliveryStatsForSlack({
+    channelId,
+    platform: "slack",
+  });
+  let dumpNote = "";
+  try {
+    const dumpPath = await deliveryStats.dumpToFile();
+    dumpNote = `\n_dumped full snapshot to_ \`${dumpPath}\``;
+  } catch (err) {
+    dumpNote = `\n_failed to dump snapshot: ${String(err)}_`;
+  }
+  await say({
+    text: `${rendered}${dumpNote}`,
+    thread_ts: threadId,
+  });
 }
 
 function getCacheKey(credentialKey?: string): string | undefined {
@@ -341,8 +389,10 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
         cleanText,
         isMention,
         channelId,
+        threadId,
         userId,
         client,
+        say,
       })) {
         return;
       }

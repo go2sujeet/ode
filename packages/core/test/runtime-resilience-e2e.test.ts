@@ -70,11 +70,28 @@ function createFakeIm(logs: {
 }, options?: {
   failUpdateWith429?: boolean;
   failUpdateWithErrorOnce?: string;
+  failAllSendsWith?: string;
+  failInitialSendWith?: string;
+  failReplacementSendWith?: string;
 }): IMAdapter {
   let nextTs = 0;
-  let failedOnce = false;
+  let failedUpdateOnce = false;
+  let sendCallCount = 0;
   return {
     sendMessage: async (channelId, threadId, text) => {
+      sendCallCount += 1;
+      if (options?.failInitialSendWith && sendCallCount === 1) {
+        throw new Error(options.failInitialSendWith);
+      }
+      if (
+        options?.failReplacementSendWith
+        && (text.startsWith("Status update failed:") || /switching to a new status message/i.test(text))
+      ) {
+        throw new Error(options.failReplacementSendWith);
+      }
+      if (options?.failAllSendsWith) {
+        throw new Error(options.failAllSendsWith);
+      }
       nextTs += 1;
       const messageTs = `ts-${nextTs}`;
       logs.sends.push({ channelId, threadId, text, messageTs });
@@ -85,8 +102,8 @@ function createFakeIm(logs: {
       if (options?.failUpdateWith429) {
         throw new Error("429 rate limited");
       }
-      if (!failedOnce && options?.failUpdateWithErrorOnce) {
-        failedOnce = true;
+      if (!failedUpdateOnce && options?.failUpdateWithErrorOnce) {
+        failedUpdateOnce = true;
         throw new Error(options.failUpdateWithErrorOnce);
       }
     },
@@ -324,8 +341,76 @@ describe("core runtime resilience e2e", () => {
     deleteSession(context.channelId, context.threadId);
   });
 
-  it("recovers pending in-flight requests after restart", async () => {
+  it("does not crash when the initial status send throws", async () => {
+    const logs = { sends: [], updates: [] } as {
+      sends: Array<{ channelId: string; threadId: string; text: string; messageTs: string }>;
+      updates: Array<{ channelId: string; messageTs: string; text: string }>;
+    };
+    const im = createFakeIm(logs, { failInitialSendWith: "socket hang up" });
+    const { agent } = createFakeAgent({ responseText: "never mind" });
+    const runtime = createCoreRuntime({ platform: "slack", im, agent });
+
+    const channelId = uniqueId("CE2E-INIT-FAIL");
+    const threadId = uniqueId("TE2E-INIT-FAIL");
+
+    // Should not throw — initial send failure used to bubble up as an
+    // unhandled rejection and abort the whole request silently.
+    await expect(
+      runtime.handleInboundEvent(toInboundEvent({
+        channelId,
+        threadId,
+        userId: "UE2E-init",
+        messageId: uniqueId("ME2E-init"),
+        text: "hello",
+      }))
+    ).resolves.toBeUndefined();
+
+    deleteSession(channelId, threadId);
+  }, 10000);
+
+  it("does not crash when the fallback replacement send also fails", async () => {
     await withFastMessageUpdates(async () => {
+      const logs = { sends: [], updates: [] } as {
+        sends: Array<{ channelId: string; threadId: string; text: string; messageTs: string }>;
+        updates: Array<{ channelId: string; messageTs: string; text: string }>;
+      };
+      // First update always 429s → triggers the fallback path. Replacement
+      // sends also fail, simulating channel-wide throttle. The tick should
+      // absorb the error and keep running.
+      const im = createFakeIm(logs, {
+        failUpdateWith429: true,
+        failReplacementSendWith: "rate_limited",
+      });
+      const { agent } = createFakeAgent({
+        delayMs: 1200,
+        responseText: "agent finished anyway",
+      });
+      const runtime = createCoreRuntime({ platform: "slack", im, agent });
+
+      const channelId = uniqueId("CE2E-FB-FAIL");
+      const threadId = uniqueId("TE2E-FB-FAIL");
+
+      await runtime.handleInboundEvent(toInboundEvent({
+        channelId,
+        threadId,
+        userId: "UE2E-fbfail",
+        messageId: uniqueId("ME2E-fbfail"),
+        text: "channel-wide throttle scenario",
+      }));
+
+      // Final agent output should still reach the channel as a new message,
+      // proving the tick didn't crash.
+      await waitFor(
+        () => logs.sends.some((entry) => entry.text === "agent finished anyway"),
+        6000,
+      );
+      expect(logs.sends.some((entry) => entry.text === "agent finished anyway")).toBe(true);
+
+      deleteSession(channelId, threadId);
+    });
+  }, 15000);
+
+  it("recovers pending in-flight requests after restart", async () => {    await withFastMessageUpdates(async () => {
     const logs = { sends: [], updates: [] } as {
       sends: Array<{ channelId: string; threadId: string; text: string; messageTs: string }>;
       updates: Array<{ channelId: string; messageTs: string; text: string }>;
