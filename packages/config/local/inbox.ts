@@ -89,6 +89,14 @@ export interface MessageThreadDetail extends MessageThreadSummary {
   details: MessageDetail[];
 }
 
+export interface MessageDetailPage {
+  items: MessageDetail[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface MessageThreadPage {
   items: MessageThreadSummary[];
   total: number;
@@ -921,6 +929,55 @@ export function getMessageThreadById(threadKey: string): MessageThreadDetail | n
     ...summary,
     context: safeJsonParse<Record<string, unknown>>(row.context_json),
     details: detailRows.map(mapDetailRow),
+  };
+}
+
+export function getMessageThreadDetailPage(
+  threadKey: string,
+  params?: { page?: number; pageSize?: number }
+): MessageDetailPage | null {
+  const db = getDatabase();
+  const row = db.query("SELECT 1 FROM message_thread WHERE id = ?").get(threadKey) as
+    | { 1: number }
+    | null;
+  if (!row) return null;
+  const pageSize = Math.max(1, Math.min(100, Math.floor(params?.pageSize ?? 10)));
+  const page = Math.max(1, Math.floor(params?.page ?? 1));
+  const offset = (page - 1) * pageSize;
+
+  const totalRow = db
+    .query("SELECT COUNT(*) AS count FROM message_detail WHERE thread_id = ?")
+    .get(threadKey) as { count: number } | null;
+  const total = totalRow?.count ?? 0;
+
+  const detailRows = db
+    .query(
+      `SELECT * FROM message_detail
+       WHERE thread_id = ?
+       ORDER BY seq ASC
+       LIMIT ? OFFSET ?`
+    )
+    .all(threadKey, pageSize, offset) as DetailRow[];
+
+  return {
+    items: detailRows.map(mapDetailRow),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+export function getMessageThreadSummaryById(threadKey: string): (MessageThreadSummary & {
+  context: Record<string, unknown> | null;
+}) | null {
+  const db = getDatabase();
+  const row = db.query("SELECT * FROM message_thread WHERE id = ?").get(threadKey) as ThreadRow | null;
+  if (!row) return null;
+  const summary = mapThreadSummaryRow(db, row);
+  return {
+    ...summary,
+    context: safeJsonParse<Record<string, unknown>>(row.context_json),
   };
 }
 

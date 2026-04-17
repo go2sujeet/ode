@@ -30,6 +30,7 @@ import { formatSingleQuestionPrompt } from "@/core/runtime/helpers";
 import {
   buildSessionMessageState,
   extractEventSessionId,
+  formatElapsedTime,
   getStatusMessageKey,
   type SessionEvent,
   type SessionMessageState,
@@ -290,7 +291,63 @@ async function startKernelEventStreamWatcher(params: {
           }
         }
         clearPendingQuestion(request.channelId, request.threadId);
-        flushStateUpdates(true);
+
+        // The old status message now sits above the question/answer
+        // messages, so any subsequent live updates would render out of
+        // order in the thread. Replace it with a fresh status message
+        // posted at the bottom so resumed progress stays in context.
+        const oldStatusTs = request.statusMessageTs;
+        const oldStatusKey = getStatusMessageKey(request);
+        void (async () => {
+          try {
+            deps.im.cancelPendingUpdates?.(request.channelId, oldStatusTs);
+            const statusRateLimited = deps.im.wasRateLimited?.(request.channelId, oldStatusTs) ?? false;
+
+            if (!statusRateLimited) {
+              try {
+                await deps.im.deleteMessage(request.channelId, oldStatusTs);
+              } catch (err) {
+                log.warn("Failed to delete stale status message after question reply", {
+                  channelId: request.channelId,
+                  threadId: request.threadId,
+                  statusTs: oldStatusTs,
+                  error: String(err),
+                });
+              }
+            } else {
+              log.warn("Skipping status message delete due to prior 429", {
+                channelId: request.channelId,
+                threadId: request.threadId,
+                statusTs: oldStatusTs,
+              });
+            }
+            deps.im.markMessageFinalized?.(request.channelId, oldStatusTs);
+
+            const placeholder = `_Working_ (${formatElapsedTime(request.startedAt)})`;
+            const newStatusTs = await deps.im.sendMessage(
+              request.channelId,
+              request.replyThreadId,
+              placeholder,
+            );
+            if (typeof newStatusTs === "string" && newStatusTs.length > 0) {
+              request.statusMessageTs = newStatusTs;
+              updateActiveRequest(request.channelId, request.threadId, {
+                statusMessageTs: newStatusTs,
+              });
+              // Drop state keyed on the old ts; live events after the
+              // reply will populate the new key from scratch.
+              liveEventHistory.delete(oldStatusKey);
+              liveParsedState.delete(oldStatusKey);
+            }
+          } catch (err) {
+            log.warn("Failed to rotate status message after question reply", {
+              channelId: request.channelId,
+              threadId: request.threadId,
+              error: String(err),
+            });
+          }
+        })();
+
         return;
       }
       if (event.type !== "question.asked") {
@@ -314,11 +371,14 @@ async function startKernelEventStreamWatcher(params: {
       const normalized = deps.agent.normalizeQuestions(properties.questions);
       if (normalized.length === 0) return;
 
-      request.statusFrozen = true;
-      const prompt = formatSingleQuestionPrompt(normalized[0]!, 0, normalized.length);
-      request.currentText = prompt;
-      onUpdate();
-
+      // Post the first question as a standalone thread reply instead of
+      // editing the live-status message. Editing the status used to work
+      // but it left the status "frozen": once the user answered, the
+      // agent would keep producing tool/text events while the status
+      // message was still pinned to the question text, so the UI saw
+      // nothing until the final result arrived. Keeping the status free
+      // means resumed progress updates flow normally and the question
+      // persists as its own message in Slack.
       let questionDetailId: string | null = null;
       if (threadKey) {
         try {
@@ -343,41 +403,26 @@ async function startKernelEventStreamWatcher(params: {
 
       void (async () => {
         try {
-          const updatedStatusTs = await deps.im.updateMessage(
-            request.channelId,
-            request.statusMessageTs,
-            buildStatusMessageForAgent({
-              agent: deps.agent,
-              request,
-              workingPath,
-              state: liveParsedState.get(messageKey),
-              statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
-            })
-          );
-          if (typeof updatedStatusTs === "string" && updatedStatusTs !== request.statusMessageTs) {
-            request.statusMessageTs = updatedStatusTs;
-            updateActiveRequest(request.channelId, request.threadId, { statusMessageTs: updatedStatusTs });
-          }
-          setPendingQuestion(request.channelId, request.threadId, {
-            requestId,
-            sessionId: properties.sessionID ?? request.sessionId,
-            askedAt: Date.now(),
-            questions: normalized,
-            messageTs: request.statusMessageTs,
-            collectedAnswers: [],
-            questionDetailId,
-          });
+          const promptText = formatSingleQuestionPrompt(normalized[0]!, 0, normalized.length);
+          await deps.im.sendMessage(request.channelId, request.replyThreadId, promptText);
         } catch (err) {
-          // Fire-and-forget update for an ask_user prompt. If this throws,
-          // we want to still register the pending question so the reply
-          // handler works; just surface the edit failure.
-          log.warn("Failed to refresh status for ask_user prompt", {
+          log.warn("Failed to post ask_user question", {
             channelId: request.channelId,
             threadId: request.threadId,
             requestId,
             error: String(err),
           });
         }
+
+        setPendingQuestion(request.channelId, request.threadId, {
+          requestId,
+          sessionId: properties.sessionID ?? request.sessionId,
+          askedAt: Date.now(),
+          questions: normalized,
+          messageTs: request.statusMessageTs,
+          collectedAnswers: [],
+          questionDetailId,
+        });
       })();
       return;
     }
