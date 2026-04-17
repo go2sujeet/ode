@@ -23,10 +23,14 @@ describe("SlackMessageUpdateManager", () => {
 
   it("drops pending and future updates after finalization", async () => {
     const calls: string[] = [];
-    const control: { release?: () => void } = {};
+    const control: { release?: () => void; started?: () => void } = {};
+    const startedSignal = new Promise<void>((resolve) => {
+      control.started = resolve;
+    });
     const manager = new SlackMessageUpdateManager(async ({ text }) => {
       calls.push(text);
       if (text === "live") {
+        control.started?.();
         await new Promise<void>((resolve) => {
           control.release = resolve;
         });
@@ -34,7 +38,10 @@ describe("SlackMessageUpdateManager", () => {
     });
 
     const live = manager.updateMessage({ channelId: "C2", messageTs: "2", text: "live", processorId: "p1" });
-    await sleep(5);
+    // Wait deterministically for the "live" worker to be mid-flight (post-push,
+    // pre-release) instead of relying on a short sleep, which is flaky on slow
+    // CI runners.
+    await startedSignal;
     const stale = manager.updateMessage({ channelId: "C2", messageTs: "2", text: "stale", processorId: "p2" });
     manager.markMessageFinalized("C2", "2");
     if (control.release) {
