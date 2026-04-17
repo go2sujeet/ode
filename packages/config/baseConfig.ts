@@ -14,7 +14,7 @@ export const TOOL_DISPLAY_CONFIG: Record<
 > = {
   minimum: { itemLimit: 4, detailLimit: 30 },
   medium: { itemLimit: 6, detailLimit: 100 },
-  aggressive: { itemLimit: 8, detailLimit: null },
+  aggressive: { itemLimit: 8, detailLimit: 200 },
 };
 
 export const GIT_STRATEGY_VALUES = ["worktree", "default"] as const;

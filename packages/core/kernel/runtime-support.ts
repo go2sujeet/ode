@@ -1,4 +1,3 @@
-import { getUserGeneralSettings } from "@/config";
 import { saveSession, type PersistedSession } from "@/config/local/sessions";
 import { splitResultMessage } from "@/core/runtime/result-message";
 import type { IMAdapter } from "@/core/types";
@@ -47,23 +46,19 @@ export async function publishFinalText(params: {
   text: string;
 }): Promise<void> {
   const { im, channelId, threadId, statusTs, text } = params;
-  const statusFormat = getUserGeneralSettings().defaultStatusMessageFormat;
   const finalChunks = splitResultMessage(text);
   const statusRateLimited = im.wasRateLimited?.(channelId, statusTs) ?? false;
   const statusRateLimitError = im.getRateLimitError?.(channelId, statusTs);
 
   im.cancelPendingUpdates?.(channelId, statusTs);
 
-  // Result message is always sent as a new message. When the previous logic
-  // would have overwritten the status message with the final result (or a
-  // pointer like "Final result posted below."), we instead delete the old
-  // status message after the result is posted.
+  // Result message is always sent as a new message. After posting, we delete
+  // the old status message so the thread doesn't keep a stale "is running..."
+  // line hanging around.
   //
-  // The status message is left intact when:
-  //  * format is "aggressive" (status is treated as a persistent record), or
-  //  * we hit a prior 429 on the status TS (editing/deleting risks further errors).
-  const shouldDeleteStatus =
-    statusFormat !== "aggressive" && !statusRateLimited;
+  // The one exception is a prior 429 on the status TS — editing/deleting that
+  // message is likely to hit the same rate limit again, so we leave it be.
+  const shouldDeleteStatus = !statusRateLimited;
 
   if (statusRateLimited) {
     log.warn("Skipping final status edit/delete due to prior 429; posting final result as new message", {
