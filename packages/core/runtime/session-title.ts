@@ -90,24 +90,39 @@ function createTitleOnlyState(title: string, startedAt: number): SessionMessageS
 
 export async function maybeGenerateSessionTitle(params: {
   prompt: string;
-  stateKey: string;
+  /**
+   * Resolves to the live-state key to use when reading/writing the
+   * parsed state for the current request. Accepting a getter (rather
+   * than a snapshot string) means we pick up a fresh key if the status
+   * message is rotated mid-flight — otherwise title generation would
+   * race with rotation and write the title to an orphan map entry.
+   */
+  getStateKey: () => string;
   liveParsedState: Map<string, SessionMessageState>;
   startedAt: number;
   onTitleGenerated?: (title: string) => Promise<void> | void;
 }): Promise<void> {
-  const { prompt, stateKey, liveParsedState, startedAt, onTitleGenerated } = params;
+  const { prompt, getStateKey, liveParsedState, startedAt, onTitleGenerated } = params;
   if (!prompt.trim()) return;
-  if (inFlight.has(stateKey)) return;
 
-  const existingState = liveParsedState.get(stateKey);
+  const entryKey = getStateKey();
+  if (inFlight.has(entryKey)) return;
+
+  const existingState = liveParsedState.get(entryKey);
   if (existingState?.sessionTitle) return;
 
-  inFlight.add(stateKey);
+  inFlight.add(entryKey);
   try {
     const title = await generateTitleFromPrompt(prompt);
     if (!title) return;
 
-    const nextState = liveParsedState.get(stateKey);
+    // Re-read the key after the async call. Status message rotation (for
+    // example when the user just answered a question) may have re-keyed
+    // `liveParsedState` in the interim; writing to the key we captured
+    // at function entry would leave the title stranded under an orphan
+    // key while the real state lives under the new one.
+    const writeKey = getStateKey();
+    const nextState = liveParsedState.get(writeKey);
     if (nextState) {
       if (!nextState.sessionTitle) {
         nextState.sessionTitle = title;
@@ -117,7 +132,7 @@ export async function maybeGenerateSessionTitle(params: {
           await onTitleGenerated(title);
         } catch (error) {
           log.debug("Session title hook failed", {
-            stateKey,
+            stateKey: writeKey,
             error: String(error),
           });
         }
@@ -125,18 +140,18 @@ export async function maybeGenerateSessionTitle(params: {
       return;
     }
 
-    liveParsedState.set(stateKey, createTitleOnlyState(title, startedAt));
+    liveParsedState.set(writeKey, createTitleOnlyState(title, startedAt));
     if (onTitleGenerated) {
       try {
         await onTitleGenerated(title);
       } catch (error) {
         log.debug("Session title hook failed", {
-          stateKey,
+          stateKey: writeKey,
           error: String(error),
         });
       }
     }
   } finally {
-    inFlight.delete(stateKey);
+    inFlight.delete(entryKey);
   }
 }

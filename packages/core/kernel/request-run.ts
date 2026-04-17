@@ -30,7 +30,6 @@ import { formatSingleQuestionPrompt } from "@/core/runtime/helpers";
 import {
   buildSessionMessageState,
   extractEventSessionId,
-  formatElapsedTime,
   getStatusMessageKey,
   type SessionEvent,
   type SessionMessageState,
@@ -181,10 +180,26 @@ async function startKernelEventStreamWatcher(params: {
   const providerId = deps.agent.getProviderForSession(request.sessionId);
   const providerTag = providerId.toUpperCase();
 
-  const messageKey = getStatusMessageKey(request);
+  let messageKey = getStatusMessageKey(request);
   const eventHistory = liveEventHistory.get(messageKey) ?? [];
   if (!liveEventHistory.has(messageKey)) {
     liveEventHistory.set(messageKey, eventHistory);
+  }
+
+  /**
+   * Re-home the live-state buffers to a new key after the status message
+   * is rotated (e.g. after the user answers a question and we delete +
+   * resend the status message). `eventHistory` itself is the same array
+   * object as before — only the Map keys move.
+   */
+  function migrateMessageKey(newKey: string): void {
+    if (newKey === messageKey) return;
+    liveEventHistory.delete(messageKey);
+    liveEventHistory.set(newKey, eventHistory);
+    const parsed = liveParsedState.get(messageKey);
+    liveParsedState.delete(messageKey);
+    if (parsed) liveParsedState.set(newKey, parsed);
+    messageKey = newKey;
   }
 
   function applyStateFromEvents(): void {
@@ -297,7 +312,6 @@ async function startKernelEventStreamWatcher(params: {
         // order in the thread. Replace it with a fresh status message
         // posted at the bottom so resumed progress stays in context.
         const oldStatusTs = request.statusMessageTs;
-        const oldStatusKey = getStatusMessageKey(request);
         void (async () => {
           try {
             deps.im.cancelPendingUpdates?.(request.channelId, oldStatusTs);
@@ -323,21 +337,33 @@ async function startKernelEventStreamWatcher(params: {
             }
             deps.im.markMessageFinalized?.(request.channelId, oldStatusTs);
 
-            const placeholder = `_Working_ (${formatElapsedTime(request.startedAt)})`;
+            // Render the new status message from the already-parsed
+            // state so the user doesn't see a stale `_Working_` stub —
+            // the tools, current text and todos captured before the
+            // question are still relevant context for what the agent
+            // is about to continue doing. Progress tick will keep
+            // updating this new ts as new events arrive.
+            const statusText = buildStatusMessageForAgent({
+              agent: deps.agent,
+              request,
+              workingPath,
+              state: liveParsedState.get(messageKey),
+              statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
+            });
             const newStatusTs = await deps.im.sendMessage(
               request.channelId,
               request.replyThreadId,
-              placeholder,
+              statusText,
             );
             if (typeof newStatusTs === "string" && newStatusTs.length > 0) {
               request.statusMessageTs = newStatusTs;
               updateActiveRequest(request.channelId, request.threadId, {
                 statusMessageTs: newStatusTs,
               });
-              // Drop state keyed on the old ts; live events after the
-              // reply will populate the new key from scratch.
-              liveEventHistory.delete(oldStatusKey);
-              liveParsedState.delete(oldStatusKey);
+              // Move the live-state buffers to the new ts key so the
+              // subscription handler and the progress tick keep reading
+              // and writing the same Map entries.
+              migrateMessageKey(getStatusMessageKey(request));
             }
           } catch (err) {
             log.warn("Failed to rotate status message after question reply", {
@@ -495,11 +521,13 @@ export async function runOpenRequest(
   session.activeRequest = request;
   saveSession(session);
 
-  const statusMessageKey = getStatusMessageKey(request);
-
+  // Title generation races with the agent event stream — use a getter so
+  // the final write lands on whatever key `liveParsedState` is using at
+  // the moment the title arrives, even if a status-message rotation
+  // re-keyed the buffers in the interim.
   void maybeGenerateSessionTitle({
     prompt: message,
-    stateKey: statusMessageKey,
+    getStateKey: () => getStatusMessageKey(request),
     liveParsedState,
     startedAt: request.startedAt,
     onTitleGenerated: async (title) => {
@@ -538,11 +566,19 @@ export async function runOpenRequest(
         request.lastUpdatedAt = now;
       }
 
+      // Pull the live ts / key from `request` fresh each tick. The
+      // subscription handler may have rotated the status message (e.g.
+      // after a question was answered), so `statusTs` captured at setup
+      // time can go stale. Always read the current values to keep
+      // progress updates pointed at the actual live message.
+      statusTs = request.statusMessageTs;
+      const currentStatusKey = getStatusMessageKey(request);
+
       const statusText = buildStatusMessageForAgent({
         agent: deps.agent,
         request,
         workingPath: cwd,
-        state: liveParsedState.get(statusMessageKey),
+        state: liveParsedState.get(currentStatusKey),
         statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
       });
       if (!request.statusFrozen) {
@@ -615,7 +651,7 @@ export async function runOpenRequest(
       await publishFinalText({
         channelId: context.channelId,
         threadId: context.replyThreadId,
-        statusTs,
+        statusTs: request.statusMessageTs,
         text,
       });
     },

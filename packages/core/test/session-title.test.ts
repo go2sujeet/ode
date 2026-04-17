@@ -57,7 +57,7 @@ describe("session title generation", () => {
 
     await maybeGenerateSessionTitle({
       prompt: "help me refactor auth middleware",
-      stateKey,
+      getStateKey: () => stateKey,
       liveParsedState,
       startedAt,
     });
@@ -76,7 +76,7 @@ describe("session title generation", () => {
 
     await maybeGenerateSessionTitle({
       prompt: "add filters to dashboard",
-      stateKey,
+      getStateKey: () => stateKey,
       liveParsedState,
       startedAt,
     });
@@ -85,5 +85,41 @@ describe("session title generation", () => {
     expect(created?.sessionTitle).toBe("Add dashboard filters");
     expect(created?.tools.length).toBe(0);
     expect(created?.todos.length).toBe(0);
+  });
+
+  it("follows a rotating state key when a status message swap happens mid-flight", async () => {
+    globalThis.fetch = ((async () => new Response(JSON.stringify({
+      choices: [{ message: { content: "Investigate cron flakiness" } }],
+    }), { status: 200 })) as unknown) as typeof fetch;
+
+    const startedAt = Date.now() - 1000;
+    const oldKey = "C3:T3:OLD";
+    const newKey = "C3:T3:NEW";
+    const liveParsedState = new Map<string, SessionMessageState>([
+      [
+        newKey,
+        {
+          currentText: "working",
+          tools: [],
+          todos: [],
+          startedAt,
+        },
+      ],
+    ]);
+
+    let currentKey = oldKey;
+    const promise = maybeGenerateSessionTitle({
+      prompt: "investigate why cron job keeps failing",
+      getStateKey: () => currentKey,
+      liveParsedState,
+      startedAt,
+    });
+    // Simulate a status-message rotation before the async title arrives.
+    currentKey = newKey;
+
+    await promise;
+
+    expect(liveParsedState.get(newKey)?.sessionTitle).toBe("Investigate cron flakiness");
+    expect(liveParsedState.has(oldKey)).toBe(false);
   });
 });
