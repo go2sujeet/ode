@@ -20,6 +20,15 @@ function buildRequest(): ActiveRequest {
   };
 }
 
+function buildRunParams() {
+  return {
+    inboxRecordId: "inbox-1",
+    sessionId: "s1",
+    providerId: "opencode",
+    model: null,
+  };
+}
+
 describe("runTrackedRequest", () => {
   it("publishes final text on success", async () => {
     const published: string[] = [];
@@ -46,6 +55,7 @@ describe("runTrackedRequest", () => {
         published.push(text);
       },
       failureLogLabel: "runner failed",
+      ...buildRunParams(),
     });
 
     expect(result.responses?.length).toBe(1);
@@ -80,6 +90,7 @@ describe("runTrackedRequest", () => {
       onFail: (message) => failures.push(message),
       publishFinalText: async () => {},
       failureLogLabel: "runner failed",
+      ...buildRunParams(),
     });
 
     expect(result.responses).toBeNull();
@@ -128,6 +139,7 @@ describe("runTrackedRequest", () => {
         published.push(text);
       },
       failureLogLabel: "runner failed",
+      ...buildRunParams(),
     });
 
     expect(result.responses).toEqual([]);

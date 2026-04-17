@@ -26,9 +26,9 @@
 
   type PreviewPlatform = "slack" | "discord" | "lark";
 
-  let previewPlatform = $state<PreviewPlatform>("slack");
+  let previewPlatform: PreviewPlatform = $state("slack");
 
-  const state = $derived(({
+  const previewState = $derived(({
     ...buildSessionMessageState(events, {
       endIndex: selectedEventIndex,
       workingDirectory,
@@ -68,7 +68,7 @@
 
   <div class="preview-content">
     {#if selectedEventIndex >= 0}
-      <SlackMessage {state} {workingDirectory} {provider} platform={previewPlatform} />
+      <SlackMessage state={previewState} {workingDirectory} {provider} platform={previewPlatform} />
     {:else}
       <div class="empty">Select an event to see the message state</div>
     {/if}

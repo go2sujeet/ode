@@ -1,7 +1,19 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import type { SessionEvent } from "@/config/local/redis";
+import {
+  clearInboxRecordsForTests,
+  closeInboxDatabaseForTests,
+  createInboxRecordId,
+  recordInboxRequest,
+} from "@/config/local/inbox";
 import { createWebApp } from "@/core/web/app";
 import { collapseTextDeltas } from "@/core/web/session-events";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ode-web-inbox-test-"));
+process.env.ODE_INBOX_DB_FILE = path.join(tempDir, "inbox.db");
 
 describe("web app routing", () => {
   it("redirects /local-setting to root", async () => {
@@ -44,6 +56,49 @@ describe("web app routing", () => {
     const payload = await response.json() as { ok: boolean; error?: string };
     expect(payload.ok).toBe(false);
     expect(payload.error?.startsWith("Missing Slack")).toBe(true);
+  });
+
+  it("returns paginated inbox records and record detail", async () => {
+    clearInboxRecordsForTests();
+    const inboxId = createInboxRecordId({
+      channelId: "C-web",
+      threadId: "T-web",
+      messageId: "M-web",
+    });
+    recordInboxRequest({
+      id: inboxId,
+      platform: "slack",
+      channelId: "C-web",
+      threadId: "T-web",
+      replyThreadId: "T-web",
+      promptText: "show me the latest build failures",
+      providerId: "opencode",
+    });
+
+    const app = createWebApp();
+    const listResponse = await app.handle(new Request("http://localhost/api/inbox?page=1&pageSize=5"));
+    expect(listResponse.status).toBe(200);
+    const listPayload = await listResponse.json() as {
+      ok: boolean;
+      result?: {
+        total: number;
+        items: Array<{ id: string; promptSummary: string }>;
+      };
+    };
+    expect(listPayload.ok).toBe(true);
+    expect(listPayload.result?.total).toBe(1);
+    expect(listPayload.result?.items[0]?.id).toBe(inboxId);
+    expect(listPayload.result?.items[0]?.promptSummary).toContain("latest build failures");
+
+    const detailResponse = await app.handle(new Request(`http://localhost/api/inbox/${encodeURIComponent(inboxId)}`));
+    expect(detailResponse.status).toBe(200);
+    const detailPayload = await detailResponse.json() as {
+      ok: boolean;
+      result?: { id: string; promptText: string };
+    };
+    expect(detailPayload.ok).toBe(true);
+    expect(detailPayload.result?.id).toBe(inboxId);
+    expect(detailPayload.result?.promptText).toBe("show me the latest build failures");
   });
 });
 
@@ -88,4 +143,10 @@ describe("collapseTextDeltas", () => {
     expect(collapsed[1]?.type).toBe("tool.started");
     expect(collapsed[2]?.timestamp).toBe(4);
   });
+});
+
+afterAll(() => {
+  closeInboxDatabaseForTests();
+  delete process.env.ODE_INBOX_DB_FILE;
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });

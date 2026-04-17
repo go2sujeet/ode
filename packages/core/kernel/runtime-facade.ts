@@ -4,6 +4,11 @@ import {
   markThreadActive,
   getPendingQuestion,
 } from "@/config/local/sessions";
+import {
+  createInboxRecordId,
+  recordInboxRequest,
+} from "@/config/local/inbox";
+import { getChannelModel } from "@/config";
 import { type SessionEvent, type SessionMessageState, log } from "@/utils";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import { handlePendingQuestionReply } from "@/core/kernel/pending-question";
@@ -40,6 +45,49 @@ function createRuntimeState(): RuntimeState {
   return {
     liveEventHistory: new Map(),
     liveParsedState: new Map(),
+  };
+}
+
+function resolveInboxModel(options: OpenCodeOptions | undefined, fallbackModel: string | null): string | null {
+  const explicitModel = options?.model;
+  if (explicitModel?.providerID && explicitModel.modelID) {
+    return `${explicitModel.providerID}/${explicitModel.modelID}`;
+  }
+  const normalizedFallback = fallbackModel?.trim();
+  return normalizedFallback && normalizedFallback.length > 0 ? normalizedFallback : null;
+}
+
+function buildInboxContextSnapshot(params: {
+  created: boolean;
+  threadOwnerUserId: string;
+  botToken?: string;
+  branchName?: string;
+  agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
+  options?: OpenCodeOptions;
+}): Record<string, unknown> {
+  const { created, threadOwnerUserId, botToken, branchName, agentContext, options } = params;
+  const platformContext = agentContext.slack;
+  const threadHistory = agentContext.threadHistory ?? platformContext?.threadHistory;
+
+  return {
+    isFirstMessageInThread: created,
+    threadOwnerUserId,
+    botToken: botToken ?? null,
+    branchName: branchName ?? null,
+    agent: options?.agent ?? null,
+    reasoningEffort: options?.reasoningEffort ?? null,
+    hasThreadHistory: typeof threadHistory === "string" && threadHistory.length > 0,
+    threadHistoryChars: typeof threadHistory === "string" ? threadHistory.length : 0,
+    hasChannelSystemMessage: Boolean(platformContext?.channelSystemMessage),
+    hasGitHubToken: Boolean(platformContext?.hasGitHubToken),
+    platformContext: platformContext
+      ? {
+          platform: platformContext.platform ?? null,
+          channelId: platformContext.channelId,
+          threadId: platformContext.threadId,
+          userId: platformContext.userId,
+        }
+      : null,
   };
 }
 
@@ -209,6 +257,43 @@ export class KernelRuntimeFacade {
       channelId,
       providerId,
     });
+    let inboxRecordId = createInboxRecordId({
+      channelId: context.channelId,
+      threadId: context.threadId,
+      messageId: context.messageId,
+    });
+    try {
+      inboxRecordId = recordInboxRequest({
+        id: inboxRecordId,
+        platform: this.deps.platform,
+        channelId: context.channelId,
+        rawChannelId,
+        threadId: context.threadId,
+        replyThreadId: context.replyThreadId,
+        sessionId,
+        userId: context.userId,
+        messageId: context.messageId,
+        providerId,
+        model: resolveInboxModel(options, getChannelModel(rawChannelId)),
+        workingDirectory: cwd,
+        promptText: text,
+        context: buildInboxContextSnapshot({
+          created,
+          threadOwnerUserId,
+          botToken: context.botToken,
+          branchName: session.branchName,
+          agentContext,
+          options,
+        }),
+      });
+    } catch (error) {
+      log.warn("Failed to record inbox request", {
+        channelId: context.channelId,
+        threadId: context.threadId,
+        messageId: context.messageId,
+        error: String(error),
+      });
+    }
 
     const responses = await runOpenRequest({
       deps: {
@@ -223,6 +308,7 @@ export class KernelRuntimeFacade {
       isFirstMessageInThread: created,
       agentContext,
       options,
+      inboxRecordId,
       liveEventHistory: this.state.liveEventHistory,
       liveParsedState: this.state.liveParsedState,
       publishFinalText: async (params) => {

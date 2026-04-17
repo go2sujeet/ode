@@ -14,6 +14,7 @@ import {
   type TrackedTodo,
   type TrackedTool,
 } from "@/config/local/sessions";
+import { completeInboxRecord, failInboxRecord } from "@/config/local/inbox";
 import { getMessageUpdateIntervalMs, getUserGeneralSettings } from "@/config";
 import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "@/core/runtime/helpers";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
@@ -45,6 +46,7 @@ type RunOpenRequestParams = {
   message: string;
   agentContext: Awaited<ReturnType<IMAdapter["buildAgentContext"]>>;
   options?: OpenCodeOptions;
+  inboxRecordId: string;
   isFirstMessageInThread: boolean;
   liveEventHistory: Map<string, SessionEvent[]>;
   liveParsedState: Map<string, SessionMessageState>;
@@ -68,6 +70,10 @@ export type RunTrackedRequestParams = {
   onFail: (message: string) => void;
   publishFinalText: (text: string) => Promise<void>;
   failureLogLabel: string;
+  inboxRecordId: string;
+  sessionId: string;
+  providerId: string;
+  model: string | null;
 };
 
 export type RunTrackedRequestResult = {
@@ -80,6 +86,44 @@ function isExternallySettled(request: ActiveRequest): boolean {
 }
 
 const EVENT_STATE_MERGE_INTERVAL_MS = 1000;
+
+function tryCompleteInboxRecord(params: {
+  id: string;
+  resultText: string;
+  sessionId: string;
+  providerId: string;
+  model: string | null;
+  workingDirectory: string;
+}): void {
+  try {
+    completeInboxRecord(params);
+  } catch (error) {
+    log.warn("Failed to complete inbox record", {
+      inboxRecordId: params.id,
+      sessionId: params.sessionId,
+      error: String(error),
+    });
+  }
+}
+
+function tryFailInboxRecord(params: {
+  id: string;
+  errorText: string;
+  sessionId: string;
+  providerId: string;
+  model: string | null;
+  workingDirectory: string;
+}): void {
+  try {
+    failInboxRecord(params);
+  } catch (error) {
+    log.warn("Failed to mark inbox record as failed", {
+      inboxRecordId: params.id,
+      sessionId: params.sessionId,
+      error: String(error),
+    });
+  }
+}
 
 async function startKernelEventStreamWatcher(params: {
   deps: {
@@ -288,6 +332,7 @@ export async function runOpenRequest(
     message,
     agentContext,
     options,
+    inboxRecordId,
     isFirstMessageInThread,
     liveEventHistory,
     liveParsedState,
@@ -336,6 +381,10 @@ export async function runOpenRequest(
 
   const progressIntervalMs = getMessageUpdateIntervalMs();
   let lastHeartbeat = Date.now();
+  const resolvedModel = options?.model?.providerID && options.model.modelID
+    ? `${options.model.providerID}/${options.model.modelID}`
+    : null;
+  const providerId = deps.agent.getProviderForSession(sessionId);
   const result = await runTrackedRequest({
     deps,
     request,
@@ -416,6 +465,10 @@ export async function runOpenRequest(
       });
     },
     failureLogLabel: "Request failed",
+    inboxRecordId,
+    sessionId,
+    providerId,
+    model: resolvedModel,
   });
 
   if (result.responses === null) return null;
@@ -441,6 +494,10 @@ export async function runTrackedRequest(
     onFail,
     publishFinalText,
     failureLogLabel,
+    inboxRecordId,
+    sessionId,
+    providerId,
+    model,
   } = params;
 
   const progressIntervalMs = getMessageUpdateIntervalMs();
@@ -512,6 +569,14 @@ export async function runTrackedRequest(
       const fallbackText = request.currentText?.trim();
       const finalText = fallbackText || "_Done_";
       await publishFinalText(finalText);
+      tryCompleteInboxRecord({
+        id: inboxRecordId,
+        resultText: finalText,
+        sessionId,
+        providerId,
+        model,
+        workingDirectory: workingPath,
+      });
       onComplete();
 
       void promptPromise.catch((err) => {
@@ -532,6 +597,14 @@ export async function runTrackedRequest(
 
     const finalText = buildFinalResponseText(result.responses) ?? (request.currentText?.trim() || "_Done_");
     await publishFinalText(finalText);
+    tryCompleteInboxRecord({
+      id: inboxRecordId,
+      resultText: finalText,
+      sessionId,
+      providerId,
+      model,
+      workingDirectory: workingPath,
+    });
     onComplete();
     return { responses: result.responses };
   } catch (err) {
@@ -551,6 +624,14 @@ export async function runTrackedRequest(
     liveParsedState.delete(getStatusMessageKey(request));
 
     const errorStatus = `Error: ${message}\n_${suggestion}_`;
+    tryFailInboxRecord({
+      id: inboxRecordId,
+      errorText: message,
+      sessionId,
+      providerId,
+      model,
+      workingDirectory: workingPath,
+    });
     deps.im.cancelPendingUpdates?.(request.channelId, request.statusMessageTs);
     await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
     deps.im.markMessageFinalized?.(request.channelId, request.statusMessageTs);

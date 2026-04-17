@@ -13,9 +13,11 @@
 
   const pathname = $derived($page.url.pathname);
   const normalizedPathname = $derived(pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname);
-  const activeSection = $derived.by<"general" | "agents" | "workspace">(() =>
+  const activeSection = $derived.by<"general" | "agents" | "inbox" | "workspace">(() =>
     normalizedPathname === "/agents"
       ? "agents"
+      : normalizedPathname === "/inbox"
+        ? "inbox"
       : normalizedPathname.startsWith("/workspace")
         ? "workspace"
         : "general"
@@ -196,6 +198,13 @@
           on:click={() => goto("/agents")}
         >
           {t("Coding Agents", "Coding工具")}
+        </Button>
+        <Button
+          variant={activeSection === "inbox" ? "default" : "secondary"}
+          className="w-full justify-start"
+          on:click={() => goto("/inbox")}
+        >
+          {t("Inbox", "收件箱")}
         </Button>
       </div>
     </Card>

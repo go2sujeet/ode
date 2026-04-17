@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createCoreRuntime } from "@/core/runtime";
 import {
+  clearInboxRecordsForTests,
+  closeInboxDatabaseForTests,
+  createInboxRecordId,
+  getInboxRecordById,
+} from "@/config/local/inbox";
+import {
   deleteSession,
   saveSession,
   setPendingQuestion,
@@ -8,12 +14,17 @@ import {
 } from "@/config/local/sessions";
 import type { AgentAdapter, IMAdapter } from "@/core/types";
 import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 let sequence = 0;
+const tempInboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "ode-runtime-inbox-test-"));
+const tempInboxDbFile = path.join(tempInboxDir, "inbox.db");
 
 function uniqueId(prefix: string): string {
   sequence += 1;
@@ -116,9 +127,13 @@ describe("core runtime e2e", () => {
 
   beforeAll(() => {
     process.env.CI = "1";
+    process.env.ODE_INBOX_DB_FILE = tempInboxDbFile;
   });
 
   afterAll(() => {
+    closeInboxDatabaseForTests();
+    delete process.env.ODE_INBOX_DB_FILE;
+    fs.rmSync(tempInboxDir, { recursive: true, force: true });
     if (previousCi === undefined) {
       delete process.env.CI;
       return;
@@ -127,6 +142,7 @@ describe("core runtime e2e", () => {
   });
 
   it("handles a full incoming flow and deduplicates duplicate message ids", async () => {
+    clearInboxRecordsForTests();
     const logs = { sends: [], updates: [] } as {
       sends: Array<{ channelId: string; threadId: string; text: string }>;
       updates: Array<{ channelId: string; messageTs: string; text: string }>;
@@ -168,6 +184,15 @@ describe("core runtime e2e", () => {
     expect(sentPrompts).toEqual(["hello runtime"]);
     expect(logs.sends.some((entry) => entry.text.includes("is running"))).toBe(true);
     expect(logs.updates.some((entry) => entry.text.includes("Hello from fake agent"))).toBe(true);
+    const inboxRecord = getInboxRecordById(createInboxRecordId({
+      channelId: context.channelId,
+      threadId: context.threadId,
+      messageId: context.messageId,
+    }));
+    expect(inboxRecord).not.toBeNull();
+    expect(inboxRecord?.promptText).toBe("hello runtime");
+    expect(inboxRecord?.resultText).toBe("Hello from fake agent");
+    expect(inboxRecord?.status).toBe("completed");
 
     deleteSession(context.channelId, context.threadId);
   });

@@ -20,13 +20,13 @@
     gemini: "https://github.com/google-gemini/gemini-cli",
   };
 
+  const isBusy = $derived($localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving);
+
   function getAgentModels(agent: AgentWithModels): string[] {
     const agents = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
     const models = agents[agent]?.models;
     return Array.isArray(models) ? models : [];
   }
-
-  const isBusy = $derived($localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving);
 
   function t(en: string, zh: string): string {
     return $locale === "zh-CN" ? zh : en;
@@ -38,10 +38,13 @@
 </script>
 
 <Card className="p-5">
-  <div class="mb-4 flex items-center justify-between gap-2">
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
     <div class="flex items-center gap-2">
       <Bot class="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-      <h2 class="text-lg font-semibold">{t("Agent CLI Status", "代理 CLI 状态")}</h2>
+      <div>
+        <h2 class="text-lg font-semibold">{t("Agent CLI Status", "代理 CLI 状态")}</h2>
+        <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Installed coding tool CLIs and configured models", "已安装的编码工具 CLI 与已配置模型")}</p>
+      </div>
     </div>
     <Button
       variant="outline"

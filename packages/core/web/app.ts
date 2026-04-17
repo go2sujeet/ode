@@ -6,6 +6,7 @@ import { registerLarkRoutes } from "./routes/lark";
 import { registerAgentCheckRoutes } from "./routes/agent-check";
 import { registerSessionRoutes } from "./routes/sessions";
 import { registerActionRoutes } from "./routes/action";
+import { registerInboxRoutes } from "./routes/inbox";
 
 export function createWebApp(): Elysia {
   const app = new Elysia();
@@ -30,6 +31,7 @@ export function createWebApp(): Elysia {
   registerAgentCheckRoutes(app);
   registerSessionRoutes(app);
   registerActionRoutes(app);
+  registerInboxRoutes(app);
 
   app.all("*", async ({ request }: { request: Request }) => {
     return serveStaticAsset(request);
