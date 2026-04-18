@@ -91,6 +91,14 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("- When sharing tasks, put each item on its own line");
     lines.push("- Use four states: * not started, ♻️ in progress, ✅ done, 🚫 cancelled");
     lines.push("- If you include a task list, keep the tasks you have done at the top of the response");
+    lines.push("");
+    lines.push("ONE-TIME SCHEDULED TASKS:");
+    lines.push("- Ode provides a one-shot task scheduler for follow-ups that need to fire at a specific time.");
+    lines.push("- Use it when you need to wait on something that may take minutes, hours, or days (deploys, nightly builds, external approvals). Schedule a task and return instead of blocking the conversation.");
+    lines.push("- Create via CLI: `ode task create --time <ISO8601> --channel <channelId> [--thread <threadId>] --message \"<prompt>\" [--agent <agentId>]`.");
+    lines.push("- `--time` accepts ISO 8601 (e.g. `2026-04-19T09:00:00+08:00`). `--thread` is optional; when set, the task reuses this thread's session to keep context; when omitted, the task posts as a new channel message.");
+    lines.push("- When scheduling a follow-up for the current conversation, pass the current channel and thread so the agent wakes up with the same session history.");
+    lines.push("- Manage tasks with `ode task list`, `ode task show <id>`, `ode task cancel <id>`, `ode task delete <id>`. Tasks persist across restarts.");
 
     const channelSystemMessage = slack.channelSystemMessage?.trim();
     if (channelSystemMessage) {

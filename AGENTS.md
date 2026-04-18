@@ -25,6 +25,17 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 - Prod: `./start.sh`
 - User: `@ode <message>` and `stop`
 
+## One-time Tasks (`ode task`)
+- A Task is a one-shot scheduled prompt: the scheduler fires it exactly once at an absolute time, then posts the agent result back to the channel (or thread, if anchored).
+- CLI:
+  - `ode task create --time <ISO8601> --channel <channelId> --message "<prompt>" [--thread <threadId>] [--title <title>] [--agent <agentId>] [--run-now]`
+  - `ode task list [--status pending|running|success|failed|cancelled] [--json]`
+  - `ode task show <id>` / `ode task cancel <id>` / `ode task delete <id>` / `ode task run <id>`
+- When `--thread` is set, the scheduler reuses the existing thread's session so the agent wakes up with full context. When `--thread` is omitted, the task posts as a new channel message under a synthetic thread (`task:{id}`).
+- Agents should prefer scheduling a Task instead of blocking on long waits (deploys, overnight builds, approvals): schedule the follow-up and return.
+- Persistence: SQLite at `~/.config/ode/inbox.db` (table `tasks`); scheduler polls every 10s and uses `UPDATE ... WHERE status='pending'` for cross-process idempotency.
+- HTTP API mirrors the CLI under `/api/tasks*`; the Web UI lives at Settings → Tasks.
+
 ## Bun conventions
 - Use Bun instead of Node.js
 - Run: `bun run src/index.ts`
