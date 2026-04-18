@@ -194,7 +194,6 @@ async function main(): Promise<void> {
         channelId,
         threadId,
         userId,
-        odeSlackApiUrl: process.env.ODE_SLACK_API_URL,
         hasGitHubToken: Boolean(process.env.GH_TOKEN),
       },
     };

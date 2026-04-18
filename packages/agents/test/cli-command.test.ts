@@ -63,7 +63,7 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).toContain("Preferred branch format before PR: `feat/<short-slug>-<threadShortId>`");
   });
 
-  it("builds Discord action instructions for Discord context", () => {
+  it("builds Discord-specific formatting guidance for Discord context", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "discord",
       channelId: "C123",
@@ -72,12 +72,13 @@ describe("agent cli command formatting", () => {
     });
 
     expect(systemPrompt).toContain("DISCORD CONTEXT:");
-    expect(systemPrompt).toContain("DISCORD ACTIONS:");
-    expect(systemPrompt).toContain('"platform":"discord"');
-    expect(systemPrompt).toContain("Supported actions: get_guilds, get_channels, post_message");
+    expect(systemPrompt).toContain("Discord supports markdown like **bold**, _italic_, and code fences.");
+    expect(systemPrompt).toContain("ODE CLI:");
+    expect(systemPrompt).not.toContain("DISCORD ACTIONS:");
+    expect(systemPrompt).not.toContain("/api/action");
   });
 
-  it("builds Lark action instructions for Lark context", () => {
+  it("builds Lark-specific formatting guidance for Lark context", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "lark",
       channelId: "oc_123",
@@ -86,10 +87,26 @@ describe("agent cli command formatting", () => {
     });
 
     expect(systemPrompt).toContain("LARK CONTEXT:");
-    expect(systemPrompt).toContain("LARK ACTIONS:");
-    expect(systemPrompt).toContain('"platform":"lark"');
-    expect(systemPrompt).toContain("Supported actions: get_channels, post_message, update_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
     expect(systemPrompt).toContain("Lark output should be plain text for now; do not rely on markdown styling.");
+    expect(systemPrompt).toContain("ODE CLI:");
+    expect(systemPrompt).not.toContain("LARK ACTIONS:");
+    expect(systemPrompt).not.toContain("Supported actions:");
+  });
+
+  it("recommends Ode CLI commands with the current channel/thread baked in", () => {
+    const systemPrompt = buildSystemPrompt({
+      platform: "slack",
+      channelId: "C9XXX",
+      threadId: "1700000000.000001",
+      userId: "U42",
+    });
+
+    expect(systemPrompt).toContain("ode task create");
+    expect(systemPrompt).toContain("ode cron create");
+    expect(systemPrompt).toContain("ode send file /tmp/screenshot.png --channel C9XXX --thread 1700000000.000001");
+    expect(systemPrompt).toContain("ode messages get 1700000000.000001 --channel C9XXX");
+    expect(systemPrompt).toContain("ode reaction add");
+    expect(systemPrompt).toContain("VISUAL TESTING:");
   });
 
   it("builds the OpenCode curl command", () => {

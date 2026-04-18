@@ -15,7 +15,3 @@ export function getWebHost(): string {
 export function getWebPort(): number {
   return parsePort(process.env.ODE_WEB_PORT?.trim(), DEFAULT_WEB_PORT);
 }
-
-export function getSlackActionApiUrl(): string {
-  return `http://${getWebHost()}:${getWebPort()}/api`;
-}

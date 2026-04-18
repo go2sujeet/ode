@@ -18,7 +18,6 @@ import type { IMAdapter } from "@/core/types";
 import { createAgentAdapter } from "@/agents/adapter";
 import type { OpenCodeMessageContext } from "@/agents";
 import { log } from "@/utils";
-import { getSlackActionApiUrl } from "./config";
 import { fetchThreadHistoryByClient } from "./message-history";
 import { registerSlackMessageRouter } from "./message-router";
 import { syncSlackWorkspace } from "@/core/web/local-settings";
@@ -74,10 +73,6 @@ function getSlackProcessorRuntime(processorId?: string): ReturnType<typeof creat
   return slackProcessorManager.getRuntime(processorId);
 }
 
-function getOdeSlackApiUrl(): string | undefined {
-  return getSlackActionApiUrl();
-}
-
 async function buildSlackContext(
   channelId: string,
   threadId: string,
@@ -92,7 +87,6 @@ async function buildSlackContext(
       threadId,
       userId,
       threadHistory: threadHistory ?? undefined,
-      odeSlackApiUrl: getOdeSlackApiUrl(),
       hasGitHubToken: Boolean(getGitHubInfoForUser(userId)?.token),
       channelSystemMessage: getChannelSystemMessage(channelId) ?? undefined,
     },

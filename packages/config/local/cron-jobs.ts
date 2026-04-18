@@ -45,6 +45,14 @@ export type CreateCronJobParams = {
   enabled?: boolean;
 };
 
+export type PatchCronJobParams = {
+  title?: string;
+  cronExpression?: string;
+  channelId?: string;
+  messageText?: string;
+  enabled?: boolean;
+};
+
 type CronJobRow = {
   id: string;
   title: string;
@@ -351,6 +359,29 @@ export function updateCronJob(id: string, params: CreateCronJobParams): CronJobR
 export function deleteCronJob(id: string): void {
   const db = getDatabase();
   db.query("DELETE FROM cron_jobs WHERE id = ?").run(id);
+}
+
+/**
+ * Apply a partial update to an existing cron job. Only the provided fields
+ * are changed; omitting a key preserves the current value. This powers the
+ * `ode cron update` / `ode cron enable` / `ode cron disable` CLI flows where
+ * callers typically want to flip a single attribute without re-specifying the
+ * whole record.
+ */
+export function patchCronJob(id: string, params: PatchCronJobParams): CronJobRecord {
+  const existing = getCronJobById(id);
+  if (!existing) {
+    throw new Error("Cron job not found");
+  }
+
+  const merged: CreateCronJobParams = {
+    title: params.title ?? existing.title,
+    cronExpression: params.cronExpression ?? existing.cronExpression,
+    channelId: params.channelId ?? existing.channelId,
+    messageText: params.messageText ?? existing.messageText,
+    enabled: params.enabled ?? existing.enabled,
+  };
+  return updateCronJob(id, merged);
 }
 
 export function markCronJobTriggered(id: string, minuteStartMs: number): boolean {

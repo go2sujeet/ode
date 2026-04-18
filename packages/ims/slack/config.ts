@@ -1,1 +1,0 @@
-export { getSlackActionApiUrl } from "@/config";

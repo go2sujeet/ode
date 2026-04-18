@@ -5,10 +5,12 @@ import { registerWorkspaceRoutes } from "./routes/workspaces";
 import { registerLarkRoutes } from "./routes/lark";
 import { registerAgentCheckRoutes } from "./routes/agent-check";
 import { registerSessionRoutes } from "./routes/sessions";
-import { registerActionRoutes } from "./routes/action";
 import { registerInboxRoutes } from "./routes/inbox";
 import { registerCronJobRoutes } from "./routes/cron-jobs";
 import { registerTaskRoutes } from "./routes/tasks";
+import { registerSendRoutes } from "./routes/send";
+import { registerMessagesRoutes } from "./routes/messages";
+import { registerReactionsRoutes } from "./routes/reactions";
 
 export function createWebApp(): Elysia {
   const app = new Elysia();
@@ -32,10 +34,12 @@ export function createWebApp(): Elysia {
   registerLarkRoutes(app);
   registerAgentCheckRoutes(app);
   registerSessionRoutes(app);
-  registerActionRoutes(app);
   registerInboxRoutes(app);
   registerCronJobRoutes(app);
   registerTaskRoutes(app);
+  registerSendRoutes(app);
+  registerMessagesRoutes(app);
+  registerReactionsRoutes(app);
 
   app.all("*", async ({ request }: { request: Request }) => {
     return serveStaticAsset(request);

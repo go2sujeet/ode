@@ -2,36 +2,24 @@ import { basename } from "path";
 import { getApp, getSlackBotToken } from "./client";
 import { hasSimpleOptions } from "@/core/runtime/helpers";
 
-export type SlackActionName =
-  | "get_thread_messages"
-  | "ask_user"
-  | "add_reaction"
-  | "get_user_info"
-  | "post_message"
-  | "upload_file";
-
-export type SlackActionRequest = {
-  action: SlackActionName;
-  channelId: string;
-  threadId?: string;
-  messageId?: string;
-  text?: string;
-  emoji?: string;
-  question?: string;
-  options?: string[];
-  limit?: number;
-  filePath?: string;
-  filename?: string;
-  title?: string;
-  initialComment?: string;
-  userId?: string;
-};
-
-export type SlackApiResponse = {
-  ok: boolean;
-  result?: unknown;
-  error?: string;
-};
+// ---------------------------------------------------------------------------
+// Slack IM helper module.
+//
+// Historically this file hosted a generic `/api/action` dispatcher
+// (`handleSlackActionPayload`) that agents called via bash+curl. That
+// mechanism has been retired in favour of dedicated `ode <verb>` CLIs
+// (`ode send file`, `ode messages get`, `ode reaction add`, etc.), so this
+// module now only exposes:
+//
+//   - `postSlackQuestion`   – used by the core runtime to render SDK-emitted
+//                             question events in Slack.
+//   - `uploadSlackFile`     – powering `ode send file` on Slack channels.
+//   - `getSlackThreadMessages` – powering `ode messages get`.
+//   - `addSlackReaction`    – powering `ode reaction add`.
+//
+// The private helpers (`slackApiCall`, `slackFileUpload`, …) stay as
+// implementation details for those exports.
+// ---------------------------------------------------------------------------
 
 function requireString(value: unknown, label: string): string {
   if (!value || typeof value !== "string") {
@@ -46,7 +34,7 @@ const REACTION_ALIASES: Record<string, string> = {
   ok: "ok_hand",
 };
 
-function normalizeEmojiName(emoji: string): string {
+function normalizeSlackEmojiName(emoji: string): string {
   const trimmed = emoji.trim();
   if (!trimmed) {
     throw new Error("emoji is required");
@@ -77,8 +65,7 @@ function normalizeOptionLabel(option: unknown): string {
  * the user can tap a choice. Otherwise — including when there are no options
  * at all — we fall back to a plain text message listing the choices inline.
  *
- * Shared by `ask_user` (LLM action) and the runtime's `sendQuestion` path
- * (SDK-emitted `question` events) so both render consistently.
+ * Used by the runtime's `sendQuestion` path (SDK-emitted `question` events).
  */
 export async function postSlackQuestion(args: {
   channelId: string;
@@ -133,14 +120,6 @@ export async function postSlackQuestion(args: {
     token,
   });
   return result.ts ?? undefined;
-}
-
-function normalizeSlackUserId(userId: string): string {
-  const trimmed = userId.trim();
-  if (trimmed.startsWith("<@") && trimmed.endsWith(">")) {
-    return trimmed.slice(2, -1);
-  }
-  return trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
 }
 
 async function slackApiCall(method: string, body: Record<string, unknown>, token: string): Promise<unknown> {
@@ -220,105 +199,82 @@ async function slackFileUpload(
   }, args.token);
 }
 
-async function handleSlackAction(payload: SlackActionRequest): Promise<unknown> {
-  const channelId = requireString(payload.channelId, "channelId");
-  const token = getSlackBotToken(channelId, typeof payload.threadId === "string" ? payload.threadId : undefined);
+/**
+ * Upload a file to a Slack channel / thread using Slack's
+ * `files.getUploadURLExternal` + `files.completeUploadExternal` flow.
+ * Powers the `ode send file` CLI.
+ */
+export async function uploadSlackFile(args: {
+  channelId: string;
+  threadId?: string;
+  filePath: string;
+  filename?: string;
+  title?: string;
+  initialComment?: string;
+}): Promise<{ status: "file_uploaded"; channelId: string; filename: string }> {
+  const channelId = requireString(args.channelId, "channelId");
+  const filePath = requireString(args.filePath, "filePath");
+  const token = getSlackBotToken(channelId, typeof args.threadId === "string" ? args.threadId : undefined);
+  if (!token) {
+    throw new Error("No Slack bot token available for channel");
+  }
+  const filename = args.filename || basename(filePath);
+  await slackFileUpload({
+    channelId,
+    threadId: args.threadId,
+    filename,
+    title: args.title,
+    initialComment: args.initialComment,
+    token,
+  }, filePath);
+  return { status: "file_uploaded", channelId, filename };
+}
+
+/**
+ * Fetch the messages of a Slack thread. Powers `ode messages get`.
+ */
+export async function getSlackThreadMessages(args: {
+  channelId: string;
+  threadId: string;
+  limit?: number;
+}): Promise<{ messages: unknown[] }> {
+  const channelId = requireString(args.channelId, "channelId");
+  const threadId = requireString(args.threadId, "threadId");
+  const token = getSlackBotToken(channelId, threadId);
   if (!token) {
     throw new Error("No Slack bot token available for channel");
   }
   const client = getApp().client;
-
-  switch (payload.action) {
-    case "get_thread_messages": {
-      const threadId = requireString(payload.threadId, "threadId");
-      const data = await client.conversations.replies({
-        channel: channelId,
-        ts: threadId,
-        limit: payload.limit ?? 20,
-        token,
-      });
-      return { messages: (data as any).messages ?? [] };
-    }
-
-    case "ask_user": {
-      const threadId = requireString(payload.threadId, "threadId");
-      const question = requireString(payload.question, "question");
-      const options = Array.isArray(payload.options)
-        ? payload.options.map(normalizeOptionLabel).filter((opt) => opt.trim().length > 0)
-        : [];
-      if (options.length < 2) {
-        throw new Error("options must have at least 2 items");
-      }
-
-      await postSlackQuestion({
-        channelId,
-        threadId,
-        question,
-        options,
-        token,
-      });
-
-      return { status: "question_posted" };
-    }
-
-    case "add_reaction": {
-      const messageId = requireString(payload.messageId, "messageId");
-      const emoji = requireString(payload.emoji, "emoji");
-      const name = normalizeEmojiName(emoji);
-      await slackApiCall("reactions.add", {
-        channel: channelId,
-        timestamp: messageId,
-        name,
-      }, token);
-      return { status: "reaction_added" };
-    }
-
-    case "get_user_info": {
-      const userId = normalizeSlackUserId(requireString(payload.userId, "userId"));
-      const data = await client.users.info({ user: userId, token });
-      return data;
-    }
-
-    case "post_message": {
-      const text = requireString(payload.text, "text");
-      const result = await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: payload.threadId,
-        text,
-        token,
-      });
-      return { ts: result.ts, text };
-    }
-
-    case "upload_file": {
-      const filePath = requireString(payload.filePath, "filePath");
-      const filename = payload.filename || basename(filePath);
-      await slackFileUpload({
-        channelId,
-        threadId: payload.threadId,
-        filename,
-        title: payload.title,
-        initialComment: payload.initialComment,
-        token,
-      }, filePath);
-      return { status: "file_uploaded" };
-    }
-
-    default:
-      throw new Error(`Unknown action: ${payload.action}`);
-  }
+  const data = await client.conversations.replies({
+    channel: channelId,
+    ts: threadId,
+    limit: args.limit ?? 20,
+    token,
+  });
+  return { messages: (data as { messages?: unknown[] }).messages ?? [] };
 }
 
-export async function handleSlackActionPayload(payload: unknown): Promise<SlackApiResponse> {
-  if (!payload || typeof payload !== "object") {
-    return { ok: false, error: "Invalid payload" };
+/**
+ * Add a reaction to a Slack message. Powers `ode reaction add`.
+ */
+export async function addSlackReaction(args: {
+  channelId: string;
+  messageId: string;
+  emoji: string;
+  threadId?: string;
+}): Promise<{ status: "reaction_added" }> {
+  const channelId = requireString(args.channelId, "channelId");
+  const messageId = requireString(args.messageId, "messageId");
+  const emoji = requireString(args.emoji, "emoji");
+  const name = normalizeSlackEmojiName(emoji);
+  const token = getSlackBotToken(channelId, args.threadId);
+  if (!token) {
+    throw new Error("No Slack bot token available for channel");
   }
-
-  try {
-    const result = await handleSlackAction(payload as SlackActionRequest);
-    return { ok: true, result };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
-  }
+  await slackApiCall("reactions.add", {
+    channel: channelId,
+    timestamp: messageId,
+    name,
+  }, token);
+  return { status: "reaction_added" };
 }

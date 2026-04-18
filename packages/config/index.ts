@@ -95,6 +95,6 @@ export {
   type StatusMessageFrequencyValue,
 } from "./status-message-frequency";
 
-export { getSlackActionApiUrl, getWebHost, getWebPort } from "./network";
+export { getWebHost, getWebPort } from "./network";
 
 export * as local from "./local";

@@ -2,9 +2,12 @@ import type { Elysia } from "elysia";
 import {
   createCronJob,
   deleteCronJob,
+  getCronJobById,
   listCronJobChannelOptions,
   listCronJobs,
+  patchCronJob,
   updateCronJob,
+  type PatchCronJobParams,
 } from "@/config/local/cron-jobs";
 import {
   CronJobAlreadyRunningError,
@@ -34,6 +37,19 @@ function parseCronJobPayload(payload: Record<string, unknown>) {
   };
 }
 
+function parseCronJobPatchPayload(payload: Record<string, unknown>): PatchCronJobParams {
+  const patch: PatchCronJobParams = {};
+  if ("title" in payload && typeof payload.title === "string") patch.title = payload.title;
+  if ("cronExpression" in payload && typeof payload.cronExpression === "string") {
+    patch.cronExpression = payload.cronExpression;
+  }
+  if ("channelId" in payload && typeof payload.channelId === "string") patch.channelId = payload.channelId;
+  if ("messageText" in payload && typeof payload.messageText === "string") patch.messageText = payload.messageText;
+  const enabled = getBoolean(payload, "enabled");
+  if (enabled !== undefined) patch.enabled = enabled;
+  return patch;
+}
+
 export function registerCronJobRoutes(app: Elysia): void {
   app.get("/api/cron-jobs", async () => {
     return runRoute(
@@ -43,6 +59,27 @@ export function registerCronJobRoutes(app: Elysia): void {
       }),
       (result) => jsonResponse(200, { ok: true, result }),
       { fallbackMessage: "Internal server error", status: 500 }
+    );
+  });
+
+  app.get("/api/cron-jobs/:id", async ({ params }: { params: { id?: string } }) => {
+    return runRoute(
+      async () => {
+        const id = params.id?.trim();
+        if (!id) throw new Error("Missing cron job id");
+        const job = getCronJobById(id);
+        if (!job) throw new Error("Cron job not found");
+        return { job };
+      },
+      (result) => jsonResponse(200, { ok: true, result }),
+      {
+        fallbackMessage: "Failed to load cron job",
+        resolveStatus: (message) => {
+          if (message === "Missing cron job id") return 400;
+          if (message === "Cron job not found") return 404;
+          return 500;
+        },
+      }
     );
   });
 
@@ -97,6 +134,33 @@ export function registerCronJobRoutes(app: Elysia): void {
         }
         const payload = parseCronJobPayload(await readJsonBody(request));
         const job = updateCronJob(id, payload);
+        return {
+          job,
+          jobs: listCronJobs(),
+          channels: listCronJobChannelOptions(),
+        };
+      },
+      (result) => jsonResponse(200, { ok: true, result }),
+      {
+        fallbackMessage: "Invalid cron job payload",
+        resolveStatus: (message) => {
+          if (message === "Missing cron job id") return 400;
+          if (message === "Cron job not found") return 404;
+          return 400;
+        },
+      }
+    );
+  });
+
+  app.patch("/api/cron-jobs/:id", async ({ params, request }: { params: { id?: string }; request: Request }) => {
+    return runRoute(
+      async () => {
+        const id = params.id?.trim();
+        if (!id) {
+          throw new Error("Missing cron job id");
+        }
+        const patch = parseCronJobPatchPayload(await readJsonBody(request));
+        const job = patchCronJob(id, patch);
         return {
           job,
           jobs: listCronJobs(),

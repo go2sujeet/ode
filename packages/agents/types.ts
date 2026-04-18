@@ -18,7 +18,6 @@ export interface PlatformContext {
   threadId: string;
   userId: string;
   threadHistory?: string;
-  odeSlackApiUrl?: string;
   hasGitHubToken?: boolean;
   channelSystemMessage?: string;
 }

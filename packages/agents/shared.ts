@@ -1,5 +1,4 @@
 import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext } from "./types";
-import { getSlackActionApiUrl } from "@/config";
 
 export function buildSystemPrompt(slack?: SlackContext): string {
   const platform = slack?.platform === "discord"
@@ -40,32 +39,6 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     }
 
     lines.push("");
-    lines.push(`${platformLabel.toUpperCase()} ACTIONS:`);
-    const baseUrl = slack.odeSlackApiUrl ?? getSlackActionApiUrl();
-    lines.push("- Use bash + curl to call the Ode action API.");
-    lines.push(`- Endpoint: ${baseUrl}/action`);
-    lines.push(
-      platform === "discord"
-        ? "- Payload: {\"platform\":\"discord\",\"action\":\"post_message\",\"channelId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
-        : platform === "lark"
-          ? "- Payload: {\"platform\":\"lark\",\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"text\":\"...\"}"
-          : "- Payload: {\"action\":\"post_message\",\"channelId\":\"...\",\"threadId\":\"...\",\"messageId\":\"...\",\"text\":\"...\"}"
-    );
-    if (platform === "discord") {
-      lines.push("- Supported actions: get_guilds, get_channels, post_message, update_message, create_thread_from_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
-      lines.push("- Required fields: channelId for message/reaction/question/upload actions; threadId for get_thread_messages; messageId + emoji for reactions; userId (or \"@me\") for get_user_info; filePath for upload_file.");
-      lines.push("- add_reaction schema: { platform: \"discord\", action: \"add_reaction\", channelId: string, messageId: string, emoji: \"thumbsup\" | \"eyes\" | \"ok_hand\" }");
-    } else if (platform === "lark") {
-      lines.push("- Supported actions: get_channels, post_message, update_message, get_thread_messages, ask_user, add_reaction, get_user_info, upload_file.");
-      lines.push("- Required fields: channelId for post_message/ask_user/upload_file; messageId + text for update_message; threadId for get_thread_messages; messageId + emoji for add_reaction; userId for get_user_info; filePath for upload_file.");
-      lines.push("- post_message schema: { platform: \"lark\", action: \"post_message\", channelId: string, threadId?: string, text: string }");
-    } else {
-      lines.push("- Supported actions: post_message, add_reaction, get_thread_messages, ask_user, get_user_info, upload_file.");
-      lines.push("- Required fields: channelId; threadId for thread actions; messageId + emoji for reactions; userId for get_user_info.");
-      lines.push("- add_reaction schema: { action: \"add_reaction\", channelId: string, messageId: string, emoji: \"thumbsup\" | \"eyes\" | \"ok_hand\" }");
-    }
-    lines.push("- You can use any tool available via bash, curl");
-    lines.push("");
     lines.push(`IMPORTANT: Your text output is automatically posted to ${platformLabel}.`);
     lines.push("- Only output text OR use a messaging tool, never both.");
     lines.push("");
@@ -85,13 +58,44 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("- Use four states: * not started, ♻️ in progress, ✅ done, 🚫 cancelled");
     lines.push("- If you include a task list, keep the tasks you have done at the top of the response");
     lines.push("");
-    lines.push("ONE-TIME SCHEDULED TASKS:");
-    lines.push("- Ode provides a one-shot task scheduler for follow-ups that need to fire at a specific time.");
-    lines.push("- Use it when you need to wait on something that may take minutes, hours, or days (deploys, nightly builds, external approvals). Schedule a task and return instead of blocking the conversation.");
-    lines.push("- Create via CLI: `ode task create --time <ISO8601> --channel <channelId> [--thread <threadId>] --message \"<prompt>\" [--agent <agentId>]`.");
-    lines.push("- `--time` accepts ISO 8601 (e.g. `2026-04-19T09:00:00+08:00`). `--thread` is optional; when set, the task reuses this thread's session to keep context; when omitted, the task posts as a new channel message.");
-    lines.push("- When scheduling a follow-up for the current conversation, pass the current channel and thread so the agent wakes up with the same session history.");
-    lines.push("- Manage tasks with `ode task list`, `ode task show <id>`, `ode task cancel <id>`, `ode task delete <id>`. Tasks persist across restarts.");
+    lines.push("ODE CLI:");
+    lines.push("- The `ode` binary is how you interact with this chat platform outside of plain text output.");
+    lines.push("- All commands below auto-detect platform (Slack / Discord / Lark) from the `--channel` value;");
+    lines.push("  you never need to call Slack/Discord/Lark APIs directly.");
+    lines.push("- `--channel` accepts either a raw channel id or a `workspaceId::channelId` pair for disambiguation.");
+    lines.push("");
+    lines.push("ODE CLI - one-time scheduled tasks (`ode task`):");
+    lines.push("- Use when you need to wait on something that takes minutes / hours / days (deploys, nightly builds,");
+    lines.push("  external approvals). Schedule the follow-up and return instead of blocking the conversation.");
+    lines.push("- `ode task create --time <ISO8601> --channel <channelId> [--thread <threadId>] --message \"<prompt>\" [--agent <agentId>] [--run-now]`");
+    lines.push("- Manage: `ode task list`, `ode task show <id>`, `ode task cancel <id>`, `ode task run <id>`, `ode task delete <id>`.");
+    lines.push("- Pass the current `--thread` so the task wakes up inside the same conversation; omit it to post as a fresh channel message.");
+    lines.push("");
+    lines.push("ODE CLI - recurring cron jobs (`ode cron`):");
+    lines.push("- Use for schedules (heartbeats, daily digests, periodic checks). Each run starts a fresh agent session.");
+    lines.push("- `ode cron create --schedule \"<5-field cron>\" --channel <channelId> --message \"<prompt>\" [--title <title>] [--disabled] [--run-now]`");
+    lines.push("- `--schedule` is standard 5-field cron (minute hour day month weekday), e.g. `*/30 * * * *`.");
+    lines.push("- Manage: `ode cron list`, `ode cron show <id>`, `ode cron update <id>`, `ode cron enable|disable <id>`, `ode cron run <id>`, `ode cron delete <id>`.");
+    lines.push("");
+    lines.push("ODE CLI - send files / images (`ode send`):");
+    lines.push("- `ode send file <path> --channel <channelId> [--thread <threadId>] [--comment \"...\"] [--filename <name>] [--title <text>]`");
+    lines.push("- Save files to `$(mktemp -d)` or `os.tmpdir()` first, then upload them with this command.");
+    lines.push(`- Example: \`ode send file /tmp/screenshot.png --channel ${slack.channelId} --thread ${slack.threadId} --comment \"layout after fix\"\`.`);
+    lines.push("");
+    lines.push("ODE CLI - fetch thread messages (`ode messages`):");
+    lines.push("- `ode messages get <threadId> --channel <channelId> [--limit N] [--json]`");
+    lines.push("- Use when you need to re-read prior messages in the current thread or another thread.");
+    lines.push(`- Example: \`ode messages get ${slack.threadId} --channel ${slack.channelId} --limit 40\`.`);
+    lines.push("");
+    lines.push("ODE CLI - react to a message (`ode reaction`):");
+    lines.push("- `ode reaction add <messageId> --channel <channelId> --emoji <thumbsup|eyes|ok_hand> [--thread <threadId>]`");
+    lines.push("- Useful to acknowledge a request (`eyes` = \"I'm on it\", `thumbsup` = \"done\", `ok_hand` = \"ack\").");
+    lines.push("");
+    lines.push("VISUAL TESTING:");
+    lines.push("- Whenever you work on UI / layout / design tasks, capture the result and upload it to the current");
+    lines.push("  thread with `ode send file` so the user can see it immediately.");
+    lines.push("- Prefer real screenshots over describing the UI in text. A single screenshot is usually worth paragraphs.");
+    lines.push("- For before/after comparisons, upload both screenshots with a short `--comment` explaining what changed.");
 
     const channelSystemMessage = slack.channelSystemMessage?.trim();
     if (channelSystemMessage) {

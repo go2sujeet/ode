@@ -17,7 +17,7 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 - Bot replies in threads once mentioned
 - Status updates include phases, tool progress, and elapsed time
 - Status messages are preserved as an operation record
-- When capturing screenshots, save images to the system temp folder and upload them to Slack as soon as possible
+- When capturing screenshots, save images to the system temp folder and upload them with `ode send file` to the current thread as soon as possible
 - When merging PRs, do not delete the branch if the current worktree is on that branch
 
 ## Commands
@@ -35,6 +35,34 @@ Ode is a Slack bot that bridges messages to OpenCode for AI-assisted coding.
 - Agents should prefer scheduling a Task instead of blocking on long waits (deploys, overnight builds, approvals): schedule the follow-up and return.
 - Persistence: SQLite at `~/.config/ode/inbox.db` (table `tasks`); scheduler polls every 10s and uses `UPDATE ... WHERE status='pending'` for cross-process idempotency.
 - HTTP API mirrors the CLI under `/api/tasks*`; the Web UI lives at Settings → Tasks.
+
+## Recurring Cron Jobs (`ode cron`)
+- A cron job is a recurring scheduled prompt (5-field cron expression) that re-runs the same prompt as a fresh agent turn on schedule.
+- CLI:
+  - `ode cron create --schedule "<cron>" --channel <channelId> --message "<prompt>" [--title <title>] [--disabled] [--run-now]`
+  - `ode cron list [--enabled | --disabled] [--json]` / `ode cron show <id> [--json]`
+  - `ode cron update <id> [--schedule ...] [--channel ...] [--message ...] [--title ...] [--enabled | --disabled]`
+  - `ode cron enable <id>` / `ode cron disable <id>` / `ode cron run <id>` / `ode cron delete <id>`
+- Every run creates a fresh session + worktree (see `packages/core/cron/scheduler.ts`) so jobs start clean.
+- Persistence: same `~/.config/ode/inbox.db` (table `cron_jobs`); scheduler polls every 15s and claims runs at the SQL level.
+- HTTP API mirrors the CLI under `/api/cron-jobs*`; the Web UI lives at Settings → Cron.
+
+## Sending Files / Images (`ode send`)
+- `ode send file <path> --channel <channelId> [--thread <threadId>] [--filename <name>] [--title <title>] [--comment <text>]` uploads any file to a chat channel.
+- The command resolves platform (Slack / Discord / Lark) from the channel's configured workspace; agents don't need to know the underlying SDK.
+- Visual testing workflows should save screenshots to `os.tmpdir()` and upload them directly into the current thread.
+
+## Fetching Messages (`ode messages`)
+- `ode messages get <threadId> --channel <channelId> [--limit N] [--json]` returns the replies in a thread.
+- Use it to re-read the current thread (for example, to pick up a follow-up comment posted while you were running tools) or to inspect another thread by its root id.
+
+## Reactions (`ode reaction`)
+- `ode reaction add <messageId> --channel <channelId> --emoji <thumbsup|eyes|ok_hand> [--thread <threadId>]` reacts to a message.
+- Useful acks: `eyes` = "I'm on it", `thumbsup` = "done", `ok_hand` = "acknowledged".
+
+## Platform APIs
+- Ode no longer exposes a generic `/api/action` bridge; agents must use the dedicated `ode <verb>` CLIs above instead of calling Slack/Discord/Lark APIs directly.
+- Adding a new platform-facing capability means adding (or extending) an `ode` subcommand plus a matching daemon route.
 
 ## Bun conventions
 - Use Bun instead of Node.js
