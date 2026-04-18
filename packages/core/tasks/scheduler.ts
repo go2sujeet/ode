@@ -81,9 +81,17 @@ function resolveTaskThreadId(task: TaskRecord): string {
 /**
  * Resolve the agent provider a task should run on, following the fallback
  * chain:
- *   1. `task.agent` (per-task override set by CLI / Web UI),
- *   2. the channel's configured agent (`channelDetails.agentProvider`),
- *   3. the global default baked into `getChannelAgentProvider` (`opencode`).
+ *   1. If the task is anchored to an existing thread that already has a
+ *      persisted session, use that thread's provider. Tasks anchored to a
+ *      thread reuse its session for context continuity, and sessions are
+ *      provider-scoped in storage (`getThreadSessionId(..., providerId)`),
+ *      so honouring a different per-task override here would silently spin
+ *      up a fresh session under a new provider and drop the thread's
+ *      history. In that case we intentionally ignore `task.agent`.
+ *   2. Otherwise `task.agent` (per-task override set by CLI / Web UI),
+ *   3. Otherwise the channel's configured agent (`channelDetails.agentProvider`),
+ *   4. Otherwise the global default baked into `getChannelAgentProvider`
+ *      (currently `opencode`).
  *
  * Unknown string values on `task.agent` (e.g. a provider that used to be
  * supported but was removed) fall through to the channel default rather than
@@ -93,9 +101,20 @@ function resolveTaskThreadId(task: TaskRecord): string {
  * Exported for unit tests that don't want to touch the real SQLite DB.
  */
 export function resolveTaskAgentProvider(task: TaskRecord): AgentProviderId {
+  // 1. Anchored thread wins over everything — keep the existing session's
+  //    provider so we don't silently fork the conversation.
+  if (task.threadId && task.threadId.trim().length > 0) {
+    const existing = loadSession(task.channelId, task.threadId);
+    if (existing?.providerId && isAgentProviderId(existing.providerId)) {
+      return existing.providerId;
+    }
+  }
+  // 2. Per-task override.
   if (task.agent && isAgentProviderId(task.agent)) {
     return task.agent;
   }
+  // 3 + 4. Channel default -> global default (handled inside
+  // getChannelAgentProvider).
   return getChannelAgentProvider(task.channelId);
 }
 
