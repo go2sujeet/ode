@@ -2,6 +2,7 @@ import { basename, dirname, join } from "path";
 import { mkdtemp, chmod, copyFile, rm, rename } from "fs/promises";
 import { tmpdir } from "os";
 import { createHash } from "crypto";
+import { spawn } from "child_process";
 
 const LATEST_RELEASE_URL = "https://api.github.com/repos/odefun/ode/releases/latest";
 const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/odefun/ode/releases/download";
@@ -96,6 +97,38 @@ export function isInstalledBinary(): boolean {
   return execName === "ode" || execName === "ode.exe";
 }
 
+function runCodesign(args: string[]): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("codesign", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", () => resolve({ code: -1, stderr }));
+    child.on("close", (code) => resolve({ code, stderr }));
+  });
+}
+
+/**
+ * macOS AMFI refuses to execute completely unsigned binaries. Bun's --compile
+ * output is nominally ad-hoc signed, but a malformed LC_CODE_SIGNATURE slips
+ * through sometimes and AMFI treats the binary as unsigned on exec. As a
+ * defense-in-depth against broken release artifacts, strip any existing
+ * signature and ad-hoc re-sign the downloaded binary before swapping it in.
+ * Never fails loudly: if codesign is unavailable or refuses to cooperate we
+ * still proceed, preserving prior behavior.
+ */
+async function ensureMacAdhocSigned(binPath: string): Promise<void> {
+  if (process.platform !== "darwin") return;
+  // `codesign --remove-signature` fails if there is no signature at all; that
+  // is fine, we only care that the sign step below succeeds.
+  await runCodesign(["--remove-signature", binPath]);
+  const signed = await runCodesign(["--sign", "-", "--force", "--timestamp=none", binPath]);
+  if (signed.code !== 0) {
+    console.error(`Warning: failed to ad-hoc sign upgraded binary: ${signed.stderr.trim()}`);
+  }
+}
+
 export async function checkForUpdate(currentVersion: string): Promise<UpdateCheckResult> {
   const normalizedCurrent = normalizeVersion(currentVersion) ?? "0.0.0";
   const latestRelease = await fetchLatestReleaseInfo();
@@ -157,6 +190,7 @@ export async function performUpgrade(): Promise<{ latestVersion: string | null }
   if (process.platform !== "win32") {
     await chmod(tempPath, 0o755);
   }
+  await ensureMacAdhocSigned(tempPath);
 
   try {
     const execPath = process.execPath;

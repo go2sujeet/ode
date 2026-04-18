@@ -79,6 +79,19 @@ jobs:
       - name: Build CLI
         run: bun build packages/core/cli.ts --compile --target ${{ matrix.target }} --outfile dist/${{ matrix.artifact }}
 
+      - name: Ad-hoc sign macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          bin="dist/${{ matrix.artifact }}"
+          # Bun --compile may emit a malformed LC_CODE_SIGNATURE that AMFI rejects
+          # and that codesign refuses to overwrite in place. Strip it first, then
+          # re-sign ad-hoc so macOS will actually execute the binary.
+          codesign --remove-signature "$bin" || true
+          codesign --sign - --force --timestamp=none "$bin"
+          codesign --verify --verbose=2 "$bin"
+          codesign -dv "$bin"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
