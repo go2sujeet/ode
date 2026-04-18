@@ -1,5 +1,6 @@
 import { basename } from "path";
 import { getApp, getSlackBotToken } from "./client";
+import { hasSimpleOptions } from "@/core/runtime/helpers";
 
 export type SlackActionName =
   | "get_thread_messages"
@@ -68,6 +69,70 @@ function normalizeOptionLabel(option: unknown): string {
     if (typeof record.value === "string") return record.value;
   }
   return String(option ?? "");
+}
+
+/**
+ * Post a question to Slack. When the options are "simple" (2-5 short labels
+ * with no newlines) we render interactive buttons via an `actions` block so
+ * the user can tap a choice. Otherwise — including when there are no options
+ * at all — we fall back to a plain text message listing the choices inline.
+ *
+ * Shared by `ask_user` (LLM action) and the runtime's `sendQuestion` path
+ * (SDK-emitted `question` events) so both render consistently.
+ */
+export async function postSlackQuestion(args: {
+  channelId: string;
+  threadId: string;
+  question: string;
+  options?: string[];
+  prefix?: string;
+  token: string;
+}): Promise<string | undefined> {
+  const { channelId, threadId, question, prefix, token } = args;
+  const client = getApp().client;
+  const options = (args.options ?? [])
+    .map((opt) => (typeof opt === "string" ? opt : normalizeOptionLabel(opt)))
+    .filter((opt) => opt.trim().length > 0);
+
+  const displayPrefix = prefix ?? "";
+  const questionText = `${displayPrefix}${question}`;
+
+  if (hasSimpleOptions(options)) {
+    const buttons = options.map((opt, i) => ({
+      type: "button" as const,
+      text: { type: "plain_text" as const, text: opt },
+      action_id: `user_choice_${i}`,
+      value: opt,
+    }));
+
+    const result = await client.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadId,
+      text: questionText,
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: questionText },
+        },
+        {
+          type: "actions",
+          block_id: "user_choice",
+          elements: buttons,
+        },
+      ],
+      token,
+    });
+    return result.ts ?? undefined;
+  }
+
+  const optionText = options.length > 0 ? `\nOptions: ${options.join(" / ")}` : "";
+  const result = await client.chat.postMessage({
+    channel: channelId,
+    thread_ts: threadId,
+    text: `${questionText}${optionText}`,
+    token,
+  });
+  return result.ts ?? undefined;
 }
 
 function normalizeSlackUserId(userId: string): string {
@@ -181,32 +246,15 @@ async function handleSlackAction(payload: SlackActionRequest): Promise<unknown> 
       const options = Array.isArray(payload.options)
         ? payload.options.map(normalizeOptionLabel).filter((opt) => opt.trim().length > 0)
         : [];
-      if (options.length < 2 || options.length > 5) {
-        throw new Error("options must have 2-5 items");
+      if (options.length < 2) {
+        throw new Error("options must have at least 2 items");
       }
 
-      const buttons = options.map((opt, i) => ({
-        type: "button" as const,
-        text: { type: "plain_text" as const, text: opt },
-        action_id: `user_choice_${i}`,
-        value: opt,
-      }));
-
-      await client.chat.postMessage({
-        channel: channelId,
-        thread_ts: threadId,
-        text: question,
-        blocks: [
-          {
-            type: "section",
-            text: { type: "mrkdwn", text: question },
-          },
-          {
-            type: "actions",
-            block_id: "user_choice",
-            elements: buttons,
-          },
-        ],
+      await postSlackQuestion({
+        channelId,
+        threadId,
+        question,
+        options,
         token,
       });
 

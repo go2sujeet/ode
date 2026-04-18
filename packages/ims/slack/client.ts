@@ -613,6 +613,30 @@ function createSlackAdapter(processorId?: string): IMAdapter {
     maxEditableMessageChars: 35_000,
     sendMessage: (channelId: string, threadId: string, text: string) =>
       sendMessage(channelId, threadId, text, processorId),
+    sendQuestion: async (
+      channelId: string,
+      threadId: string,
+      question: string,
+      options: string[] | undefined,
+      prefix?: string
+    ) => {
+      const token = getSlackBotTokenForProcessor(processorId) ?? getSlackBotToken(channelId, threadId);
+      if (!token) {
+        // No token -> fall through to plain-text sendMessage so the question
+        // still gets delivered through whatever channel/path the caller has.
+        const optionText = options && options.length > 0 ? `\nOptions: ${options.join(" / ")}` : "";
+        return sendMessage(channelId, threadId, `${prefix ?? ""}${question}${optionText}`, processorId);
+      }
+      const { postSlackQuestion } = await import("./api");
+      return postSlackQuestion({
+        channelId,
+        threadId,
+        question,
+        options,
+        prefix,
+        token,
+      });
+    },
     updateMessage: (channelId: string, messageTs: string, text: string) =>
       updateMessage(channelId, messageTs, text, processorId),
     cancelPendingUpdates: (channelId: string, messageTs: string) =>

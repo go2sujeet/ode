@@ -429,8 +429,20 @@ async function startKernelEventStreamWatcher(params: {
 
       void (async () => {
         try {
-          const promptText = formatSingleQuestionPrompt(normalized[0]!, 0, normalized.length);
-          await deps.im.sendMessage(request.channelId, request.replyThreadId, promptText);
+          const first = normalized[0]!;
+          const prefix = normalized.length > 1 ? `(1/${normalized.length}) ` : "";
+          if (typeof deps.im.sendQuestion === "function") {
+            await deps.im.sendQuestion(
+              request.channelId,
+              request.replyThreadId,
+              first.question,
+              first.options,
+              prefix
+            );
+          } else {
+            const promptText = formatSingleQuestionPrompt(first, 0, normalized.length);
+            await deps.im.sendMessage(request.channelId, request.replyThreadId, promptText);
+          }
         } catch (err) {
           log.warn("Failed to post ask_user question", {
             channelId: request.channelId,

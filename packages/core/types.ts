@@ -44,6 +44,20 @@ export type AgentStatusMessageParams = {
 export interface IMAdapter {
   maxEditableMessageChars?: number;
   sendMessage(channelId: string, threadId: string, text: string): Promise<string | undefined>;
+  /**
+   * Optional. When present, the runtime calls this for ask_user-style prompts
+   * so the IM can render interactive UI (e.g. Slack buttons) when the options
+   * are simple enough. Implementations are free to fall back to plain text.
+   * `prefix` is an optional leading marker like "(1/2) " for multi-question
+   * flows.
+   */
+  sendQuestion?(
+    channelId: string,
+    threadId: string,
+    question: string,
+    options: string[] | undefined,
+    prefix?: string
+  ): Promise<string | undefined>;
   updateMessage(
     channelId: string,
     messageTs: string,

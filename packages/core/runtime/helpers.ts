@@ -115,3 +115,21 @@ export function formatSingleQuestionPrompt(
 export function buildQuestionAnswers(answers: string[]): Array<Array<string>> {
   return answers.map((answer) => [answer]);
 }
+
+/**
+ * Heuristic for rendering a question's options as interactive UI (e.g. Slack
+ * buttons) rather than plain "a / b / c" text. Conservative so we only promote
+ * to buttons when labels are short enough to fit comfortably and the count is
+ * within Slack's actions-block comfort zone.
+ */
+export function hasSimpleOptions(options: readonly string[] | undefined): boolean {
+  if (!options) return false;
+  if (options.length < 2 || options.length > 5) return false;
+  for (const opt of options) {
+    const trimmed = opt?.trim?.();
+    if (!trimmed) return false;
+    if (trimmed.length > 15) return false;
+    if (/[\r\n]/.test(trimmed)) return false;
+  }
+  return true;
+}

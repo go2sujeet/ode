@@ -5,6 +5,7 @@ import {
   categorizeRuntimeError,
   formatQuestionPrompt,
   formatSingleQuestionPrompt,
+  hasSimpleOptions,
 } from "../runtime/helpers";
 
 describe("runtime helpers", () => {
@@ -73,5 +74,36 @@ describe("runtime helpers", () => {
   it("categorizes timed out phrasing as timeout", () => {
     const result = categorizeRuntimeError(new Error("Codex CLI timed out"));
     expect(result.message).toBe("Request timed out");
+  });
+
+  describe("hasSimpleOptions", () => {
+    it("accepts 2-5 short options", () => {
+      expect(hasSimpleOptions(["yes", "no"])).toBe(true);
+      expect(hasSimpleOptions(["a", "b", "c", "d", "e"])).toBe(true);
+    });
+
+    it("rejects fewer than 2 or more than 5 options", () => {
+      expect(hasSimpleOptions(["only"])).toBe(false);
+      expect(hasSimpleOptions(["a", "b", "c", "d", "e", "f"])).toBe(false);
+      expect(hasSimpleOptions(undefined)).toBe(false);
+      expect(hasSimpleOptions([])).toBe(false);
+    });
+
+    it("rejects labels longer than 15 characters", () => {
+      expect(hasSimpleOptions(["short", "this label is definitely way too long"])).toBe(false);
+      // 15 is allowed; 16 is not.
+      expect(hasSimpleOptions(["abcdefghijklmno", "ok"])).toBe(true);
+      expect(hasSimpleOptions(["abcdefghijklmnop", "ok"])).toBe(false);
+    });
+
+    it("rejects labels containing newlines", () => {
+      expect(hasSimpleOptions(["yes", "no\nmaybe"])).toBe(false);
+      expect(hasSimpleOptions(["yes", "no\r\nmaybe"])).toBe(false);
+    });
+
+    it("rejects empty/whitespace-only labels", () => {
+      expect(hasSimpleOptions(["yes", ""])).toBe(false);
+      expect(hasSimpleOptions(["yes", "   "])).toBe(false);
+    });
   });
 });

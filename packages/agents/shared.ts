@@ -67,13 +67,6 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("- You can use any tool available via bash, curl");
     lines.push("");
     lines.push(`IMPORTANT: Your text output is automatically posted to ${platformLabel}.`);
-    lines.push(
-      platform === "discord"
-        ? "- When asking the user to choose options, use ask_user action and do NOT also output text - the posted question is enough."
-        : platform === "lark"
-          ? "- When asking the user to choose options, use ask_user action and do NOT also output text - the posted question is enough."
-        : "- When asking the user to choose options, you can send an ask_user Slack action, do NOT also output text - the buttons are enough."
-    );
     lines.push("- Only output text OR use a messaging tool, never both.");
     lines.push("");
     lines.push("FORMATTING:");
