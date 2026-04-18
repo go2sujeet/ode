@@ -42,13 +42,29 @@ export class CoalescedUpdateQueue<TResult, TPayload = string> {
         payload,
         resolve,
       });
-      void this.limiter.schedule(async () => {
-        const pending = this.pendingByKey.get(dedupKey);
-        if (!pending) return;
-        this.pendingByKey.delete(dedupKey);
-        const result = await this.worker(pending.key, pending.payload);
-        pending.resolve(result);
-      });
+      // Use `.catch` instead of `void` so that rejections from a stopped
+      // limiter (Bottleneck rejects dropped jobs with
+      // "This limiter has been stopped." and "stop() has already been
+      // called") don't leak as unhandled rejections. Any in-flight jobs
+      // dropped by `clear()` are already resolved via `pendingByKey` above,
+      // so swallowing the rejection here is safe.
+      this.limiter
+        .schedule(async () => {
+          const pending = this.pendingByKey.get(dedupKey);
+          if (!pending) return;
+          this.pendingByKey.delete(dedupKey);
+          const result = await this.worker(pending.key, pending.payload);
+          pending.resolve(result);
+        })
+        .catch(() => {
+          // Job was dropped during teardown or rejected by the worker.
+          // Ensure the enqueue promise still settles so callers don't hang.
+          const pending = this.pendingByKey.get(dedupKey);
+          if (pending) {
+            this.pendingByKey.delete(dedupKey);
+            pending.resolve(undefined as TResult);
+          }
+        });
     });
   }
 
