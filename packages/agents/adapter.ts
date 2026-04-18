@@ -22,7 +22,23 @@ function rememberSessionProvider(sessionId: string, providerId: AgentProviderId)
   sessionProviders.set(sessionId, providerId);
 }
 
-export function createAgentAdapter(): AgentAdapter {
+export type AgentAdapterOptions = {
+  /**
+   * Optional per-adapter provider override. When set, `getOrCreateSession`
+   * uses this provider instead of the channel's configured agent. Downstream
+   * calls (sendMessage, abort, subscribe, ...) remain keyed by the session id
+   * as usual, since `getOrCreateSession` writes the chosen provider into the
+   * `sessionProviders` map. Intended for schedulers that carry a per-job
+   * agent override (e.g. one-time tasks).
+   */
+  providerOverride?: AgentProviderId | null;
+};
+
+export function createAgentAdapter(options: AgentAdapterOptions = {}): AgentAdapter {
+  const { providerOverride } = options;
+  const resolveProviderForChannel = (channelId: string): AgentProviderId =>
+    providerOverride ?? getProviderForChannel(channelId);
+
   return {
     supportsEventStream: true,
     getProviderForSession(sessionId) {
@@ -33,7 +49,7 @@ export function createAgentAdapter(): AgentAdapter {
       return getAgentProviderLabel(providerId);
     },
     async getOrCreateSession(channelId, threadId, cwd, env) {
-      const providerId = getProviderForChannel(channelId);
+      const providerId = resolveProviderForChannel(channelId);
       const provider = getAgentProvider(providerId);
       const result = await provider.getOrCreateSession(channelId, threadId, cwd, env);
       rememberSessionProvider(result.sessionId, providerId);
