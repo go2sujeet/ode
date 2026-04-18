@@ -42,8 +42,8 @@ const CRON_POLL_INTERVAL_MS = 15_000;
 let cronSchedulerTimer: ReturnType<typeof setInterval> | null = null;
 const runningJobIds = new Set<string>();
 
-function getCronThreadId(jobId: string): string {
-  return `cron-job:${jobId}`;
+function getCronThreadId(jobId: string, runId: string): string {
+  return `cron-job:${jobId}:${runId}`;
 }
 
 function getCronUserId(jobId: string): string {
@@ -52,6 +52,14 @@ function getCronUserId(jobId: string): string {
 
 function getCronMessageId(minuteStartMs: number): string {
   return String(minuteStartMs);
+}
+
+function getCronRunId(minuteStartMs: number): string {
+  return String(minuteStartMs);
+}
+
+function sanitizeForWorktreeId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 function resolveInboxModelForCron(job: CronJobRecord, options: ReturnType<typeof buildMessageOptions>): string | null {
@@ -75,9 +83,9 @@ async function sendResultToChannel(job: CronJobRecord, text: string): Promise<vo
   await sendLarkChannelMessage(job.channelId, text);
 }
 
-function buildCronAgentContext(job: CronJobRecord): OpenCodeMessageContext {
+function buildCronAgentContext(job: CronJobRecord, runId: string): OpenCodeMessageContext {
   const userId = getCronUserId(job.id);
-  const threadId = getCronThreadId(job.id);
+  const threadId = getCronThreadId(job.id, runId);
   return {
     slack: {
       platform: job.platform,
@@ -90,16 +98,19 @@ function buildCronAgentContext(job: CronJobRecord): OpenCodeMessageContext {
   };
 }
 
-async function prepareCronSession(job: CronJobRecord): Promise<{
+async function prepareCronSession(job: CronJobRecord, runId: string): Promise<{
   session: PersistedSession;
   sessionId: string;
   cwd: string;
   created: boolean;
 }> {
-  const threadId = getCronThreadId(job.id);
+  const threadId = getCronThreadId(job.id, runId);
   const userId = getCronUserId(job.id);
   const agent = createAgentAdapter();
 
+  // Each cron run gets a fresh session + worktree so runs have isolated
+  // timelines and independent working directories. We intentionally do not
+  // reuse any previous run's session here.
   let cwd = resolveChannelCwd(job.channelId).cwd;
   let session = loadSession(job.channelId, threadId);
   if (session?.workingDirectory) {
@@ -115,11 +126,13 @@ async function prepareCronSession(job: CronJobRecord): Promise<{
 
   if (created && getUserGeneralSettings().gitStrategy === "worktree") {
     const baseBranch = getChannelBaseBranch(job.channelId);
+    const jobSlug = sanitizeForWorktreeId(job.id);
+    const runSlug = sanitizeForWorktreeId(runId);
     const prepared = await prepareSessionWorkspace({
       channelId: job.channelId,
       threadId,
       cwd,
-      worktreeId: `ode_cron_${job.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+      worktreeId: `ode_cron_${jobSlug}_${runSlug}`,
       baseBranch,
       sessionEnv,
       gitIdentity,
@@ -155,13 +168,14 @@ async function prepareCronSession(job: CronJobRecord): Promise<{
 
 async function runCronJob(job: CronJobRecord, minuteStartMs: number): Promise<void> {
   const agent = createAgentAdapter();
-  const cronThreadId = getCronThreadId(job.id);
+  const runId = getCronRunId(minuteStartMs);
+  const cronThreadId = getCronThreadId(job.id, runId);
   const cronMessageId = getCronMessageId(minuteStartMs);
   const threadKey = buildThreadKey(job.channelId, cronThreadId);
   let agentResultDetailId: string | null = null;
 
   try {
-    const { session, sessionId, cwd } = await prepareCronSession(job);
+    const { session, sessionId, cwd } = await prepareCronSession(job, runId);
     const providerId = agent.getProviderForSession(sessionId);
     const options = buildMessageOptions({
       text: job.messageText,
@@ -225,7 +239,7 @@ async function runCronJob(job: CronJobRecord, minuteStartMs: number): Promise<vo
       job.messageText,
       cwd,
       options,
-      buildCronAgentContext(job)
+      buildCronAgentContext(job, runId)
     );
     const finalText = buildFinalResponseText(responses) ?? "_Done_";
 
