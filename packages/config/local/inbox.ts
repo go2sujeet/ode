@@ -29,7 +29,7 @@ export type MessageDetailKind =
 
 export type MessageDetailStatus = "pending" | "completed" | "failed";
 
-export type MessageThreadSourceKind = "user" | "cron_job";
+export type MessageThreadSourceKind = "user" | "cron_job" | "task";
 
 export interface MessageThreadSummary {
   id: string;

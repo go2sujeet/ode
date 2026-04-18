@@ -152,6 +152,17 @@ function buildFailureFingerprint(
 function captureDeliveryFailure(failure: FailureRecord): void {
   if (!initialized) return;
 
+  // Some delivery failures are expected race conditions, not bugs:
+  //   - `message_not_found` on update/delete: the status message was already
+  //     deleted or replaced (common when finalization races with teardown).
+  //   - `unknown_message` / `not_found` on update/delete for Discord/Lark.
+  // Skipping these entirely keeps Sentry quota focused on real issues like
+  // auth/network/payload errors. We still keep them in the local
+  // `deliveryStats` counters for debugging.
+  if (!failure.rateLimited && isBenignDeliveryFailure(failure)) {
+    return;
+  }
+
   const dedupKey = `${failure.platform}|${failure.op}|${failure.rateLimited ? "rl" : "err"}|${failure.channelId}`;
   const interval = failure.rateLimited
     ? RATE_LIMIT_CAPTURE_INTERVAL_MS
@@ -196,4 +207,26 @@ function captureDeliveryFailure(failure: FailureRecord): void {
   } catch (hookErr) {
     log.debug("Sentry capture failed", { error: String(hookErr) });
   }
+}
+
+/**
+ * Error strings that represent expected races, not real bugs, for a given op.
+ * Keep this list narrow; when in doubt, send to Sentry rather than suppress.
+ */
+const BENIGN_UPDATE_DELETE_PATTERNS = [
+  // Slack
+  "message_not_found",
+  // Discord
+  "unknown_message",
+  // Lark (generic "not found" codes vary; substring match keeps it simple)
+  "not_found",
+];
+
+export function isBenignDeliveryFailure(failure: {
+  op: DeliveryOp;
+  error: string;
+}): boolean {
+  if (failure.op !== "update" && failure.op !== "delete") return false;
+  const text = failure.error.toLowerCase();
+  return BENIGN_UPDATE_DELETE_PATTERNS.some((pattern) => text.includes(pattern));
 }

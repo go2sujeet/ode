@@ -13,16 +13,18 @@
 
   const pathname = $derived($page.url.pathname);
   const normalizedPathname = $derived(pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname);
-  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "workspace">(() =>
+  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "tasks" | "workspace">(() =>
     normalizedPathname === "/agents"
       ? "agents"
       : normalizedPathname === "/inbox"
         ? "inbox"
       : normalizedPathname === "/cron-jobs"
         ? "cronJobs"
-      : normalizedPathname.startsWith("/workspace")
-        ? "workspace"
-        : "general"
+      : normalizedPathname === "/tasks"
+        ? "tasks"
+        : normalizedPathname.startsWith("/workspace")
+          ? "workspace"
+          : "general"
   );
   let pendingWorkspaceType = $state<"slack" | "discord" | "lark">("slack");
   let pendingSlackAppToken = $state("");
@@ -214,6 +216,13 @@
           on:click={() => goto("/cron-jobs")}
         >
           {t("Cron Jobs", "定时任务")}
+        </Button>
+        <Button
+          variant={activeSection === "tasks" ? "default" : "secondary"}
+          className="w-full justify-start"
+          on:click={() => goto("/tasks")}
+        >
+          {t("Tasks", "一次性任务")}
         </Button>
       </div>
     </Card>

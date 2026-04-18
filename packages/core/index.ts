@@ -33,6 +33,7 @@ import { markRuntimeReady, scheduleUpgradeRestart } from "@/core/daemon/control"
 import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
 import { runOnboardingIfNeeded } from "./onboarding";
 import { startCronJobScheduler, stopCronJobScheduler } from "@/core/cron/scheduler";
+import { startTaskScheduler, stopTaskScheduler } from "@/core/tasks/scheduler";
 import { initSentry, shutdownSentry } from "@/core/observability/sentry";
 import packageJson from "../../package.json" with { type: "json" };
 
@@ -283,6 +284,7 @@ async function main(): Promise<void> {
   await startDiscordRuntime("startup");
   await startLarkRuntime("startup");
   startCronJobScheduler();
+  startTaskScheduler();
 
   if (slackApps.length > 0) {
     log.debug("Slack app created");
@@ -302,6 +304,7 @@ async function main(): Promise<void> {
 
     try {
       stopCronJobScheduler();
+      stopTaskScheduler();
       stopOAuthServer();
       await stopSlackRuntime("shutdown");
       await stopDiscordRuntime("shutdown");
