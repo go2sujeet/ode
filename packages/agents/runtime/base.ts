@@ -8,6 +8,12 @@ type SessionHandler = (event: unknown) => void;
 type ActiveRequestEntry = {
   controller: AbortController;
   process?: ChildProcess;
+  /**
+   * If this entry replaced an in-flight request, the previous process is kept
+   * here so the next CLI invocation can wait for it to fully exit (and release
+   * any session-level lock) before spawning a replacement.
+   */
+  previousProcess?: ChildProcess;
 };
 
 type RunCliJsonCommandParams<TRecord> = {
@@ -24,6 +30,94 @@ type RunCliJsonCommandParams<TRecord> = {
   logRawOutput?: boolean;
 };
 
+/**
+ * How long to wait for a previously-spawned CLI subprocess to fully exit
+ * before spawning the next one for the same session. Several CLIs (notably
+ * `claude`) hold an in-flight session lock until the process actually exits,
+ * so spawning a replacement too eagerly produces "Session ID … is already in
+ * use".
+ */
+const PROCESS_CLOSE_TIMEOUT_MS = 2000;
+
+async function waitForPreviousProcessClose(
+  providerName: string,
+  entry: ActiveRequestEntry
+): Promise<void> {
+  const previous = entry.previousProcess;
+  if (!previous) return;
+  // Drop the reference unconditionally so we don't hold the previous process
+  // forever, even if it has already exited.
+  entry.previousProcess = undefined;
+  if (previous.exitCode !== null || previous.signalCode !== null) return;
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      log.warn(`${providerName} previous process did not close in time`, {
+        pid: previous.pid,
+        timeoutMs: PROCESS_CLOSE_TIMEOUT_MS,
+      });
+      finish();
+    }, PROCESS_CLOSE_TIMEOUT_MS);
+    previous.once("close", finish);
+    previous.once("exit", finish);
+  });
+}
+
+/**
+ * When a CLI exits non-zero but writes its real error to stdout (as the
+ * `claude` CLI does for upstream 5xx — `code=1`, stderr empty, the
+ * `API Error: 524 …` payload buried in the last stream-json `type:"result"`
+ * line), we still need to surface that text so downstream transient-error
+ * matching can recognise it. This pulls the most useful message out of the
+ * captured stdout in a provider-agnostic way.
+ */
+export function extractErrorFromStdout(stdout: string): string | undefined {
+  if (!stdout) return undefined;
+
+  const lines = stdout.split("\n");
+  // Scan from the end: the terminating record (e.g. `type:"result"`) is
+  // emitted last and carries the most reliable error payload.
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]?.trim();
+    if (!line || !line.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(line) as {
+        is_error?: boolean;
+        error?: unknown;
+        result?: unknown;
+      };
+      if (parsed.is_error === true || typeof parsed.error === "string") {
+        if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+          return parsed.error.trim();
+        }
+        if (typeof parsed.result === "string" && parsed.result.trim().length > 0) {
+          return parsed.result.trim();
+        }
+        // Last resort: return the raw record so isTransientClaudeError can
+        // still pattern-match on its body (e.g. `cloudflare_error`).
+        return line;
+      }
+    } catch {
+      // Not a JSON line; keep scanning.
+    }
+  }
+
+  // No structured error found; fall back to the last non-empty line of stdout
+  // (avoids returning multi-MB blobs).
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]?.trim();
+    if (line) return line.length > 500 ? `${line.slice(0, 500)}…` : line;
+  }
+  return undefined;
+}
+
 export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams<TRecord>): Promise<string> {
   const {
     providerName,
@@ -38,6 +132,12 @@ export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams
     onExit,
     logRawOutput = false,
   } = params;
+
+  // If a previous child process for the same session was just SIGTERM'd, give
+  // it a brief window to actually exit (and release any server-side session
+  // lock) before we spawn the next one. Bounded by PROCESS_CLOSE_TIMEOUT_MS,
+  // so a stuck child can never block us indefinitely.
+  await waitForPreviousProcessClose(providerName, entry);
 
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
@@ -124,7 +224,18 @@ export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams
       log.info(`${providerName} CLI completed`, completionDetails);
 
       if (code !== 0) {
-        reject(new Error(stderr || `${providerName} CLI exited with code ${code}`));
+        // Prefer stderr (CLI's own diagnostics). If stderr is empty — which
+        // is the case for claude on Anthropic upstream 5xx — fall back to
+        // mining stdout for a structured error record so downstream code can
+        // recognise transient failures like API Error: 524 and retry.
+        const stdoutError = stderr ? undefined : extractErrorFromStdout(stdout);
+        reject(
+          new Error(
+            stderr ||
+              stdoutError ||
+              `${providerName} CLI exited with code ${code}`
+          )
+        );
         return;
       }
 
@@ -249,7 +360,10 @@ export class CliAgentRuntime extends BaseAgentRuntime {
       existingEntry.process?.kill("SIGTERM");
     }
 
-    const entry: ActiveRequestEntry = { controller: new AbortController() };
+    const entry: ActiveRequestEntry = {
+      controller: new AbortController(),
+      previousProcess: existingEntry?.process,
+    };
     this.activeRequests.set(sessionKey, entry);
     return entry;
   }
