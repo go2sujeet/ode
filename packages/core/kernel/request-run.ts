@@ -559,21 +559,56 @@ export async function runOpenRequest(
   // Streaming-API path is opt-in via env var AND requires the adapter to
   // implement startStatusStream (currently Slack-only). When unavailable
   // we silently fall back to the chat.postMessage + chat.update path.
-  const useStreaming = isStatusStreamingEnabled()
+  const streamingRequested = isStatusStreamingEnabled()
     && typeof deps.im.startStatusStream === "function"
     && typeof deps.im.appendStatusStream === "function";
 
+  // Tracks whether the *current* statusTs is a live stream. Set to true
+  // only after startStatusStream returns a TS; cleared if we fall back to
+  // sendMessage at startup or if a status rotation later replaces the TS
+  // with a chat.postMessage-issued one.
+  let useStreaming = false;
+
   let initialStatusTs: string | undefined;
   try {
-    if (useStreaming && deps.im.startStatusStream) {
-      initialStatusTs = await deps.im.startStatusStream(
-        context.channelId,
-        context.replyThreadId,
-        {
-          recipientUserId: context.userId,
-          seedPlanTitle: `${providerLabel} is running...`,
-        }
-      );
+    if (streamingRequested && deps.im.startStatusStream) {
+      try {
+        initialStatusTs = await deps.im.startStatusStream(
+          context.channelId,
+          context.replyThreadId,
+          {
+            recipientUserId: context.userId,
+            seedPlanTitle: `${providerLabel} is running...`,
+          }
+        );
+      } catch (err) {
+        // startStream itself threw — log and fall through to the
+        // chat.postMessage path below. Common causes: missing
+        // recipient_team_id, the workspace hasn't opted into the streaming
+        // API, network blip on the very first request.
+        log.warn("startStatusStream threw; falling back to chat.postMessage", {
+          channelId: context.channelId,
+          threadId: context.replyThreadId,
+          error: String(err),
+        });
+        initialStatusTs = undefined;
+      }
+      if (initialStatusTs) {
+        useStreaming = true;
+      } else {
+        // Adapter returned undefined (e.g. resolveWorkspaceAuth couldn't
+        // produce a team id). Fall back to plain chat.postMessage instead
+        // of aborting the whole request.
+        log.warn("startStatusStream returned no ts; falling back to chat.postMessage", {
+          channelId: context.channelId,
+          threadId: context.replyThreadId,
+        });
+        initialStatusTs = await deps.im.sendMessage(
+          context.channelId,
+          context.replyThreadId,
+          `${providerLabel} is running...`
+        );
+      }
     } else {
       initialStatusTs = await deps.im.sendMessage(
         context.channelId,
@@ -672,8 +707,8 @@ export async function runOpenRequest(
       // Streaming path: diff state -> chunks -> chat.appendStream.
       // Falls back to plain-text chat.update when the differ produced no
       // chunks (nothing changed) so we don't waste a Tier-4 round-trip.
-      if (streamDiffer && currentState && deps.im.appendStatusStream && !request.statusFrozen) {
-        const chunks = streamDiffer.diff({
+      if (streamDiffer && currentState && deps.im.appendStatusStream && useStreaming && !request.statusFrozen) {
+        const { chunks, commit } = streamDiffer.diff({
           state: currentState,
           workingPath: cwd,
           startedAt: request.startedAt,
@@ -681,12 +716,16 @@ export async function runOpenRequest(
         if (chunks.length > 0) {
           try {
             await deps.im.appendStatusStream(context.channelId, statusTs, chunks);
+            // Only advance the differ's fingerprint cache after the
+            // network call confirms. If commit() is skipped due to a
+            // throw above, the next tick re-emits the same chunks
+            // (idempotent for Slack's task_update / plan_update).
+            commit();
           } catch (err) {
             // appendStream failed (rate limit, streaming_state_conflict,
-            // network blip…). Don't crash the tick — the next tick will
-            // re-diff against the same lastFingerprints and retry only the
-            // still-unchanged delta, so we don't replay the entire history.
-            log.warn("Slack appendStatusStream failed", {
+            // network blip…). Don't crash the tick and don't commit() —
+            // the next tick will re-emit the still-pending delta.
+            log.warn("Slack appendStatusStream failed; will retry next tick", {
               channelId: context.channelId,
               statusTs,
               chunkCount: chunks.length,

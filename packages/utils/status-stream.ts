@@ -136,18 +136,32 @@ export type StatusStreamDiffInput = {
   startedAt: number;
 };
 
+export type StatusStreamDiffResult = {
+  /** Chunks to send to chat.appendStream. May be empty (no-op). */
+  chunks: StatusStreamChunk[];
+  /**
+   * Call AFTER chat.appendStream confirms success — this advances the
+   * differ's internal fingerprint cache so the same chunks aren't sent
+   * again. If the append fails, do NOT call commit: next diff() will
+   * re-emit the unconfirmed chunks (Slack will dedupe idempotent
+   * task_update payloads, and rate/network failures recover instead of
+   * leaving task cards permanently stale).
+   */
+  commit(): void;
+};
+
 export type StatusStreamDiffer = {
   /**
-   * Produce the chunks needed to bring the Slack-side stream in sync with
-   * the latest SessionMessageState. Returns an empty array when nothing
-   * changed since the last call — callers should skip the appendStream
-   * round-trip in that case.
+   * Compute the chunks needed to bring the Slack-side stream in sync with
+   * the latest SessionMessageState, plus a `commit()` callback the caller
+   * runs after the network append succeeds. When the chunks list is empty
+   * the caller should skip both the appendStream round-trip and commit().
    */
-  diff(input: StatusStreamDiffInput): StatusStreamChunk[];
+  diff(input: StatusStreamDiffInput): StatusStreamDiffResult;
   /**
-   * Compose a short final summary line for chat.stopStream's
-   * `markdown_text`. Kept separate from `diff()` because stopping is a
-   * one-shot terminal transition.
+   * Compose a short final summary line for the terminal plan_update chunk
+   * we emit just before chat.stopStream. Kept separate from `diff()`
+   * because stopping is a one-shot terminal transition.
    */
   finalize(input: StatusStreamDiffInput): string;
 };
@@ -159,6 +173,13 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
   return {
     diff({ state, workingPath, startedAt }) {
       const chunks: StatusStreamChunk[] = [];
+      // Pending updates accumulated this tick. Only applied to
+      // lastFingerprints / lastPlanTitle when commit() runs, so a network
+      // failure leaves the old state in place and the next tick re-emits
+      // the same delta.
+      const pendingFingerprints: Array<[string, ToolFingerprint]> = [];
+      let pendingPlanTitle: string | undefined;
+      let planTitleChanged = false;
 
       // Plan title: prefer the live phase (e.g. "Running tool: bash"), fall
       // back to the session title, then a generic "Working".
@@ -167,7 +188,8 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
         || `Working (${formatElapsedTime(startedAt)})`);
       if (planTitle !== lastPlanTitle) {
         chunks.push({ type: "plan_update", title: planTitle });
-        lastPlanTitle = planTitle;
+        pendingPlanTitle = planTitle;
+        planTitleChanged = true;
       }
 
       // Tools: emit a task_update for each tool whose fingerprint changed.
@@ -178,7 +200,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
         const fp = fingerprintTool(tool, workingPath);
         const prev = lastFingerprints.get(tool.id);
         if (prev && fingerprintsEqual(prev, fp)) continue;
-        lastFingerprints.set(tool.id, fp);
+        pendingFingerprints.push([tool.id, fp]);
         chunks.push({
           type: "task_update",
           id: tool.id,
@@ -189,7 +211,15 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
         });
       }
 
-      return chunks;
+      return {
+        chunks,
+        commit() {
+          if (planTitleChanged) lastPlanTitle = pendingPlanTitle;
+          for (const [id, fp] of pendingFingerprints) {
+            lastFingerprints.set(id, fp);
+          }
+        },
+      };
     },
 
     finalize({ state, startedAt }) {

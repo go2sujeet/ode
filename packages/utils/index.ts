@@ -20,6 +20,7 @@ export {
   createStatusStreamDiffer,
   type StatusStreamDiffer,
   type StatusStreamDiffInput,
+  type StatusStreamDiffResult,
 } from "./status-stream";
 export { extractEventSessionId } from "./session-id";
 export { ensureSessionWorktree, resolveRepoRoot } from "./worktree";
