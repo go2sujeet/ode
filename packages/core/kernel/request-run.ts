@@ -29,13 +29,26 @@ import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 import { formatSingleQuestionPrompt } from "@/core/runtime/helpers";
 import {
   buildSessionMessageState,
+  createStatusStreamDiffer,
   extractEventSessionId,
   getStatusMessageKey,
   truncateEventPayload,
   type SessionEvent,
   type SessionMessageState,
+  type StatusStreamDiffer,
   log,
 } from "@/utils";
+
+/**
+ * When ODE_SLACK_STATUS_STREAMING=1 and the IM adapter supports the
+ * Slack-style streaming API (chat.startStream/appendStream/stopStream), we
+ * render live status as task_update/plan_update chunks instead of repeated
+ * chat.update edits. Currently Slack-only; other adapters lack the methods
+ * and the code path automatically falls back.
+ */
+function isStatusStreamingEnabled(): boolean {
+  return process.env.ODE_SLACK_STATUS_STREAMING === "1";
+}
 
 /**
  * Guard against publishing the user's own prompt as the bot's final reply.
@@ -92,6 +105,13 @@ export type RunTrackedRequestParams = {
   onComplete: () => void;
   onFail: (message: string) => void;
   publishFinalText: (text: string) => Promise<void>;
+  /**
+   * Optional. When the runner used the streaming API for live status, the
+   * failure path needs to stop the stream before chat.update would 409 with
+   * `streaming_state_conflict`. The kernel passes a closure that knows how
+   * to terminate the stream and emit a one-line error summary.
+   */
+  publishErrorStatus?: (errorStatusText: string) => Promise<void>;
   failureLogLabel: string;
   agentResultDetailId: string | null;
   threadKey: string;
@@ -536,13 +556,31 @@ export async function runOpenRequest(
 
   const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
+  // Streaming-API path is opt-in via env var AND requires the adapter to
+  // implement startStatusStream (currently Slack-only). When unavailable
+  // we silently fall back to the chat.postMessage + chat.update path.
+  const useStreaming = isStatusStreamingEnabled()
+    && typeof deps.im.startStatusStream === "function"
+    && typeof deps.im.appendStatusStream === "function";
+
   let initialStatusTs: string | undefined;
   try {
-    initialStatusTs = await deps.im.sendMessage(
-      context.channelId,
-      context.replyThreadId,
-      `${providerLabel} is running...`
-    );
+    if (useStreaming && deps.im.startStatusStream) {
+      initialStatusTs = await deps.im.startStatusStream(
+        context.channelId,
+        context.replyThreadId,
+        {
+          recipientUserId: context.userId,
+          seedPlanTitle: `${providerLabel} is running...`,
+        }
+      );
+    } else {
+      initialStatusTs = await deps.im.sendMessage(
+        context.channelId,
+        context.replyThreadId,
+        `${providerLabel} is running...`
+      );
+    }
   } catch (err) {
     // Swallow initial-status send failure so the request lifecycle below never
     // gets skipped by an unhandled rejection. A transient Slack error on the
@@ -596,6 +634,10 @@ export async function runOpenRequest(
     ? `${options.model.providerID}/${options.model.modelID}`
     : null;
   const providerId = deps.agent.getProviderForSession(sessionId);
+
+  // One differ instance per run; keeps last-seen fingerprints so we only
+  // send chunks for tools whose shape actually changed.
+  const streamDiffer: StatusStreamDiffer | null = useStreaming ? createStatusStreamDiffer() : null;
   const result = await runTrackedRequest({
     deps,
     request,
@@ -625,12 +667,47 @@ export async function runOpenRequest(
       // progress updates pointed at the actual live message.
       statusTs = request.statusMessageTs;
       const currentStatusKey = getStatusMessageKey(request);
+      const currentState = liveParsedState.get(currentStatusKey);
+
+      // Streaming path: diff state -> chunks -> chat.appendStream.
+      // Falls back to plain-text chat.update when the differ produced no
+      // chunks (nothing changed) so we don't waste a Tier-4 round-trip.
+      if (streamDiffer && currentState && deps.im.appendStatusStream && !request.statusFrozen) {
+        const chunks = streamDiffer.diff({
+          state: currentState,
+          workingPath: cwd,
+          startedAt: request.startedAt,
+        });
+        if (chunks.length > 0) {
+          try {
+            await deps.im.appendStatusStream(context.channelId, statusTs, chunks);
+          } catch (err) {
+            // appendStream failed (rate limit, streaming_state_conflict,
+            // network blip…). Don't crash the tick — the next tick will
+            // re-diff against the same lastFingerprints and retry only the
+            // still-unchanged delta, so we don't replay the entire history.
+            log.warn("Slack appendStatusStream failed", {
+              channelId: context.channelId,
+              statusTs,
+              chunkCount: chunks.length,
+              error: String(err),
+            });
+          }
+        }
+        updateActiveRequest(context.channelId, context.threadId, {
+          statusMessageTs: request.statusMessageTs,
+          currentText: request.currentText,
+          todos: request.todos,
+          statusFrozen: request.statusFrozen,
+        });
+        return;
+      }
 
       const statusText = buildStatusMessageForAgent({
         agent: deps.agent,
         request,
         workingPath: cwd,
-        state: liveParsedState.get(currentStatusKey),
+        state: currentState,
         statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
       });
       if (!request.statusFrozen) {
@@ -700,6 +777,43 @@ export async function runOpenRequest(
       failActiveRequest(context.channelId, context.threadId, failureMessage);
     },
     publishFinalText: async (text) => {
+      // If we were rendering status via the streaming API, terminate the
+      // stream first. This converts the live plan card to a static block
+      // (no more spinner), prevents `streaming_state_conflict` on the
+      // subsequent chat.update/delete in publishFinalText, and gives us a
+      // place to record a one-line "done in 12s" summary via a final
+      // plan_update chunk (chunks-mode streams can't accept markdown_text
+      // on stop, so we use an appendStream first if we need a summary).
+      if (useStreaming && streamDiffer && deps.im.stopStatusStream) {
+        try {
+          const currentState = liveParsedState.get(getStatusMessageKey(request));
+          if (currentState && deps.im.appendStatusStream) {
+            const summary = streamDiffer.finalize({
+              state: currentState,
+              workingPath: cwd,
+              startedAt: request.startedAt,
+            });
+            try {
+              await deps.im.appendStatusStream(
+                context.channelId,
+                request.statusMessageTs,
+                [{ type: "plan_update", title: summary }]
+              );
+            } catch (err) {
+              log.debug("Final summary plan_update failed; proceeding to stop", {
+                error: String(err),
+              });
+            }
+          }
+          await deps.im.stopStatusStream(context.channelId, request.statusMessageTs);
+        } catch (err) {
+          log.warn("Slack stopStatusStream failed before final text", {
+            channelId: context.channelId,
+            statusTs: request.statusMessageTs,
+            error: String(err),
+          });
+        }
+      }
       await publishFinalText({
         channelId: context.channelId,
         threadId: context.replyThreadId,
@@ -707,6 +821,49 @@ export async function runOpenRequest(
         text,
       });
     },
+    publishErrorStatus: useStreaming && deps.im.stopStatusStream
+      ? async (errorStatusText: string) => {
+          // Append the error as a final plan_update chunk so the streamed
+          // card surfaces the failure inline, then stop the stream. Chunks-
+          // mode streams can't carry markdown_text on stop, so we can't
+          // pass the error there directly.
+          try {
+            if (deps.im.appendStatusStream) {
+              try {
+                await deps.im.appendStatusStream(
+                  context.channelId,
+                  request.statusMessageTs,
+                  [{ type: "plan_update", title: `Error: ${errorStatusText.split("\n")[0]?.slice(0, 200) ?? ""}` }]
+                );
+              } catch (err) {
+                log.debug("Final error plan_update failed; proceeding to stop", {
+                  error: String(err),
+                });
+              }
+            }
+            await deps.im.stopStatusStream!(context.channelId, request.statusMessageTs);
+          } catch (err) {
+            log.warn("Slack stopStatusStream failed in error path", {
+              channelId: context.channelId,
+              statusTs: request.statusMessageTs,
+              error: String(err),
+            });
+            // Best-effort: still try a plain update so the user sees something.
+            try {
+              await deps.im.updateMessage(
+                context.channelId,
+                request.statusMessageTs,
+                errorStatusText
+              );
+            } catch (updateErr) {
+              log.warn("Fallback chat.update after stopStream failure also failed", {
+                channelId: context.channelId,
+                error: String(updateErr),
+              });
+            }
+          }
+        }
+      : undefined,
     failureLogLabel: "Request failed",
     agentResultDetailId,
     threadKey,
@@ -894,7 +1051,24 @@ export async function runTrackedRequest(
       workingDirectory: workingPath,
     });
     deps.im.cancelPendingUpdates?.(request.channelId, request.statusMessageTs);
-    await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
+    if (params.publishErrorStatus) {
+      // Streaming path: caller-supplied closure terminates the live stream
+      // (via chat.stopStream) and posts a new message with the error text,
+      // because chat.update against a streaming message returns
+      // `streaming_state_conflict`.
+      try {
+        await params.publishErrorStatus(errorStatus);
+      } catch (err) {
+        log.warn("publishErrorStatus failed; falling back to chat.update", {
+          channelId: request.channelId,
+          statusTs: request.statusMessageTs,
+          error: String(err),
+        });
+        await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
+      }
+    } else {
+      await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
+    }
     deps.im.markMessageFinalized?.(request.channelId, request.statusMessageTs);
     onFail(message);
     return { responses: null };

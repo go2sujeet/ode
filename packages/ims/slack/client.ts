@@ -636,6 +636,34 @@ function createSlackAdapter(processorId?: string): IMAdapter {
     },
     updateMessage: (channelId: string, messageTs: string, text: string) =>
       updateMessage(channelId, messageTs, text, processorId),
+    startStatusStream: async (channelId, threadId, opts) => {
+      // Resolve recipient_team_id from the channel's registered workspace
+      // auth — Slack's chat.startStream requires it for non-DM streams.
+      const auth = slackAuthRegistry.resolveWorkspaceAuth(
+        getSlackBotTokenForProcessor(processorId) ?? getSlackBotToken(channelId, threadId)
+      );
+      const recipientTeamId = auth?.teamId ?? undefined;
+      if (!recipientTeamId) {
+        log.warn("No team id resolved for channel; cannot start Slack stream", { channelId });
+        return undefined;
+      }
+      const { startSlackStream } = await import("./api");
+      return startSlackStream({
+        channelId,
+        threadId,
+        recipientUserId: opts.recipientUserId,
+        recipientTeamId,
+        seedPlanTitle: opts.seedPlanTitle,
+      });
+    },
+    appendStatusStream: async (channelId, messageTs, chunks) => {
+      const { appendSlackStream } = await import("./api");
+      await appendSlackStream({ channelId, messageTs, chunks });
+    },
+    stopStatusStream: async (channelId, messageTs) => {
+      const { stopSlackStream } = await import("./api");
+      await stopSlackStream({ channelId, messageTs });
+    },
     cancelPendingUpdates: (channelId: string, messageTs: string) =>
       slackMessageUpdateManager.cancelPendingUpdates(channelId, messageTs),
     markMessageFinalized: (channelId: string, messageTs: string) =>
