@@ -637,32 +637,61 @@ function createSlackAdapter(processorId?: string): IMAdapter {
     updateMessage: (channelId: string, messageTs: string, text: string) =>
       updateMessage(channelId, messageTs, text, processorId),
     startStatusStream: async (channelId, threadId, opts) => {
-      // Resolve recipient_team_id from the channel's registered workspace
-      // auth — Slack's chat.startStream requires it for non-DM streams.
-      const auth = slackAuthRegistry.resolveWorkspaceAuth(
-        getSlackBotTokenForProcessor(processorId) ?? getSlackBotToken(channelId, threadId)
-      );
+      // Resolve recipient_team_id + bot token together so append/stop can
+      // use the same identity by reading the token back from the
+      // message-bot-token registry (see setMessageBotToken below).
+      const botToken = getSlackBotTokenForProcessor(processorId)
+        ?? getSlackBotToken(channelId, threadId);
+      if (!botToken) {
+        log.warn("No Slack bot token available for channel; cannot start stream", { channelId });
+        return undefined;
+      }
+      const auth = slackAuthRegistry.resolveWorkspaceAuth(botToken);
       const recipientTeamId = auth?.teamId ?? undefined;
       if (!recipientTeamId) {
         log.warn("No team id resolved for channel; cannot start Slack stream", { channelId });
         return undefined;
       }
       const { startSlackStream } = await import("./api");
-      return startSlackStream({
+      const ts = await startSlackStream({
         channelId,
         threadId,
         recipientUserId: opts.recipientUserId,
         recipientTeamId,
         seedPlanTitle: opts.seedPlanTitle,
+        token: botToken,
       });
+      if (ts) {
+        // Bind the bot token to the streamed TS so future
+        // appendStatusStream / stopStatusStream calls resolve the SAME
+        // workspace token via getMessageBotToken — multi-workspace installs
+        // would otherwise risk mixing identities and getting silent
+        // rejections from Slack mid-stream.
+        slackAuthRegistry.setMessageBotToken(channelId, ts, botToken);
+      }
+      return ts;
     },
     appendStatusStream: async (channelId, messageTs, chunks) => {
+      const token = slackAuthRegistry.getMessageBotToken(channelId, messageTs)
+        ?? getSlackBotTokenForProcessor(processorId)
+        ?? getSlackBotToken(channelId);
+      if (!token) {
+        log.warn("No Slack bot token available for stream append", { channelId, messageTs });
+        return;
+      }
       const { appendSlackStream } = await import("./api");
-      await appendSlackStream({ channelId, messageTs, chunks });
+      await appendSlackStream({ channelId, messageTs, chunks, token });
     },
     stopStatusStream: async (channelId, messageTs) => {
+      const token = slackAuthRegistry.getMessageBotToken(channelId, messageTs)
+        ?? getSlackBotTokenForProcessor(processorId)
+        ?? getSlackBotToken(channelId);
+      if (!token) {
+        log.warn("No Slack bot token available for stream stop", { channelId, messageTs });
+        return;
+      }
       const { stopSlackStream } = await import("./api");
-      await stopSlackStream({ channelId, messageTs });
+      await stopSlackStream({ channelId, messageTs, token });
     },
     cancelPendingUpdates: (channelId: string, messageTs: string) =>
       slackMessageUpdateManager.cancelPendingUpdates(channelId, messageTs),

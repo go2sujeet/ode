@@ -568,6 +568,11 @@ export async function runOpenRequest(
   // sendMessage at startup or if a status rotation later replaces the TS
   // with a chat.postMessage-issued one.
   let useStreaming = false;
+  // The TS that we actually started a stream against. Used to detect
+  // status-message rotation (post-question / 429-fallback), which posts a
+  // brand-new chat.postMessage message — appendStream against that TS
+  // would fail with `message_not_in_streaming_state`.
+  let streamingStatusTs: string | undefined;
 
   let initialStatusTs: string | undefined;
   try {
@@ -595,6 +600,7 @@ export async function runOpenRequest(
       }
       if (initialStatusTs) {
         useStreaming = true;
+        streamingStatusTs = initialStatusTs;
       } else {
         // Adapter returned undefined (e.g. resolveWorkspaceAuth couldn't
         // produce a team id). Fall back to plain chat.postMessage instead
@@ -703,6 +709,24 @@ export async function runOpenRequest(
       statusTs = request.statusMessageTs;
       const currentStatusKey = getStatusMessageKey(request);
       const currentState = liveParsedState.get(currentStatusKey);
+
+      // If a status-message rotation replaced our stream TS with a fresh
+      // chat.postMessage TS (happens after a question.replied flow, or
+      // after a 429-fallback elsewhere in this tick), the streaming-API
+      // path no longer applies: appendStream against the new TS would
+      // fail with `message_not_in_streaming_state`. Downgrade to plain
+      // chat.update for the rest of the run. We do NOT try to re-start a
+      // fresh stream — that would post a second message in the thread for
+      // the same turn, which is more confusing than a continuation card.
+      if (useStreaming && streamingStatusTs && statusTs !== streamingStatusTs) {
+        log.info("Status TS rotated; disabling Slack streaming for the rest of the run", {
+          channelId: context.channelId,
+          previousStreamingTs: streamingStatusTs,
+          newStatusTs: statusTs,
+        });
+        useStreaming = false;
+        streamingStatusTs = undefined;
+      }
 
       // Streaming path: diff state -> chunks -> chat.appendStream.
       // Falls back to plain-text chat.update when the differ produced no
