@@ -2,9 +2,9 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
-  import { Building2, Github, Plus, Trash2 } from "lucide-svelte";
+  import { Building2, FlaskConical, Github, Plus, Trash2 } from "lucide-svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-  import { Button, Card, Input, Label, Select } from "$lib/components/ui";
+  import { Button, Card, Input, Label, Select, Switch } from "$lib/components/ui";
   import { initLocale, locale, setLocalePreference, type Locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
   import { getSelectedWorkspace, getWorkspacePath } from "$lib/local-setting/workspaces";
@@ -13,7 +13,7 @@
 
   const pathname = $derived($page.url.pathname);
   const normalizedPathname = $derived(pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname);
-  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "tasks" | "prTracker" | "workspace">(() =>
+  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "tasks" | "prTracker" | "dev" | "workspace">(() =>
     normalizedPathname === "/agents"
       ? "agents"
       : normalizedPathname === "/inbox"
@@ -24,6 +24,8 @@
         ? "tasks"
       : normalizedPathname === "/pr-tracker"
         ? "prTracker"
+      : normalizedPathname === "/dev"
+        ? "dev"
         : normalizedPathname.startsWith("/workspace")
           ? "workspace"
           : "general"
@@ -35,6 +37,7 @@
   let pendingLarkAppKey = $state("");
   let pendingLarkAppSecret = $state("");
   let isAddWorkspaceDialogOpen = $state(false);
+  let isDevMode = $state(false);
 
   const selectedWorkspace = $derived(getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces));
   const isBusy = $derived($localSettingStore.isLoading
@@ -108,6 +111,13 @@
     pendingLarkAppSecret = (event.currentTarget as HTMLInputElement).value;
   }
 
+  function setDevMode(enabled: boolean): void {
+    isDevMode = enabled;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("ode-dev-mode", enabled ? "1" : "0");
+    }
+  }
+
   async function removeWorkspace(workspaceId: string): Promise<void> {
     const workspaces = $localSettingStore.config.workspaces;
     const removingIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
@@ -149,6 +159,7 @@
 
   onMount(() => {
     initLocale();
+    isDevMode = typeof window !== "undefined" && window.localStorage.getItem("ode-dev-mode") === "1";
     if (!$localSettingStore.loaded) {
       void localSettingStore.loadConfig();
     }
@@ -233,6 +244,26 @@
         >
           {t("PR Tracker", "PR 追踪")}
         </Button>
+        {#if isDevMode || activeSection === "dev"}
+          <Button
+            variant={activeSection === "dev" ? "default" : "secondary"}
+            className="w-full justify-start"
+            on:click={() => goto("/dev")}
+          >
+            <FlaskConical class="h-4 w-4" />
+            {t("Dev Tools", "开发工具")}
+          </Button>
+        {/if}
+      </div>
+    </Card>
+
+    <Card className="p-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold">{t("Dev mode", "开发模式")}</h2>
+          <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Show local testing tools", "显示本地测试工具")}</p>
+        </div>
+        <Switch checked={isDevMode} ariaLabel={t("Toggle dev mode", "切换开发模式")} on:change={(event) => setDevMode(event.detail)} />
       </div>
     </Card>
 
