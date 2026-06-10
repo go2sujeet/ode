@@ -1,5 +1,4 @@
 import { App } from "@slack/bolt";
-import { WebClient } from "@slack/web-api";
 import {
   getSlackTargetChannels,
   getSlackBotTokens,
@@ -222,38 +221,46 @@ async function syncWorkspaceAfterMention(
   }
 }
 
-async function fetchWorkspaceAuth(
+function buildWorkspaceAuthFromConfig(
   appToken: string,
   botToken: string,
   workspaceId: string,
   workspaceName: string
-): Promise<WorkspaceAuth | null> {
-  try {
-    const client = new WebClient(botToken);
-    const auth = await client.auth.test();
-    return {
-      appToken,
-      botToken,
-      workspaceId,
-      workspaceName,
-      teamId: (auth as any).team_id ?? null,
-      enterpriseId: (auth as any).enterprise_id ?? null,
-      botUserId: (auth as any).bot_user_id ?? (auth as any).user_id ?? null,
-      botId: (auth as any).bot_id ?? null,
-      userId: (auth as any).user_id ?? null,
-    };
-  } catch (err) {
-    log.error("Slack auth.test failed", {
-      botToken: truncateToken(botToken),
-      workspaceName,
-      error: String(err),
-    });
-    return null;
-  }
+): WorkspaceAuth {
+  return {
+    appToken,
+    botToken,
+    workspaceId,
+    workspaceName,
+    teamId: null,
+    enterpriseId: null,
+    botUserId: null,
+    botId: null,
+    userId: null,
+  };
 }
 
 function registerWorkspaceAuth(auth: WorkspaceAuth): void {
   slackAuthRegistry.registerWorkspaceAuth(auth);
+}
+
+function asWorkspaceAuth(auth: { [key: string]: unknown } | undefined): WorkspaceAuth | null {
+  const appToken = typeof auth?.appToken === "string" ? auth.appToken : "";
+  const botToken = typeof auth?.botToken === "string" ? auth.botToken : "";
+  const workspaceId = typeof auth?.workspaceId === "string" ? auth.workspaceId : "";
+  const workspaceName = typeof auth?.workspaceName === "string" ? auth.workspaceName : "config";
+  if (!appToken || !botToken || !workspaceId) return null;
+  return {
+    appToken,
+    botToken,
+    workspaceId,
+    workspaceName,
+    teamId: typeof auth?.teamId === "string" ? auth.teamId : null,
+    enterpriseId: typeof auth?.enterpriseId === "string" ? auth.enterpriseId : null,
+    botUserId: typeof auth?.botUserId === "string" ? auth.botUserId : null,
+    botId: typeof auth?.botId === "string" ? auth.botId : null,
+    userId: typeof auth?.userId === "string" ? auth.userId : null,
+  };
 }
 
 export async function initializeWorkspaceAuth(): Promise<void> {
@@ -271,19 +278,22 @@ export async function initializeWorkspaceAuth(): Promise<void> {
     log.warn("No Slack bot tokens configured", { mode: "local" });
   }
 
-  for (const [botToken, workspace] of combined.entries()) {
-    if (!botToken) continue;
+  const auths = Array.from(combined.entries()).map(([botToken, workspace]) => {
+    if (!botToken) return null;
     const name = workspace.workspaceName ?? "unknown";
-    const auth = await fetchWorkspaceAuth(workspace.appToken, botToken, workspace.workspaceId, name);
+    return buildWorkspaceAuthFromConfig(workspace.appToken, botToken, workspace.workspaceId, name);
+  });
+
+  for (const auth of auths) {
     if (!auth) continue;
     registerWorkspaceAuth(auth);
     log.debug("Registered Slack workspace auth", {
-      workspace: name,
+      workspace: auth.workspaceName,
       workspaceId: auth.workspaceId,
       teamId: auth.teamId,
       enterpriseId: auth.enterpriseId,
       botUserId: auth.botUserId,
-      botToken: truncateToken(botToken),
+      botToken: truncateToken(auth.botToken),
     });
   }
 }
@@ -752,8 +762,10 @@ export function setupMessageHandlers(): void {
         slackAuthRegistry.setChannelWorkspaceName(channelId, workspaceName);
       },
       setChannelWorkspaceAuth: (channelId, auth) => {
-        if (!auth?.botToken) return;
-        slackAuthRegistry.setChannelWorkspaceAuthByBotToken(channelId, auth.botToken);
+        const workspaceAuth = asWorkspaceAuth(auth);
+        if (!workspaceAuth) return;
+        registerWorkspaceAuth(workspaceAuth);
+        slackAuthRegistry.setChannelWorkspaceAuthByBotToken(channelId, workspaceAuth.botToken);
       },
       isThreadOwner: (channelId, threadId, userId) => {
         const session = loadSession(channelId, threadId);

@@ -51,6 +51,18 @@ function getLocalSettingsUrl(): string {
   return `http://${host}:${port}/`;
 }
 
+async function timeStartupStep<T>(name: string, run: () => T | Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    const result = await run();
+    log.debug("Startup step complete", { step: name, elapsedMs: Date.now() - startedAt });
+    return result;
+  } catch (error) {
+    log.warn("Startup step failed", { step: name, elapsedMs: Date.now() - startedAt, error: String(error) });
+    throw error;
+  }
+}
+
 let webDevServer: ChildProcess | null = null;
 let slackApps: Array<Awaited<ReturnType<typeof createSlackApp>>> = [];
 let slackAppTokens: string[] = [];
@@ -111,9 +123,7 @@ async function startSlackRuntime(reason: string): Promise<void> {
     slackAppTokens = appTokens;
     setupMessageHandlers();
     setupInteractiveHandlers();
-    for (const app of slackApps) {
-      await app.start();
-    }
+    await Promise.all(slackApps.map((app) => app.start()));
     log.debug("Slack connections ready", { reason, count: slackApps.length });
   } catch (error) {
     log.warn("Slack connection failed", { reason, error: String(error) });
@@ -262,6 +272,7 @@ function startLocalConfigWatcher(): void {
 }
 
 async function main(): Promise<void> {
+  const startupStartedAt = Date.now();
   initSentry({ release: `ode@${CURRENT_VERSION}` });
 
   let defaultCwd: string | null = null;
@@ -272,24 +283,26 @@ async function main(): Promise<void> {
   }
   log.debug("Config loaded", { defaultCwd, mode: "local" });
 
-  loadOdeConfig();
-  await runOnboardingIfNeeded();
+  await timeStartupStep("load config", () => loadOdeConfig());
+  await timeStartupStep("onboarding", () => runOnboardingIfNeeded());
 
   if (isLocalMode()) {
-    startLocalWebServer();
+    await timeStartupStep("local web server", () => startLocalWebServer());
     if (!hasWebUiBuild()) {
       log.info("Web UI build missing; configure via ~/.config/ode/ode.json");
     }
-    startLocalConfigWatcher();
-    updateAutoUpgradeScheduler("startup");
+    await timeStartupStep("config watcher", () => startLocalConfigWatcher());
+    await timeStartupStep("auto-upgrade scheduler", () => updateAutoUpgradeScheduler("startup"));
   }
 
-  await startSlackRuntime("startup");
-  await startDiscordRuntime("startup");
-  await startLarkRuntime("startup");
-  startCronJobScheduler();
-  startTaskScheduler();
-  startPrTrackerScheduler();
+  await timeStartupStep("IM runtimes", () => Promise.all([
+    startSlackRuntime("startup"),
+    startDiscordRuntime("startup"),
+    startLarkRuntime("startup"),
+  ]));
+  await timeStartupStep("cron scheduler", () => startCronJobScheduler());
+  await timeStartupStep("task scheduler", () => startTaskScheduler());
+  await timeStartupStep("pr tracker scheduler", () => startPrTrackerScheduler());
 
   if (slackApps.length > 0) {
     log.debug("Slack app created");
@@ -345,12 +358,6 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  // Give connections time to establish before recovery
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  // Recover any interrupted requests from previous run
-  await recoverPendingRequestsAcrossPlatforms();
-
   if (slackApps.length > 0) {
     log.debug("Bot is running in Socket Mode");
   }
@@ -358,6 +365,13 @@ async function main(): Promise<void> {
   const readyMessage = `Ode is ready! Waiting for messages, setting UI is accessible at ${getLocalSettingsUrl()}`;
   console.log(readyMessage);
   markRuntimeReady(readyMessage, CURRENT_VERSION);
+  log.info("Startup ready", { elapsedMs: Date.now() - startupStartedAt });
+
+  // Recover interrupted requests after reporting readiness. This cleanup only
+  // updates stale status messages and should not delay normal startup.
+  setTimeout(() => {
+    void timeStartupStep("pending request recovery", () => recoverPendingRequestsAcrossPlatforms());
+  }, 1000);
 }
 
 main().catch((err) => {

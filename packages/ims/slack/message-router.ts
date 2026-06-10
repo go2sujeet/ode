@@ -318,6 +318,17 @@ export function registerSlackMessageRouter(deps: RouterDeps): void {
       });
 
       const currentBotUserId = identity.botUserId;
+      if (workspaceAuth) {
+        workspaceAuth = {
+          ...workspaceAuth,
+          teamId: identity.teamId ?? workspaceAuth.teamId,
+          enterpriseId: identity.enterpriseId ?? workspaceAuth.enterpriseId,
+          botUserId: identity.botUserId || workspaceAuth.botUserId,
+          botId: identity.botId ?? workspaceAuth.botId,
+          userId: identity.botUserId || workspaceAuth.userId,
+        };
+        deps.setChannelWorkspaceAuth(channelId, workspaceAuth);
+      }
       if (!workspaceAuth && contextBotToken) {
         workspaceAuth = syncWorkspaceAuth(deps, channelId, contextBotToken);
       }
