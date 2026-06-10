@@ -1,4 +1,4 @@
-export * from "./slack";
+export { uploadSlackFile, getSlackThreadMessages, addSlackReaction, postSlackQuestion } from "./slack/api";
 export * from "./discord";
 export * from "./lark";
 export {
@@ -8,11 +8,10 @@ export {
   defaultDumpPath as defaultDeliveryStatsDumpPath,
 } from "./shared/delivery-stats";
 
-import { recoverPendingRequests as recoverSlackPendingRequests } from "./slack/client";
-import { recoverPendingRequests as recoverDiscordPendingRequests } from "./discord/client";
-import { recoverPendingRequests as recoverLarkPendingRequests } from "./lark/client";
-
 export async function recoverPendingRequestsAcrossPlatforms(options?: { startedBeforeMs?: number }): Promise<void> {
+  const { recoverPendingRequests: recoverSlackPendingRequests } = await import("./slack/client");
+  const { recoverPendingRequests: recoverDiscordPendingRequests } = await import("./discord/client");
+  const { recoverPendingRequests: recoverLarkPendingRequests } = await import("./lark/client");
   await recoverSlackPendingRequests(options);
   await recoverDiscordPendingRequests(options);
   await recoverLarkPendingRequests(options);

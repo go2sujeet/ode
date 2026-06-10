@@ -1,12 +1,8 @@
+import * as slackClient from "@/ims/slack/client";
+import { setupInteractiveHandlers } from "@/ims/slack/commands";
+import { stopOAuthServer } from "@/ims/slack/oauth";
 import {
-  createSlackApp,
-  setupMessageHandlers,
-  setupInteractiveHandlers,
-  stopOAuthServer,
   recoverPendingRequestsAcrossPlatforms,
-  initializeWorkspaceAuth,
-  clearSlackAuthState,
-  resetSlackState,
   startDiscordRuntime,
   stopDiscordRuntime,
   startLarkRuntime,
@@ -64,7 +60,7 @@ async function timeStartupStep<T>(name: string, run: () => T | Promise<T>): Prom
 }
 
 let webDevServer: ChildProcess | null = null;
-let slackApps: Array<Awaited<ReturnType<typeof createSlackApp>>> = [];
+let slackApps: Array<Awaited<ReturnType<typeof slackClient.createSlackApp>>> = [];
 let slackAppTokens: string[] = [];
 let slackStarting = false;
 let stopConfigWatcher: (() => void) | null = null;
@@ -93,7 +89,7 @@ async function stopSlackRuntime(reason: string): Promise<void> {
 
   slackApps = [];
   slackAppTokens = [];
-  resetSlackState();
+  slackClient.resetSlackState();
   log.debug("Slack connections stopped", { reason });
 }
 
@@ -113,15 +109,15 @@ async function startSlackRuntime(reason: string): Promise<void> {
     const appTokens = getLocalSlackAppTokens();
     if (appTokens.length === 0) return;
 
-    clearSlackAuthState();
-    await initializeWorkspaceAuth();
+    slackClient.clearSlackAuthState();
+    await slackClient.initializeWorkspaceAuth();
     slackApps = [];
     for (const appToken of appTokens) {
-      const app = await createSlackApp(appToken);
+      const app = await slackClient.createSlackApp(appToken);
       slackApps.push(app);
     }
     slackAppTokens = appTokens;
-    setupMessageHandlers();
+    slackClient.setupMessageHandlers();
     setupInteractiveHandlers();
     await Promise.all(slackApps.map((app) => app.start()));
     log.debug("Slack connections ready", { reason, count: slackApps.length });
@@ -171,8 +167,8 @@ async function refreshSlackRuntime(reason: string): Promise<void> {
     return;
   }
 
-  clearSlackAuthState();
-  await initializeWorkspaceAuth();
+  slackClient.clearSlackAuthState();
+  await slackClient.initializeWorkspaceAuth();
   log.debug("Slack auth refreshed", { reason, appCount: slackApps.length });
 
   await refreshNonSlackRuntimes(reason);
