@@ -109,7 +109,7 @@ export type RunTrackedRequestParams = {
    * Optional. When the runner used the streaming API for live status, the
    * failure path needs to stop the stream before chat.update would 409 with
    * `streaming_state_conflict`. The kernel passes a closure that knows how
-   * to terminate the stream and emit a one-line error summary.
+   * to terminate the stream and preserve the full markdown error status.
    */
   publishErrorStatus?: (errorStatusText: string) => Promise<void>;
   failureLogLabel: string;
@@ -957,14 +957,28 @@ export async function runOpenRequest(
           }
           // Append the error as a final plan_update chunk so the streamed
           // card surfaces the failure inline, then stop the stream. Chunks-
-          // mode streams can't carry markdown_text on stop, so we can't
-          // pass the error there directly.
+          // mode streams can't carry markdown_text on stop, so we publish
+          // the full error text as a normal message after the stream is no
+          // longer active.
           try {
             await stopTrackedStatusStream("error status", [
               { type: "plan_update", title: `Error: ${errorStatusText.split("\n")[0]?.slice(0, 200) ?? ""}` },
             ]);
+            const errorStatusTs = await deps.im.sendMessage(
+              context.channelId,
+              context.replyThreadId,
+              errorStatusText
+            );
+            if (typeof errorStatusTs === "string" && errorStatusTs.length > 0) {
+              request.statusMessageTs = errorStatusTs;
+              updateActiveRequest(context.channelId, context.threadId, {
+                statusMessageTs: errorStatusTs,
+                statusStreamActive: false,
+                statusStreamTs: undefined,
+              }, { immediate: true });
+            }
           } catch (err) {
-            log.warn("Slack stopStatusStream failed in error path", {
+            log.warn("Streaming error status publish failed; falling back to chat.update", {
               channelId: context.channelId,
               statusTs: request.statusMessageTs,
               error: String(err),
