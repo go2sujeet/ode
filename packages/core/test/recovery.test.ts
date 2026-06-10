@@ -65,4 +65,36 @@ describe("recoverPendingRequests", () => {
     clearActiveRequest(channelId, threadId);
     deleteSession(channelId, threadId);
   });
+
+  it("does not recover requests created after the startup cutoff", async () => {
+    const channelId = "CR-3";
+    const threadId = "TR-3";
+    const statusTs = "323.45";
+
+    const active = createActiveRequest("ses-r3", channelId, threadId, threadId, statusTs, "hello");
+    active.startedAt = Date.now();
+
+    saveSession({
+      sessionId: "ses-r3",
+      channelId,
+      threadId,
+      workingDirectory: "/tmp",
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      activeRequest: active,
+    });
+
+    const updates: string[] = [];
+    await recoverPendingRequests({
+      updateMessage: async (_channelId: string, _ts: string, text: string) => {
+        updates.push(text);
+      },
+    } as any, undefined, { startedBeforeMs: active.startedAt - 1 });
+
+    expect(updates).toEqual([]);
+    expect(loadSession(channelId, threadId)?.activeRequest?.state).toBe("processing");
+
+    clearActiveRequest(channelId, threadId);
+    deleteSession(channelId, threadId);
+  });
 });

@@ -368,9 +368,15 @@ async function main(): Promise<void> {
   log.info("Startup ready", { elapsedMs: Date.now() - startupStartedAt });
 
   // Recover interrupted requests after reporting readiness. This cleanup only
-  // updates stale status messages and should not delay normal startup.
+  // updates requests that existed before this process started, so work that
+  // arrives immediately after the ready signal cannot be mistaken for a stale
+  // crash leftover.
+  const recoveryCutoffMs = startupStartedAt;
   setTimeout(() => {
-    void timeStartupStep("pending request recovery", () => recoverPendingRequestsAcrossPlatforms());
+    void timeStartupStep(
+      "pending request recovery",
+      () => recoverPendingRequestsAcrossPlatforms({ startedBeforeMs: recoveryCutoffMs })
+    );
   }, 1000);
 }
 

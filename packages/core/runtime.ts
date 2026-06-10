@@ -7,6 +7,7 @@ export function createCoreRuntime(deps: RuntimeDeps) {
       facade.handleInboundEvent(event),
     handleButtonSelection: (params: Parameters<KernelRuntimeFacade["handleButtonSelection"]>[0]) =>
       facade.handleButtonSelection(params),
-    recoverPendingRequests: () => facade.recoverPendingRequests(),
+    recoverPendingRequests: (options?: Parameters<KernelRuntimeFacade["recoverPendingRequests"]>[0]) =>
+      facade.recoverPendingRequests(options),
   };
 }

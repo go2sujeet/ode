@@ -1368,6 +1368,6 @@ const larkRuntimeController = createRuntimeController({
   },
 });
 
-export async function recoverPendingRequests(): Promise<void> {
-  await larkRecoveryRuntime.recoverPendingRequests();
+export async function recoverPendingRequests(options?: { startedBeforeMs?: number }): Promise<void> {
+  await larkRecoveryRuntime.recoverPendingRequests(options);
 }

@@ -673,6 +673,6 @@ const discordRuntimeController = createRuntimeController({
   },
 });
 
-export async function recoverPendingRequests(): Promise<void> {
-  await discordRecoveryRuntime.recoverPendingRequests();
+export async function recoverPendingRequests(options?: { startedBeforeMs?: number }): Promise<void> {
+  await discordRecoveryRuntime.recoverPendingRequests(options);
 }

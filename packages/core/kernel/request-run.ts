@@ -379,6 +379,24 @@ async function startKernelEventStreamWatcher(params: {
 
             if (!statusRateLimited) {
               try {
+                if (request.statusStreamActive && request.statusStreamTs === oldStatusTs && deps.im.stopStatusStream) {
+                  try {
+                    await deps.im.stopStatusStream(request.channelId, oldStatusTs);
+                  } catch (err) {
+                    log.warn("Failed to stop stale stream after question reply", {
+                      channelId: request.channelId,
+                      threadId: request.threadId,
+                      statusTs: oldStatusTs,
+                      error: String(err),
+                    });
+                  }
+                  request.statusStreamActive = false;
+                  request.statusStreamTs = undefined;
+                  updateActiveRequest(request.channelId, request.threadId, {
+                    statusStreamActive: false,
+                    statusStreamTs: undefined,
+                  }, { immediate: true });
+                }
                 await deps.im.deleteMessage(request.channelId, oldStatusTs);
               } catch (err) {
                 log.warn("Failed to delete stale status message after question reply", {
@@ -419,6 +437,8 @@ async function startKernelEventStreamWatcher(params: {
               request.statusMessageTs = newStatusTs;
               updateActiveRequest(request.channelId, request.threadId, {
                 statusMessageTs: newStatusTs,
+                statusStreamActive: false,
+                statusStreamTs: undefined,
               });
               // Move the live-state buffers to the new ts key so the
               // subscription handler and the progress tick keep reading
@@ -556,10 +576,12 @@ export async function runOpenRequest(
 
   const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
-  // Streaming-API path is opt-in via env var AND requires the adapter to
-  // implement startStatusStream (currently Slack-only). When unavailable
-  // we silently fall back to the chat.postMessage + chat.update path.
+  // Streaming-API path is opt-in via env var, requires live agent events,
+  // and requires the adapter to implement the stream lifecycle methods
+  // (currently Slack-only). When unavailable we silently fall back to the
+  // chat.postMessage + chat.update path.
   const streamingRequested = isStatusStreamingEnabled()
+    && deps.agent.supportsEventStream
     && typeof deps.im.startStatusStream === "function"
     && typeof deps.im.appendStatusStream === "function";
 
@@ -649,6 +671,10 @@ export async function runOpenRequest(
     statusTs,
     message
   );
+  if (useStreaming && streamingStatusTs) {
+    request.statusStreamActive = true;
+    request.statusStreamTs = streamingStatusTs;
+  }
   session.activeRequest = request;
   saveSession(session);
 
@@ -679,6 +705,54 @@ export async function runOpenRequest(
   // One differ instance per run; keeps last-seen fingerprints so we only
   // send chunks for tools whose shape actually changed.
   const streamDiffer: StatusStreamDiffer | null = useStreaming ? createStatusStreamDiffer() : null;
+
+  async function stopTrackedStatusStream(reason: string, appendChunks?: Array<{ type: "plan_update"; title: string }>): Promise<void> {
+    const streamTs = streamingStatusTs ?? request.statusStreamTs;
+    if (!streamTs || !deps.im.stopStatusStream) {
+      useStreaming = false;
+      streamingStatusTs = undefined;
+      request.statusStreamActive = false;
+      request.statusStreamTs = undefined;
+      updateActiveRequest(context.channelId, context.threadId, {
+        statusStreamActive: false,
+        statusStreamTs: undefined,
+      }, { immediate: true });
+      return;
+    }
+
+    useStreaming = false;
+    streamingStatusTs = undefined;
+    request.statusStreamActive = false;
+    request.statusStreamTs = undefined;
+    updateActiveRequest(context.channelId, context.threadId, {
+      statusStreamActive: false,
+      statusStreamTs: undefined,
+    }, { immediate: true });
+
+    try {
+      if (appendChunks && appendChunks.length > 0 && deps.im.appendStatusStream) {
+        try {
+          await deps.im.appendStatusStream(context.channelId, streamTs, appendChunks);
+        } catch (err) {
+          log.debug("Final stream append failed before stop", {
+            reason,
+            channelId: context.channelId,
+            statusTs: streamTs,
+            error: String(err),
+          });
+        }
+      }
+      await deps.im.stopStatusStream(context.channelId, streamTs);
+    } catch (err) {
+      log.warn("Slack stopStatusStream failed", {
+        reason,
+        channelId: context.channelId,
+        statusTs: streamTs,
+        error: String(err),
+      });
+    }
+  }
+
   const result = await runTrackedRequest({
     deps,
     request,
@@ -724,8 +798,12 @@ export async function runOpenRequest(
           previousStreamingTs: streamingStatusTs,
           newStatusTs: statusTs,
         });
-        useStreaming = false;
-        streamingStatusTs = undefined;
+        if (request.statusStreamActive && request.statusStreamTs === streamingStatusTs) {
+          await stopTrackedStatusStream("status message rotated");
+        } else {
+          useStreaming = false;
+          streamingStatusTs = undefined;
+        }
       }
 
       // Streaming path: diff state -> chunks -> chat.appendStream.
@@ -810,7 +888,11 @@ export async function runOpenRequest(
               updateActiveRequest(
                 context.channelId,
                 context.threadId,
-                { statusMessageTs: replacementStatusTs },
+                {
+                  statusMessageTs: replacementStatusTs,
+                  statusStreamActive: false,
+                  statusStreamTs: undefined,
+                },
                 { immediate: true }
               );
             }
@@ -847,34 +929,17 @@ export async function runOpenRequest(
       // place to record a one-line "done in 12s" summary via a final
       // plan_update chunk (chunks-mode streams can't accept markdown_text
       // on stop, so we use an appendStream first if we need a summary).
-      if (useStreaming && streamDiffer && deps.im.stopStatusStream) {
-        try {
-          const currentState = liveParsedState.get(getStatusMessageKey(request));
-          if (currentState && deps.im.appendStatusStream) {
-            const summary = streamDiffer.finalize({
-              state: currentState,
-              workingPath: cwd,
-              startedAt: request.startedAt,
-            });
-            try {
-              await deps.im.appendStatusStream(
-                context.channelId,
-                request.statusMessageTs,
-                [{ type: "plan_update", title: summary }]
-              );
-            } catch (err) {
-              log.debug("Final summary plan_update failed; proceeding to stop", {
-                error: String(err),
-              });
-            }
-          }
-          await deps.im.stopStatusStream(context.channelId, request.statusMessageTs);
-        } catch (err) {
-          log.warn("Slack stopStatusStream failed before final text", {
-            channelId: context.channelId,
-            statusTs: request.statusMessageTs,
-            error: String(err),
+      if ((useStreaming || request.statusStreamActive) && streamDiffer && deps.im.stopStatusStream) {
+        const currentState = liveParsedState.get(getStatusMessageKey(request));
+        if (currentState) {
+          const summary = streamDiffer.finalize({
+            state: currentState,
+            workingPath: cwd,
+            startedAt: request.startedAt,
           });
+          await stopTrackedStatusStream("final text", [{ type: "plan_update", title: summary }]);
+        } else {
+          await stopTrackedStatusStream("final text");
         }
       }
       await publishFinalText({
@@ -886,25 +951,18 @@ export async function runOpenRequest(
     },
     publishErrorStatus: useStreaming && deps.im.stopStatusStream
       ? async (errorStatusText: string) => {
+          if (!useStreaming && !request.statusStreamActive && !request.statusStreamTs) {
+            await deps.im.updateMessage(context.channelId, request.statusMessageTs, errorStatusText);
+            return;
+          }
           // Append the error as a final plan_update chunk so the streamed
           // card surfaces the failure inline, then stop the stream. Chunks-
           // mode streams can't carry markdown_text on stop, so we can't
           // pass the error there directly.
           try {
-            if (deps.im.appendStatusStream) {
-              try {
-                await deps.im.appendStatusStream(
-                  context.channelId,
-                  request.statusMessageTs,
-                  [{ type: "plan_update", title: `Error: ${errorStatusText.split("\n")[0]?.slice(0, 200) ?? ""}` }]
-                );
-              } catch (err) {
-                log.debug("Final error plan_update failed; proceeding to stop", {
-                  error: String(err),
-                });
-              }
-            }
-            await deps.im.stopStatusStream!(context.channelId, request.statusMessageTs);
+            await stopTrackedStatusStream("error status", [
+              { type: "plan_update", title: `Error: ${errorStatusText.split("\n")[0]?.slice(0, 200) ?? ""}` },
+            ]);
           } catch (err) {
             log.warn("Slack stopStatusStream failed in error path", {
               channelId: context.channelId,
@@ -1039,14 +1097,13 @@ export async function runTrackedRequest(
     request.state = "completed";
     request.statusFrozen = true;
 
-    liveEventHistory.delete(getStatusMessageKey(request));
-    liveParsedState.delete(getStatusMessageKey(request));
-
     if (result.type === "stop") {
       const fallbackText = request.currentText?.trim();
       const safeFallback = isPromptEcho(fallbackText, request.prompt) ? undefined : fallbackText;
       const finalText = safeFallback || "_Done_";
       await publishFinalText(finalText);
+      liveEventHistory.delete(getStatusMessageKey(request));
+      liveParsedState.delete(getStatusMessageKey(request));
       tryCompleteAgentResult({
         detailId: agentResultDetailId,
         resultText: finalText,
@@ -1078,6 +1135,8 @@ export async function runTrackedRequest(
     const safeFallback = isPromptEcho(rawFallback, request.prompt) ? undefined : rawFallback;
     const finalText = builtText ?? (safeFallback || "_Done_");
     await publishFinalText(finalText);
+    liveEventHistory.delete(getStatusMessageKey(request));
+    liveParsedState.delete(getStatusMessageKey(request));
     tryCompleteAgentResult({
       detailId: agentResultDetailId,
       resultText: finalText,
@@ -1100,9 +1159,6 @@ export async function runTrackedRequest(
 
     request.state = "failed";
     request.error = message;
-
-    liveEventHistory.delete(getStatusMessageKey(request));
-    liveParsedState.delete(getStatusMessageKey(request));
 
     const errorStatus = `Error: ${message}\n_${suggestion}_`;
     tryFailAgentResult({
@@ -1133,6 +1189,8 @@ export async function runTrackedRequest(
       await deps.im.updateMessage(request.channelId, request.statusMessageTs, errorStatus);
     }
     deps.im.markMessageFinalized?.(request.channelId, request.statusMessageTs);
+    liveEventHistory.delete(getStatusMessageKey(request));
+    liveParsedState.delete(getStatusMessageKey(request));
     onFail(message);
     return { responses: null };
   } finally {

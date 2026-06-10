@@ -724,8 +724,8 @@ const slackRecoveryRuntime = createCoreRuntime({
   agent: createAgentAdapter(),
 });
 
-export async function recoverPendingRequests(): Promise<void> {
-  await slackRecoveryRuntime.recoverPendingRequests();
+export async function recoverPendingRequests(options?: { startedBeforeMs?: number }): Promise<void> {
+  await slackRecoveryRuntime.recoverPendingRequests(options);
 }
 
 export async function handleButtonSelection(

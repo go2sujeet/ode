@@ -382,9 +382,7 @@ export async function startSlackStream(args: {
   const recipientTeamId = requireString(args.recipientTeamId, "recipientTeamId");
   const token = requireString(args.token, "token");
   const client = getApp().client;
-  const result = await (client.chat as unknown as {
-    startStream: (args: Record<string, unknown>) => Promise<{ ts?: string }>;
-  }).startStream({
+  const result = await client.apiCall("chat.startStream", {
     channel: channelId,
     thread_ts: threadId,
     task_display_mode: "plan",
@@ -392,7 +390,7 @@ export async function startSlackStream(args: {
     recipient_team_id: recipientTeamId,
     chunks: [{ type: "plan_update", title: truncateStreamField(args.seedPlanTitle ?? "Working") }],
     token,
-  });
+  }) as { ts?: string };
   return result.ts ?? undefined;
 }
 
@@ -416,9 +414,7 @@ export async function appendSlackStream(args: {
   const token = requireString(args.token, "token");
   if (!Array.isArray(args.chunks) || args.chunks.length === 0) return;
   const client = getApp().client;
-  await (client.chat as unknown as {
-    appendStream: (args: Record<string, unknown>) => Promise<unknown>;
-  }).appendStream({
+  await client.apiCall("chat.appendStream", {
     channel: channelId,
     ts: messageTs,
     chunks: args.chunks.map(serializeStreamChunk),
@@ -441,9 +437,7 @@ export async function stopSlackStream(args: {
   const messageTs = requireString(args.messageTs, "messageTs");
   const token = requireString(args.token, "token");
   const client = getApp().client;
-  await (client.chat as unknown as {
-    stopStream: (args: Record<string, unknown>) => Promise<unknown>;
-  }).stopStream({
+  await client.apiCall("chat.stopStream", {
     channel: channelId,
     ts: messageTs,
     token,

@@ -12,8 +12,8 @@ import { recoverPendingRequests as recoverSlackPendingRequests } from "./slack/c
 import { recoverPendingRequests as recoverDiscordPendingRequests } from "./discord/client";
 import { recoverPendingRequests as recoverLarkPendingRequests } from "./lark/client";
 
-export async function recoverPendingRequestsAcrossPlatforms(): Promise<void> {
-  await recoverSlackPendingRequests();
-  await recoverDiscordPendingRequests();
-  await recoverLarkPendingRequests();
+export async function recoverPendingRequestsAcrossPlatforms(options?: { startedBeforeMs?: number }): Promise<void> {
+  await recoverSlackPendingRequests(options);
+  await recoverDiscordPendingRequests(options);
+  await recoverLarkPendingRequests(options);
 }

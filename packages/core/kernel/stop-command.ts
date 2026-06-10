@@ -49,7 +49,31 @@ export async function handleStopCommand(params: {
   request.state = "failed";
   request.error = "Stopped by user";
 
-  await deps.im.deleteMessage(request.channelId, request.statusMessageTs);
+  if (request.statusStreamActive && request.statusStreamTs && deps.im.stopStatusStream) {
+    try {
+      await deps.im.stopStatusStream(request.channelId, request.statusStreamTs);
+    } catch (err) {
+      log.warn("Failed to stop active status stream on stop command", {
+        channelId: request.channelId,
+        threadId: request.threadId,
+        statusTs: request.statusStreamTs,
+        error: String(err),
+      });
+    }
+    request.statusStreamActive = false;
+    request.statusStreamTs = undefined;
+  }
+
+  try {
+    await deps.im.deleteMessage(request.channelId, request.statusMessageTs);
+  } catch (err) {
+    log.warn("Failed to delete status message on stop command", {
+      channelId: request.channelId,
+      threadId: request.threadId,
+      statusTs: request.statusMessageTs,
+      error: String(err),
+    });
+  }
 
   failActiveRequest(channelId, threadId, "Stopped by user");
   return true;

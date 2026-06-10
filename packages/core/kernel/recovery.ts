@@ -4,7 +4,8 @@ import { log } from "@/utils";
 
 export async function recoverPendingRequests(
   im: IMAdapter,
-  platform?: "slack" | "discord" | "lark"
+  platform?: "slack" | "discord" | "lark",
+  options?: { startedBeforeMs?: number }
 ): Promise<void> {
   const pendingSessions = await getSessionsWithPendingRequests(platform);
 
@@ -18,6 +19,16 @@ export async function recoverPendingRequests(
   for (const session of pendingSessions) {
     const request = session.activeRequest;
     if (!request) continue;
+
+    if (typeof options?.startedBeforeMs === "number" && request.startedAt >= options.startedBeforeMs) {
+      log.debug("Skipping request created after recovery cutoff", {
+        channelId: session.channelId,
+        threadId: session.threadId,
+        requestStartedAt: request.startedAt,
+        recoveryCutoffMs: options.startedBeforeMs,
+      });
+      continue;
+    }
 
     const age = Date.now() - request.startedAt;
     if (age > 10 * 60 * 1000) {
