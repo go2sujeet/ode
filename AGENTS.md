@@ -24,6 +24,7 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 - SDK/CLI event loops handle permission or question flows where supported; OpenCode and Claude question replies are wired through the adapter.
 - When capturing screenshots, save images to the system temp folder and upload them with `ode send file` to the current thread as soon as possible.
 - When merging PRs, do not delete the branch if the current worktree is on that branch.
+- Developer-only Web UI surfaces must be hidden from end users by default. The `/dev` page and Dev Tools navigation are only visible when the daemon is started with `ODE_DEV=1` (also accepts `true`, `yes`, or `on`); do not add a persistent Web UI setting for this.
 
 ## Supported Integrations
 - IM apps: Slack, Discord, Lark/Feishu.

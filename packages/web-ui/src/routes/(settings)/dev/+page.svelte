@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { ExternalLink, Play, RefreshCw } from "lucide-svelte";
-  import { Badge, Button, Card, Input, Label, Select, Switch, Textarea } from "$lib/components/ui";
+  import { Badge, Button, Card, Input, Label, Select, Textarea } from "$lib/components/ui";
   import { locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
   import {
@@ -64,7 +64,6 @@
     },
   };
 
-  let devModeEnabled = $state(false);
   let channels = $state<TaskChannelOption[]>([]);
   let tasks = $state<TaskRecord[]>([]);
   let selectedChannel = $state("");
@@ -102,13 +101,6 @@
     return new Date(value).toLocaleString($locale === "zh-CN" ? "zh-CN" : "en-US");
   }
 
-  function setDevMode(enabled: boolean): void {
-    devModeEnabled = enabled;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("ode-dev-mode", enabled ? "1" : "0");
-    }
-  }
-
   function applyPreset(preset: PresetId): void {
     selectedPreset = preset;
     title = PRESETS[preset].title;
@@ -144,7 +136,7 @@
   }
 
   async function startRun(): Promise<void> {
-    if (!selectedChannel || !prompt.trim()) return;
+    if (!$localSettingStore.devEnabled || !selectedChannel || !prompt.trim()) return;
     isStarting = true;
     message = "";
     const runMarker = `ODE_DEV_RUN:${crypto.randomUUID()}`;
@@ -183,35 +175,38 @@
   }
 
   onMount(() => {
-    devModeEnabled = typeof window !== "undefined" && window.localStorage.getItem("ode-dev-mode") === "1";
-    if (!$localSettingStore.loaded) {
-      void localSettingStore.loadConfig();
-    }
-    void loadTasks();
-    const timer = window.setInterval(() => {
-      if (activeTaskId) void loadTasks();
-    }, 2500);
-    return () => window.clearInterval(timer);
+    let timer: number | undefined;
+    void (async () => {
+      if (!$localSettingStore.loaded) {
+        await localSettingStore.loadConfig();
+      }
+      if (!$localSettingStore.devEnabled) return;
+      await loadTasks();
+      timer = window.setInterval(() => {
+        if (activeTaskId) void loadTasks();
+      }, 2500);
+    })();
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer);
+    };
   });
 </script>
 
-<Card className="p-5">
-  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-    <div>
+{#if !$localSettingStore.loaded || $localSettingStore.isLoading}
+  <Card className="p-5">
+    <p class="text-sm text-[hsl(var(--muted-foreground))]">{t("Loading...", "加载中...")}</p>
+  </Card>
+{:else if !$localSettingStore.devEnabled}
+  <Card className="p-5">
+    <h2 class="text-lg font-semibold">{t("Not found", "未找到")}</h2>
+  </Card>
+{:else}
+  <Card className="p-5">
+    <div class="mb-5">
       <h2 class="text-lg font-semibold">{t("Dev Tools", "开发工具")}</h2>
       <p class="text-xs text-[hsl(var(--muted-foreground))]">{t("Agent live-message test runs", "Agent live message 测试")}</p>
     </div>
-    <div class="flex items-center gap-3">
-      <Label for="dev-mode-toggle" className="text-sm">{t("Dev mode", "开发模式")}</Label>
-      <Switch id="dev-mode-toggle" checked={devModeEnabled} ariaLabel={t("Toggle dev mode", "切换开发模式")} on:change={(event) => setDevMode(event.detail)} />
-    </div>
-  </div>
 
-  {#if !devModeEnabled}
-    <div class="rounded-lg border border-dashed p-5 text-sm text-[hsl(var(--muted-foreground))]">
-      {t("Enable dev mode to run local agent tests.", "开启开发模式后运行本地 agent 测试。")}
-    </div>
-  {:else}
     <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div class="space-y-4">
         <div class="grid gap-2">
@@ -326,5 +321,5 @@
         </div>
       </aside>
     </div>
-  {/if}
-</Card>
+  </Card>
+{/if}

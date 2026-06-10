@@ -3,6 +3,7 @@ export type JsonResponse = {
   error?: string;
   version?: string;
   config?: unknown;
+  dev?: unknown;
   workspace?: unknown;
   result?: unknown;
 };
