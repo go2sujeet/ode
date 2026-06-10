@@ -720,15 +720,6 @@ export async function runOpenRequest(
       return;
     }
 
-    useStreaming = false;
-    streamingStatusTs = undefined;
-    request.statusStreamActive = false;
-    request.statusStreamTs = undefined;
-    updateActiveRequest(context.channelId, context.threadId, {
-      statusStreamActive: false,
-      statusStreamTs: undefined,
-    }, { immediate: true });
-
     try {
       if (appendChunks && appendChunks.length > 0 && deps.im.appendStatusStream) {
         try {
@@ -743,7 +734,23 @@ export async function runOpenRequest(
         }
       }
       await deps.im.stopStatusStream(context.channelId, streamTs);
+      useStreaming = false;
+      streamingStatusTs = undefined;
+      request.statusStreamActive = false;
+      request.statusStreamTs = undefined;
+      updateActiveRequest(context.channelId, context.threadId, {
+        statusStreamActive: false,
+        statusStreamTs: undefined,
+      }, { immediate: true });
     } catch (err) {
+      useStreaming = true;
+      streamingStatusTs = streamTs;
+      request.statusStreamActive = true;
+      request.statusStreamTs = streamTs;
+      updateActiveRequest(context.channelId, context.threadId, {
+        statusStreamActive: true,
+        statusStreamTs: streamTs,
+      }, { immediate: true });
       log.warn("Slack stopStatusStream failed", {
         reason,
         channelId: context.channelId,
