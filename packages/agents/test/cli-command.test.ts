@@ -63,7 +63,7 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).toContain("Preferred branch format before PR: `feat/<short-slug>-<threadShortId>`");
   });
 
-  it("builds Discord-specific formatting guidance for Discord context", () => {
+  it("builds Discord context without platform formatting guidance", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "discord",
       channelId: "C123",
@@ -72,13 +72,14 @@ describe("agent cli command formatting", () => {
     });
 
     expect(systemPrompt).toContain("DISCORD CONTEXT:");
-    expect(systemPrompt).toContain("Discord supports markdown like **bold**, _italic_, and code fences.");
     expect(systemPrompt).toContain("ODE CLI:");
+    expect(systemPrompt).not.toContain("FORMATTING:");
+    expect(systemPrompt).not.toContain("Discord supports markdown");
     expect(systemPrompt).not.toContain("DISCORD ACTIONS:");
     expect(systemPrompt).not.toContain("/api/action");
   });
 
-  it("builds Lark-specific formatting guidance for Lark context", () => {
+  it("builds Lark context without platform formatting guidance", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "lark",
       channelId: "oc_123",
@@ -87,10 +88,26 @@ describe("agent cli command formatting", () => {
     });
 
     expect(systemPrompt).toContain("LARK CONTEXT:");
-    expect(systemPrompt).toContain("Lark output should be plain text for now; do not rely on markdown styling.");
     expect(systemPrompt).toContain("ODE CLI:");
+    expect(systemPrompt).not.toContain("FORMATTING:");
+    expect(systemPrompt).not.toContain("Lark output should be plain text");
     expect(systemPrompt).not.toContain("LARK ACTIONS:");
     expect(systemPrompt).not.toContain("Supported actions:");
+  });
+
+  it("does not inject chat response style or task-list glyph guidance", () => {
+    const systemPrompt = buildSystemPrompt({
+      platform: "slack",
+      channelId: "C9XXX",
+      threadId: "1700000000.000001",
+      userId: "U42",
+    });
+
+    expect(systemPrompt).not.toContain("COMMUNICATION STYLE:");
+    expect(systemPrompt).not.toContain("PROGRESS CHECKLIST:");
+    expect(systemPrompt).not.toContain("TASK LISTS:");
+    expect(systemPrompt).not.toContain("Slack uses *bold*");
+    expect(systemPrompt).not.toContain("Use four states");
   });
 
   it("recommends Ode CLI commands with the current channel/thread baked in", () => {

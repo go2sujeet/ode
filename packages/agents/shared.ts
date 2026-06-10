@@ -8,17 +8,6 @@ export function buildSystemPrompt(slack?: SlackContext): string {
       : "slack";
   const platformLabel = platform === "discord" ? "Discord" : platform === "lark" ? "Lark" : "Slack";
   const lines = [
-    "COMMUNICATION STYLE:",
-    "- Be concise and conversational - this is chat, not documentation",
-    "- Use short paragraphs, avoid walls of text",
-    "- Get straight to the point",
-    "- Do not truncate final answers for brevity; include complete results when details matter",
-    "",
-    "PROGRESS CHECKLIST:",
-    "- Share a short checklist of what you're doing",
-    "- Mention searches once with a result count if known",
-    "- List edits with the file path and a brief why",
-    "",
     "GIT AUTHORING:",
     "- If GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL are set, use them explicitly in commit commands.",
     "- Prefer: git commit --author=\"$GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>\" -m \"...\"",
@@ -41,22 +30,6 @@ export function buildSystemPrompt(slack?: SlackContext): string {
     lines.push("");
     lines.push(`IMPORTANT: Your text output is automatically posted to ${platformLabel}.`);
     lines.push("- Only output text OR use a messaging tool, never both.");
-    lines.push("");
-    lines.push("FORMATTING:");
-    lines.push(
-      platform === "discord"
-        ? "- Discord supports markdown like **bold**, _italic_, and code fences."
-        : platform === "lark"
-          ? "- Lark output should be plain text for now; do not rely on markdown styling."
-        : "- Slack uses *bold* and _italic_ (not **bold** or *italic*)"
-    );
-    lines.push("- Use ` for inline code and ``` for code blocks");
-    lines.push("- Keep responses readable on mobile screens");
-    lines.push("");
-    lines.push("TASK LISTS:");
-    lines.push("- When sharing tasks, put each item on its own line");
-    lines.push("- Use four states: * not started, ♻️ in progress, ✅ done, 🚫 cancelled");
-    lines.push("- If you include a task list, keep the tasks you have done at the top of the response");
     lines.push("");
     lines.push("ODE CLI:");
     lines.push("- The `ode` binary is how you interact with this chat platform outside of plain text output.");
