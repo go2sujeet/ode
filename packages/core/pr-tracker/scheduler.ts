@@ -24,10 +24,10 @@ import {
   buildFinalResponseText,
   categorizeRuntimeError,
 } from "@/core/runtime/helpers";
+import { sendSlackChannelMessage } from "@/core/runtime/slack-senders";
 import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
 import { sendChannelMessage as sendDiscordChannelMessage } from "@/ims/discord/client";
 import { sendChannelMessage as sendLarkChannelMessage } from "@/ims/lark/client";
-import { sendChannelMessage as sendSlackChannelMessage } from "@/ims/slack/client";
 import {
   type AgentProviderId,
 } from "@/shared/agent-provider";
