@@ -2,13 +2,17 @@ import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentProviderId } from "@/agents/registry";
+import {
+  AGENT_PROVIDERS,
+  isAgentProviderId,
+} from "@/shared/agent-provider";
 import { buildHarnessRunId, HarnessRedisStore } from "../redis-store";
 import { renderStatusesFromRun } from "../renderer";
 import { buildSessionMessageState } from "@/utils/session-inspector";
 
 const DEFAULT_OUTPUT_PATH = "packages/live-status-harness/reports/agent-live-status.md";
 const DEFAULT_OUTPUT_DIR = "packages/live-status-harness/reports";
-const DEFAULT_PROVIDERS: AgentProviderId[] = ["opencode", "claudecode", "codex", "kimi", "kiro", "kilo", "qwen", "goose", "gemini"];
+const DEFAULT_PROVIDERS: AgentProviderId[] = [...AGENT_PROVIDERS];
 const OPENCODE_REPORT_MODEL = "openai/gpt-5.3-codex";
 const REPORT_LAYOUTS = ["split", "combined", "both"] as const;
 
@@ -46,10 +50,7 @@ function parseProviders(raw: string | undefined): AgentProviderId[] {
     .map((value) => value.trim().toLowerCase())
     .filter((value) => value.length > 0);
 
-  const providers = parsed.filter(
-    (value): value is AgentProviderId =>
-      value === "opencode" || value === "claudecode" || value === "codex" || value === "kimi" || value === "kiro" || value === "kilo" || value === "qwen" || value === "goose" || value === "gemini"
-  );
+  const providers = parsed.filter(isAgentProviderId);
 
   return providers.length > 0 ? providers : DEFAULT_PROVIDERS;
 }
@@ -207,6 +208,15 @@ async function runProvider(
     const captureArgs = ["--provider", provider, "--run-id", runId, "--cwd", options.cwd];
     if (provider === "gemini") {
       captureArgs.push("--agent", "plan");
+    }
+    if (provider === "codebuddy") {
+      captureArgs.push("--model", "codebuddy/gpt-5.1");
+    }
+    if (provider === "crush") {
+      captureArgs.push("--model", "chainbot/gpt-5.1");
+    }
+    if (provider === "pi" || provider === "openhands") {
+      captureArgs.push("--model", "anthropic/claude-sonnet-4-5-20250929");
     }
     if (provider === "opencode") {
       captureArgs.push("--model", OPENCODE_REPORT_MODEL);

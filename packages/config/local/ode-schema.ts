@@ -48,6 +48,22 @@ const agentsSchema = z.object({
   gemini: z.object({
     enabled: z.boolean().optional().default(true),
   }).optional().default({ enabled: true }),
+  pi: z.object({
+    enabled: z.boolean().optional().default(true),
+    models: z.array(z.string()).optional().default([]),
+  }).optional().default({ enabled: true, models: [] }),
+  openhands: z.object({
+    enabled: z.boolean().optional().default(true),
+    models: z.array(z.string()).optional().default([]),
+  }).optional().default({ enabled: true, models: [] }),
+  codebuddy: z.object({
+    enabled: z.boolean().optional().default(true),
+    models: z.array(z.string()).optional().default([]),
+  }).optional().default({ enabled: true, models: [] }),
+  crush: z.object({
+    enabled: z.boolean().optional().default(true),
+    models: z.array(z.string()).optional().default([]),
+  }).optional().default({ enabled: true, models: [] }),
 }).optional().default({
   opencode: { enabled: true, models: [] },
   claudecode: { enabled: true },
@@ -58,6 +74,10 @@ const agentsSchema = z.object({
   qwen: { enabled: true },
   goose: { enabled: true },
   gemini: { enabled: true },
+  pi: { enabled: true, models: [] },
+  openhands: { enabled: true, models: [] },
+  codebuddy: { enabled: true, models: [] },
+  crush: { enabled: true, models: [] },
 });
 
 const channelDetailSchema = z.object({

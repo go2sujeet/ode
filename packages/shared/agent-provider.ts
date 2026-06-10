@@ -8,6 +8,10 @@ export const AGENT_PROVIDERS = [
   "qwen",
   "goose",
   "gemini",
+  "pi",
+  "openhands",
+  "codebuddy",
+  "crush",
 ] as const;
 
 export type AgentProviderId = (typeof AGENT_PROVIDERS)[number];
@@ -22,6 +26,10 @@ export const AGENT_PROVIDER_LABELS: Record<AgentProviderId, string> = {
   qwen: "Qwen Code",
   goose: "Goose",
   gemini: "Gemini",
+  pi: "Pi",
+  openhands: "OpenHands",
+  codebuddy: "CodeBuddy",
+  crush: "Crush",
 };
 
 export const AGENT_PROVIDER_COMMANDS: Record<AgentProviderId, string> = {
@@ -34,6 +42,10 @@ export const AGENT_PROVIDER_COMMANDS: Record<AgentProviderId, string> = {
   qwen: "qwen",
   goose: "goose",
   gemini: "gemini",
+  pi: "pi",
+  openhands: "openhands",
+  codebuddy: "codebuddy",
+  crush: "crush",
 };
 
 type AgentProviderMetadata = {
@@ -87,6 +99,26 @@ export const AGENT_PROVIDER_MANIFEST: Record<AgentProviderId, AgentProviderMetad
     aliases: [],
     supportsEventStream: false,
     supportsModelSelection: false,
+  },
+  pi: {
+    aliases: [],
+    supportsEventStream: false,
+    supportsModelSelection: true,
+  },
+  openhands: {
+    aliases: [],
+    supportsEventStream: false,
+    supportsModelSelection: true,
+  },
+  codebuddy: {
+    aliases: ["cbc"],
+    supportsEventStream: false,
+    supportsModelSelection: true,
+  },
+  crush: {
+    aliases: [],
+    supportsEventStream: false,
+    supportsModelSelection: true,
   },
 };
 

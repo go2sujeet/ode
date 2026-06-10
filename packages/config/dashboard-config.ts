@@ -61,6 +61,22 @@ export type DashboardConfig = {
     gemini: {
       enabled: boolean;
     };
+    pi: {
+      enabled: boolean;
+      models: string[];
+    };
+    openhands: {
+      enabled: boolean;
+      models: string[];
+    };
+    codebuddy: {
+      enabled: boolean;
+      models: string[];
+    };
+    crush: {
+      enabled: boolean;
+      models: string[];
+    };
   };
   workspaces: {
     id: string;

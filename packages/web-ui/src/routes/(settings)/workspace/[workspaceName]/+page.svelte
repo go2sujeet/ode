@@ -26,15 +26,7 @@
   }
 
   function isProviderEnabled(provider: AgentProvider): boolean {
-    if (provider === "opencode") return $localSettingStore.config.agents.opencode.enabled;
-    if (provider === "claudecode") return $localSettingStore.config.agents.claudecode.enabled;
-    if (provider === "codex") return $localSettingStore.config.agents.codex.enabled;
-    if (provider === "kimi") return $localSettingStore.config.agents.kimi.enabled;
-    if (provider === "kiro") return $localSettingStore.config.agents.kiro.enabled;
-    if (provider === "kilo") return $localSettingStore.config.agents.kilo.enabled;
-    if (provider === "qwen") return $localSettingStore.config.agents.qwen.enabled;
-    if (provider === "goose") return $localSettingStore.config.agents.goose.enabled;
-    return $localSettingStore.config.agents.gemini.enabled;
+    return $localSettingStore.config.agents[provider]?.enabled === true;
   }
 
   let isCanonicalizingWorkspaceRoute = false;

@@ -238,7 +238,7 @@ function buildToolDetails(tool: SessionMessageState["tools"][number], workingPat
   }
 
   if (name === "read") {
-    const filePath = input.filePath || input.file_path || input.absolute_path;
+    const filePath = input.filePath || input.file_path || input.absolute_path || input.path || input.uri || input.target;
     const offset = typeof input.offset === "number" ? input.offset : undefined;
     const limit = typeof input.limit === "number" ? input.limit : undefined;
     let details = filePath ? trimToolPath(String(filePath), workingPath) : "";
@@ -252,7 +252,7 @@ function buildToolDetails(tool: SessionMessageState["tools"][number], workingPat
   }
 
   if (name === "edit" || name === "write") {
-    const filePath = input.filePath || input.file_path || input.absolute_path;
+    const filePath = input.filePath || input.file_path || input.absolute_path || input.path || input.target;
     if (filePath) {
       return trimToolPath(String(filePath), workingPath);
     }

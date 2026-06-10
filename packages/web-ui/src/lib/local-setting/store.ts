@@ -16,10 +16,22 @@ export type CliCheckResult = {
   qwen: boolean;
   goose: boolean;
   gemini: boolean;
+  pi: boolean;
+  openhands: boolean;
+  codebuddy: boolean;
+  crush: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
   kiloModels?: string[];
   kiloModelError?: string;
+  piModels?: string[];
+  piModelError?: string;
+  openhandsModels?: string[];
+  openhandsModelError?: string;
+  codebuddyModels?: string[];
+  codebuddyModelError?: string;
+  crushModels?: string[];
+  crushModelError?: string;
 };
 
 type LocalSettingState = {
@@ -178,6 +190,22 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
       gemini: {
         enabled: input.agents?.gemini?.enabled ?? true,
       },
+      pi: {
+        enabled: input.agents?.pi?.enabled ?? true,
+        models: input.agents?.pi?.models ?? [],
+      },
+      openhands: {
+        enabled: input.agents?.openhands?.enabled ?? true,
+        models: input.agents?.openhands?.models ?? [],
+      },
+      codebuddy: {
+        enabled: input.agents?.codebuddy?.enabled ?? true,
+        models: input.agents?.codebuddy?.models ?? [],
+      },
+      crush: {
+        enabled: input.agents?.crush?.enabled ?? true,
+        models: input.agents?.crush?.models ?? [],
+      },
     },
   };
 }
@@ -304,6 +332,10 @@ async function checkAgents(): Promise<void> {
     const result = payload.result;
     const fetchedModels = Array.isArray(result.opencodeModels) ? result.opencodeModels : null;
     const fetchedKiloModels = Array.isArray(result.kiloModels) ? result.kiloModels : null;
+    const fetchedPiModels = Array.isArray(result.piModels) ? result.piModels : null;
+    const fetchedOpenHandsModels = Array.isArray(result.openhandsModels) ? result.openhandsModels : null;
+    const fetchedCodeBuddyModels = Array.isArray(result.codebuddyModels) ? result.codebuddyModels : null;
+    const fetchedCrushModels = Array.isArray(result.crushModels) ? result.crushModels : null;
     store.update((state) => ({
       ...state,
       cliCheckResult: result,
@@ -350,14 +382,42 @@ async function checkAgents(): Promise<void> {
             ...state.config.agents.gemini,
             enabled: result.gemini,
           },
+          pi: {
+            ...state.config.agents.pi,
+            enabled: result.pi,
+            models: fetchedPiModels ?? state.config.agents.pi.models,
+          },
+          openhands: {
+            ...state.config.agents.openhands,
+            enabled: result.openhands,
+            models: fetchedOpenHandsModels ?? state.config.agents.openhands.models,
+          },
+          codebuddy: {
+            ...state.config.agents.codebuddy,
+            enabled: result.codebuddy,
+            models: fetchedCodeBuddyModels ?? state.config.agents.codebuddy.models,
+          },
+          crush: {
+            ...state.config.agents.crush,
+            enabled: result.crush,
+            models: fetchedCrushModels ?? state.config.agents.crush.models,
+          },
         },
       },
       agentMessage: result.opencode && result.opencodeModelError
         ? `Checked local agent CLIs. OpenCode model fetch failed: ${result.opencodeModelError}`
         : result.kilo && result.kiloModelError
           ? `Checked local agent CLIs. Kilo model fetch failed: ${result.kiloModelError}`
-          : (fetchedModels || fetchedKiloModels)
-            ? `Checked local agent CLIs.${fetchedModels ? ` Synced ${fetchedModels.length} OpenCode models.` : ""}${fetchedKiloModels ? ` Synced ${fetchedKiloModels.length} Kilo models.` : ""}`
+          : result.pi && result.piModelError
+            ? `Checked local agent CLIs. Pi model fetch failed: ${result.piModelError}`
+            : result.openhands && result.openhandsModelError
+              ? `Checked local agent CLIs. OpenHands model fetch failed: ${result.openhandsModelError}`
+              : result.codebuddy && result.codebuddyModelError
+                ? `Checked local agent CLIs. CodeBuddy model fetch failed: ${result.codebuddyModelError}`
+                : result.crush && result.crushModelError
+                  ? `Checked local agent CLIs. Crush model fetch failed: ${result.crushModelError}`
+                  : (fetchedModels || fetchedKiloModels || fetchedPiModels || fetchedOpenHandsModels || fetchedCodeBuddyModels || fetchedCrushModels)
+                    ? `Checked local agent CLIs.${fetchedModels ? ` Synced ${fetchedModels.length} OpenCode models.` : ""}${fetchedKiloModels ? ` Synced ${fetchedKiloModels.length} Kilo models.` : ""}${fetchedPiModels ? ` Synced ${fetchedPiModels.length} Pi models.` : ""}${fetchedOpenHandsModels ? ` Synced ${fetchedOpenHandsModels.length} OpenHands models.` : ""}${fetchedCodeBuddyModels ? ` Synced ${fetchedCodeBuddyModels.length} CodeBuddy models.` : ""}${fetchedCrushModels ? ` Synced ${fetchedCrushModels.length} Crush models.` : ""}`
             : "Checked local agent CLIs.",
     }));
   } catch (error) {

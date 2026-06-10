@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { getAgentProvider, getSelectedAgentProviderId } from "../registry";
+import { providerSupportsModelSelection } from "@/shared/agent-provider";
 
 describe("agent registry", () => {
   const original = process.env.ODE_AGENT_PROVIDER;
@@ -52,6 +53,13 @@ describe("agent registry", () => {
     expect(getSelectedAgentProviderId()).toBe("gemini");
   });
 
+  for (const provider of ["pi", "openhands", "codebuddy", "crush"] as const) {
+    it(`selects ${provider} from env`, () => {
+      process.env.ODE_AGENT_PROVIDER = provider;
+      expect(getSelectedAgentProviderId()).toBe(provider);
+    });
+  }
+
   it("returns provider metadata", () => {
     const opencode = getAgentProvider("opencode");
     const claudecode = getAgentProvider("claudecode");
@@ -61,6 +69,10 @@ describe("agent registry", () => {
     const qwen = getAgentProvider("qwen");
     const goose = getAgentProvider("goose");
     const gemini = getAgentProvider("gemini");
+    const pi = getAgentProvider("pi");
+    const openhands = getAgentProvider("openhands");
+    const codebuddy = getAgentProvider("codebuddy");
+    const crush = getAgentProvider("crush");
     expect(opencode.supportsEventStream).toBe(true);
     expect(claudecode.supportsEventStream).toBe(false);
     expect(kimi.supportsEventStream).toBe(false);
@@ -69,5 +81,13 @@ describe("agent registry", () => {
     expect(qwen.supportsEventStream).toBe(false);
     expect(goose.supportsEventStream).toBe(false);
     expect(gemini.supportsEventStream).toBe(false);
+    expect(pi.supportsEventStream).toBe(false);
+    expect(openhands.supportsEventStream).toBe(false);
+    expect(codebuddy.supportsEventStream).toBe(false);
+    expect(crush.supportsEventStream).toBe(false);
+    expect(providerSupportsModelSelection("pi")).toBe(true);
+    expect(providerSupportsModelSelection("openhands")).toBe(true);
+    expect(providerSupportsModelSelection("codebuddy")).toBe(true);
+    expect(providerSupportsModelSelection("crush")).toBe(true);
   });
 });

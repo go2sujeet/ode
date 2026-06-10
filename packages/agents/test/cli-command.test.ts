@@ -9,6 +9,10 @@ import { buildKiloCommand, buildKiloCommandArgs } from "../kilo/client";
 import { buildQwenCommand, buildQwenCommandArgs } from "../qwen/client";
 import { buildGooseCommand, buildGooseCommandArgs } from "../goose/client";
 import { buildGeminiCommand, buildGeminiCommandArgs } from "../gemini/client";
+import { buildPiCommand, buildPiCommandArgs, parsePiResponse } from "../pi/client";
+import { buildOpenHandsCommand, buildOpenHandsCommandArgs, parseOpenHandsResponse } from "../openhands/client";
+import { buildCodeBuddyCommand, buildCodeBuddyCommandArgs, parseCodeBuddyResponse } from "../codebuddy/client";
+import { buildCrushCommand, buildCrushCommandArgs, parseCrushResponse } from "../crush/client";
 
 describe("agent cli command formatting", () => {
   it("builds the final Claude CLI command", () => {
@@ -360,5 +364,85 @@ describe("agent cli command formatting", () => {
 
     expect(command).toContain("--approval-mode yolo");
     expect(command).not.toContain("--resume");
+  });
+
+  it("builds the Pi json command", () => {
+    const args = buildPiCommandArgs({
+      sessionId: "session-12",
+      prompt: "hello from pi",
+      agent: "plan",
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-5-20250929" },
+    });
+    const command = buildPiCommand(args);
+
+    expect(command).toContain("pi --mode json --print");
+    expect(command).toContain("--session-id session-12");
+    expect(command).toContain("--model anthropic/claude-sonnet-4-5-20250929");
+    expect(command).toContain("--tools read,grep,find,ls");
+    expect(command).toContain("'hello from pi'");
+  });
+
+  it("builds the OpenHands headless command", () => {
+    const args = buildOpenHandsCommandArgs({
+      prompt: "hello from openhands",
+    });
+    const command = buildOpenHandsCommand(args);
+
+    expect(command).toContain("openhands --headless --json --override-with-envs");
+    expect(command).toContain("--exit-without-confirmation");
+    expect(command).toContain("-t 'hello from openhands'");
+  });
+
+  it("builds the CodeBuddy stream-json command", () => {
+    const args = buildCodeBuddyCommandArgs({
+      sessionId: "session-13",
+      prompt: "hello from codebuddy",
+      model: { providerID: "codebuddy", modelID: "gpt-5.1" },
+    });
+    const command = buildCodeBuddyCommand(args);
+
+    expect(command).toContain("codebuddy --print");
+    expect(command).toContain("--output-format stream-json");
+    expect(command).toContain("--include-partial-messages");
+    expect(command).toContain("--session-id session-13");
+    expect(command).toContain("--model gpt-5.1");
+    expect(command).toContain("--permission-mode bypassPermissions");
+  });
+
+  it("builds the Crush run command", () => {
+    const args = buildCrushCommandArgs({
+      sessionId: "session-14",
+      prompt: "hello from crush",
+      model: { providerID: "chainbot", modelID: "gpt-5.1" },
+      isNewSession: false,
+    });
+    const command = buildCrushCommand(args);
+
+    expect(command).toContain("crush run --verbose");
+    expect(command).toContain("--model chainbot/gpt-5.1");
+    expect(command).toContain("--session session-14");
+    expect(command).toContain("'hello from crush'");
+  });
+
+  it("parses new provider final responses", () => {
+    expect(parsePiResponse([
+      JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "OK" }] } }),
+      JSON.stringify({ type: "agent_end" }),
+    ].join("\n"))).toBe("OK");
+
+    expect(parseCodeBuddyResponse(JSON.stringify({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "OK",
+    }))).toBe("OK");
+
+    expect(parseOpenHandsResponse(`--JSON Event--\n${JSON.stringify({
+      kind: "MessageEvent",
+      source: "agent",
+      llm_message: { role: "assistant", content: [{ type: "text", text: "OK" }] },
+    }, null, 2)}`).text).toBe("OK");
+
+    expect(parseCrushResponse("OK\n")).toBe("OK");
   });
 });

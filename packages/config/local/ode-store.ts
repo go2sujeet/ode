@@ -47,6 +47,10 @@ const EMPTY_TEMPLATE: OdeConfig = {
     qwen: { enabled: true },
     goose: { enabled: true },
     gemini: { enabled: true },
+    pi: { enabled: true, models: [] },
+    openhands: { enabled: true, models: [] },
+    codebuddy: { enabled: true, models: [] },
+    crush: { enabled: true, models: [] },
   },
   completeOnboarding: false,
   workspaces: [],
@@ -95,6 +99,18 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
     .map((model) => model.trim())
     .filter(Boolean)));
   const kiloModels = Array.from(new Set((config.agents?.kilo?.models ?? [])
+    .map((model) => model.trim())
+    .filter(Boolean)));
+  const piModels = Array.from(new Set((config.agents?.pi?.models ?? [])
+    .map((model) => model.trim())
+    .filter(Boolean)));
+  const openhandsModels = Array.from(new Set((config.agents?.openhands?.models ?? [])
+    .map((model) => model.trim())
+    .filter(Boolean)));
+  const codebuddyModels = Array.from(new Set((config.agents?.codebuddy?.models ?? [])
+    .map((model) => model.trim())
+    .filter(Boolean)));
+  const crushModels = Array.from(new Set((config.agents?.crush?.models ?? [])
     .map((model) => model.trim())
     .filter(Boolean)));
   const completeOnboarding = config.completeOnboarding === true;
@@ -153,6 +169,22 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
       },
       gemini: {
         enabled: config.agents?.gemini?.enabled ?? true,
+      },
+      pi: {
+        enabled: config.agents?.pi?.enabled ?? true,
+        models: piModels,
+      },
+      openhands: {
+        enabled: config.agents?.openhands?.enabled ?? true,
+        models: openhandsModels,
+      },
+      codebuddy: {
+        enabled: config.agents?.codebuddy?.enabled ?? true,
+        models: codebuddyModels,
+      },
+      crush: {
+        enabled: config.agents?.crush?.enabled ?? true,
+        models: crushModels,
       },
     },
     completeOnboarding,

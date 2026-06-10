@@ -9,6 +9,10 @@ import { applyKiloRecordToState, extractKiloRecord } from "@/agents/kilo/session
 import { applyQwenRecordToState, extractQwenRecord } from "@/agents/qwen/session-state";
 import { applyGooseRecordToState, extractGooseRecord } from "@/agents/goose/session-state";
 import { applyGeminiRecordToState, extractGeminiRecord } from "@/agents/gemini/session-state";
+import { applyPiRecordToState, extractPiRecord } from "@/agents/pi/session-state";
+import { applyOpenHandsRecordToState, extractOpenHandsRecord } from "@/agents/openhands/session-state";
+import { applyCodeBuddyRecordToState, extractCodeBuddyRecord } from "@/agents/codebuddy/session-state";
+import { applyCrushRecordToState, extractCrushRecord } from "@/agents/crush/session-state";
 import {
   extractSessionTitle,
   type StreamStateMaps,
@@ -561,6 +565,7 @@ export function buildSessionMessageState(
   const kimiToolById = new Map<string, SessionTool>();
   const kiloToolById = new Map<string, SessionTool>();
   const geminiToolById = new Map<string, SessionTool>();
+  const openHandsToolById = new Map<string, SessionTool>();
   const kiroTodoById = new Map<string, SessionTodo>();
   // Map of messageID -> role ("user" | "assistant" | ...) built from
   // `message.updated` events. Used to avoid treating user prompt TextParts
@@ -580,6 +585,7 @@ export function buildSessionMessageState(
     kimiToolById.set(existingTool.id, { ...existingTool });
     kiloToolById.set(existingTool.id, { ...existingTool });
     geminiToolById.set(existingTool.id, { ...existingTool });
+    openHandsToolById.set(existingTool.id, { ...existingTool });
   }
 
   for (const existingTodo of state.todos) {
@@ -634,6 +640,30 @@ export function buildSessionMessageState(
       extract: extractGeminiRecord,
       apply: (record) => {
         applyGeminiRecordToState(state, record as Parameters<typeof applyGeminiRecordToState>[1], geminiToolById);
+      },
+    },
+    {
+      extract: extractPiRecord,
+      apply: (record) => {
+        applyPiRecordToState(state, record as Parameters<typeof applyPiRecordToState>[1], sharedStreamState);
+      },
+    },
+    {
+      extract: extractOpenHandsRecord,
+      apply: (record) => {
+        applyOpenHandsRecordToState(state, record as Parameters<typeof applyOpenHandsRecordToState>[1], openHandsToolById);
+      },
+    },
+    {
+      extract: extractCodeBuddyRecord,
+      apply: (record) => {
+        applyCodeBuddyRecordToState(state, record as Parameters<typeof applyCodeBuddyRecordToState>[1], sharedStreamState);
+      },
+    },
+    {
+      extract: extractCrushRecord,
+      apply: (record) => {
+        applyCrushRecordToState(state, record as Parameters<typeof applyCrushRecordToState>[1]);
       },
     },
   ];

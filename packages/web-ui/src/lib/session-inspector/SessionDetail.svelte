@@ -160,6 +160,10 @@
     if (meta?.agentProvider === "qwen" || meta?.sessionId?.startsWith("qwen_")) return "qwen";
     if (meta?.agentProvider === "goose" || meta?.sessionId?.startsWith("goose_")) return "goose";
     if (meta?.agentProvider === "gemini" || meta?.sessionId?.startsWith("gemini_")) return "gemini";
+    if (meta?.agentProvider === "pi" || meta?.sessionId?.startsWith("pi_")) return "pi";
+    if (meta?.agentProvider === "openhands" || meta?.sessionId?.startsWith("openhands_")) return "openhands";
+    if (meta?.agentProvider === "codebuddy" || meta?.sessionId?.startsWith("codebuddy_")) return "codebuddy";
+    if (meta?.agentProvider === "crush" || meta?.sessionId?.startsWith("crush_")) return "crush";
     if (meta?.sessionId?.startsWith("claude_") || meta?.sessionId?.startsWith("claudecode_")) {
       return "claudecode";
     }

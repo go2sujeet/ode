@@ -377,42 +377,15 @@ async function setupCodingAgents(rl: Interface, config: OdeConfig): Promise<OdeC
     ...config,
     agents: {
       ...config.agents,
-      opencode: {
-        ...config.agents.opencode,
-        enabled: selectedIds.has("opencode"),
-      },
-      claudecode: {
-        ...config.agents.claudecode,
-        enabled: selectedIds.has("claudecode"),
-      },
-      codex: {
-        ...config.agents.codex,
-        enabled: selectedIds.has("codex"),
-      },
-      kimi: {
-        ...config.agents.kimi,
-        enabled: selectedIds.has("kimi"),
-      },
-      kiro: {
-        ...config.agents.kiro,
-        enabled: selectedIds.has("kiro"),
-      },
-      kilo: {
-        ...config.agents.kilo,
-        enabled: selectedIds.has("kilo"),
-      },
-      qwen: {
-        ...config.agents.qwen,
-        enabled: selectedIds.has("qwen"),
-      },
-      goose: {
-        ...config.agents.goose,
-        enabled: selectedIds.has("goose"),
-      },
-      gemini: {
-        ...config.agents.gemini,
-        enabled: selectedIds.has("gemini"),
-      },
+      ...Object.fromEntries(
+        AGENT_PROVIDERS.map((provider) => [
+          provider,
+          {
+            ...config.agents[provider],
+            enabled: selectedIds.has(provider),
+          },
+        ])
+      ) as OdeConfig["agents"],
     },
   };
 
@@ -453,17 +426,9 @@ export async function runOnboarding(options?: { force?: boolean }): Promise<void
     };
     saveOdeConfig(nextConfig);
 
-    const enabledAgents = [
-      nextConfig.agents.opencode.enabled ? "OpenCode" : null,
-      nextConfig.agents.claudecode.enabled ? "Claude Code" : null,
-      nextConfig.agents.codex.enabled ? "Codex" : null,
-      nextConfig.agents.kimi.enabled ? "Kimi" : null,
-      nextConfig.agents.kiro.enabled ? "Kiro" : null,
-      nextConfig.agents.kilo.enabled ? "Kilo" : null,
-      nextConfig.agents.qwen.enabled ? "Qwen Code" : null,
-      nextConfig.agents.goose.enabled ? "Goose" : null,
-      nextConfig.agents.gemini.enabled ? "Gemini CLI" : null,
-    ].filter((value): value is string => Boolean(value));
+    const enabledAgents = AGENT_PROVIDERS
+      .filter((provider) => nextConfig.agents[provider].enabled)
+      .map((provider) => getAgentProviderLabel(provider));
     console.log("Onboarding complete.");
     console.log(`Workspaces: ${nextConfig.workspaces.length}`);
     console.log(`Agents enabled: ${enabledAgents.join(", ")}`);

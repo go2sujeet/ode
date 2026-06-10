@@ -4,6 +4,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2";
 import type { OpenCodeMessageContext } from "@/agents";
 import { buildPromptParts, buildSystemPrompt } from "@/agents/shared";
 import { getAgentProvider, type AgentProviderId } from "@/agents/registry";
+import { isAgentProviderId } from "@/shared/agent-provider";
 import type { OpenCodeMessage, OpenCodeOptions } from "@/agents/types";
 import { extractEventSessionId } from "@/utils";
 import { buildHarnessRunId, HarnessRedisStore } from "../redis-store";
@@ -27,7 +28,7 @@ function parseArg(name: string): string | undefined {
 function normalizeProvider(value: string | undefined): AgentProviderId {
   const normalized = value?.trim().toLowerCase();
   if (normalized === "claude") return "claudecode";
-  if (normalized === "claudecode" || normalized === "codex" || normalized === "kimi" || normalized === "kiro" || normalized === "kilo" || normalized === "qwen" || normalized === "goose" || normalized === "gemini") {
+  if (isAgentProviderId(normalized)) {
     return normalized;
   }
   return "opencode";

@@ -5,8 +5,8 @@
   import { locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
 
-  type AgentWithModels = "opencode" | "codex" | "kilo";
-  type AgentStatusKey = "opencode" | "claude" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+  type AgentWithModels = "opencode" | "codex" | "kilo" | "pi" | "openhands" | "codebuddy" | "crush";
+  type AgentStatusKey = "opencode" | "claude" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini" | "pi" | "openhands" | "codebuddy" | "crush";
 
   const AGENT_DOCS: Record<AgentStatusKey, string> = {
     opencode: "https://opencode.ai",
@@ -18,6 +18,10 @@
     qwen: "https://github.com/QwenLM/qwen-code",
     goose: "https://block.github.io/goose/",
     gemini: "https://github.com/google-gemini/gemini-cli",
+    pi: "https://github.com/earendil-works/pi",
+    openhands: "https://docs.openhands.dev",
+    codebuddy: "https://www.codebuddy.ai/docs/cli/overview",
+    crush: "https://github.com/charmbracelet/crush",
   };
 
   const isBusy = $derived($localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving);
@@ -172,6 +176,98 @@
           <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.gemini} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
         {/if}
       {/if}
+    </div>
+
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">Pi CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.pi ? "success" : "secondary"}>
+            {$localSettingStore.cliCheckResult.pi ? t("Installed", "已安装") : t("Not found", "未安装")}
+          </Badge>
+          {#if !$localSettingStore.cliCheckResult.pi}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.pi} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+          {/if}
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("pi").length > 0}
+          {#each getAgentModels("pi") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {:else if $localSettingStore.cliCheckResult?.pi}
+          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
+        {/if}
+      </div>
+    </div>
+
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">OpenHands CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.openhands ? "success" : "secondary"}>
+            {$localSettingStore.cliCheckResult.openhands ? t("Installed", "已安装") : t("Not found", "未安装")}
+          </Badge>
+          {#if !$localSettingStore.cliCheckResult.openhands}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.openhands} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+          {/if}
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("openhands").length > 0}
+          {#each getAgentModels("openhands") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {:else if $localSettingStore.cliCheckResult?.openhands}
+          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
+        {/if}
+      </div>
+    </div>
+
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">CodeBuddy CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.codebuddy ? "success" : "secondary"}>
+            {$localSettingStore.cliCheckResult.codebuddy ? t("Installed", "已安装") : t("Not found", "未安装")}
+          </Badge>
+          {#if !$localSettingStore.cliCheckResult.codebuddy}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.codebuddy} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+          {/if}
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("codebuddy").length > 0}
+          {#each getAgentModels("codebuddy") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {:else if $localSettingStore.cliCheckResult?.codebuddy}
+          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
+        {/if}
+      </div>
+    </div>
+
+    <div class="rounded-lg border p-3">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <strong class="text-sm">Crush CLI</strong>
+        {#if $localSettingStore.cliCheckResult}
+          <Badge variant={$localSettingStore.cliCheckResult.crush ? "success" : "secondary"}>
+            {$localSettingStore.cliCheckResult.crush ? t("Installed", "已安装") : t("Not found", "未安装")}
+          </Badge>
+          {#if !$localSettingStore.cliCheckResult.crush}
+            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.crush} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+          {/if}
+        {/if}
+      </div>
+      <div class="flex flex-wrap gap-1">
+        {#if getAgentModels("crush").length > 0}
+          {#each getAgentModels("crush") as model}
+            <Badge variant="outline">{model}</Badge>
+          {/each}
+        {:else if $localSettingStore.cliCheckResult?.crush}
+          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
+        {/if}
+      </div>
     </div>
 
     <div class="rounded-lg border p-3">

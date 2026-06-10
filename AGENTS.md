@@ -8,7 +8,7 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 - Config: `packages/config/` (Zod env/config validation, local `ode.json`, channel settings)
 - Core orchestration: `packages/core/` (daemon, kernel, runtime, tasks, cron, PR tracker, Web/API server)
 - IM adapters: `packages/ims/` (`slack`, `discord`, `lark`, shared inbound/delivery/runtime helpers)
-- Agent adapters: `packages/agents/` (`opencode`, `claude`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`)
+- Agent adapters: `packages/agents/` (`opencode`, `claude`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`, `pi`, `openhands`, `codebuddy`, `crush`)
 - Shared utilities: `packages/shared/` and `packages/utils/`
 - Web UI: `packages/web-ui/` (settings, sessions, local config views)
 - Live status harness: `packages/live-status-harness/`
@@ -28,8 +28,9 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 
 ## Supported Integrations
 - IM apps: Slack, Discord, Lark/Feishu.
-- Agent providers: `opencode`, `claude`/`claudecode`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`.
-- Model selection is currently provider-specific; OpenCode, Codex, and Kilo have configured model lists.
+- Agent providers: `opencode`, `claude`/`claudecode`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`, `pi`, `openhands`, `codebuddy`, `crush`.
+- Model selection is provider-specific. OpenCode, Codex, Kilo, Pi, OpenHands, CodeBuddy, and Crush expose configured model lists in the Web UI.
+- Coding agent credentials/configuration belong to each agent's own CLI/config files; Ode should call the CLI and should not become the secret/config owner for those tools.
 
 ## Commands
 - Install deps: `bun run setup`

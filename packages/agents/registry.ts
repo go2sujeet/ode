@@ -7,6 +7,10 @@ import * as opencode from "./opencode";
 import * as qwen from "./qwen";
 import * as goose from "./goose";
 import * as gemini from "./gemini";
+import * as pi from "./pi";
+import * as openhands from "./openhands";
+import * as codebuddy from "./codebuddy";
+import * as crush from "./crush";
 import {
   AGENT_PROVIDERS,
   normalizeAgentProviderId,
@@ -59,6 +63,10 @@ const providerModules = {
   qwen,
   goose,
   gemini,
+  pi,
+  openhands,
+  codebuddy,
+  crush,
 } satisfies Record<AgentProviderId, AgentProviderRuntime>;
 
 function createProvider(providerId: AgentProviderId): AgentProvider {

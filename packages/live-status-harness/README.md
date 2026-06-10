@@ -22,7 +22,7 @@ In local mode, `opencode` capture should include `--model` unless your channel m
 
 Optional flags:
 
-- `--provider opencode|claudecode|codex|kimi|kiro|kilo|qwen|goose|gemini`
+- `--provider opencode|claudecode|codex|kimi|kiro|kilo|qwen|goose|gemini|pi|openhands|codebuddy|crush`
 - `--cwd <path>`
 - `--channel <id>`
 - `--thread <id>`
@@ -47,7 +47,7 @@ If `--run-id` is omitted, the latest run in Redis is used.
 bun run packages/live-status-harness/scripts/generate-report.ts
 ```
 
-This runs capture + render for each provider (`opencode`, `claudecode`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`).
+This runs capture + render for each provider (`opencode`, `claudecode`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`, `pi`, `openhands`, `codebuddy`, `crush`).
 
 When possible, report generation reuses the latest Redis run for each provider and skips capture. If no Redis stream data exists for a provider, it captures a new run.
 
@@ -62,6 +62,10 @@ By default, it writes one report per provider:
 - `packages/live-status-harness/reports/qwen.md`
 - `packages/live-status-harness/reports/goose.md`
 - `packages/live-status-harness/reports/gemini.md`
+- `packages/live-status-harness/reports/pi.md`
+- `packages/live-status-harness/reports/openhands.md`
+- `packages/live-status-harness/reports/codebuddy.md`
+- `packages/live-status-harness/reports/crush.md`
 
 Use `--providers <list>` to run only specific providers.
 
@@ -69,9 +73,11 @@ For `opencode`, the report run forces model `openai/gpt-5.3-codex` so it does no
 
 For `gemini`, the report run forces `--agent plan` to avoid file edits during harness capture.
 
+For `pi` and `openhands`, the report run forces `anthropic/claude-sonnet-4-5-20250929`; for `codebuddy` and `crush`, it forces `gpt-5.1` through their configured OpenAI-compatible providers.
+
 Optional flags:
 
-- `--providers opencode,claudecode,codex,kimi,kiro,kilo,qwen,goose,gemini`
+- `--providers opencode,claudecode,codex,kimi,kiro,kilo,qwen,goose,gemini,pi,openhands,codebuddy,crush`
 - `--run-id <id>` reuse an existing captured run (requires exactly one provider and skips capture)
 - `--layout split|combined|both` (default: `split`)
 - `--output-dir <path>` for provider files (default: `packages/live-status-harness/reports`)

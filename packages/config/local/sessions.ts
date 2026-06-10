@@ -3,6 +3,7 @@ import * as path from "path";
 import * as os from "os";
 import { mkdir, readdir, readFile, unlink, writeFile } from "fs/promises";
 import { log } from "@/utils";
+import type { AgentProviderId } from "@/shared/agent-provider";
 
 const readFileSync = fs.readFileSync;
 const readdirSync = fs.readdirSync;
@@ -81,7 +82,7 @@ export interface PersistedSession {
   sessionId: string;
   channelId: string;
   threadId: string;
-  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+  providerId?: AgentProviderId;
   platform?: "slack" | "discord" | "lark";
   workingDirectory: string;
   threadOwnerUserId?: string;
@@ -517,7 +518,7 @@ export function setThreadSessionId(channelId: string, threadId: string, sessionI
 export function getThreadSessionId(
   channelId: string,
   threadId: string,
-  providerId?: "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini"
+  providerId?: AgentProviderId
 ): string | null {
   const session = loadSession(channelId, threadId);
   if (!session?.sessionId) return null;

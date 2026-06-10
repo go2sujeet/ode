@@ -1,14 +1,29 @@
 import { getChannelModel } from "@/config";
 import type { OpenCodeOptions } from "@/agents";
+import {
+  providerSupportsModelSelection,
+  type AgentProviderId,
+} from "@/shared/agent-provider";
 
-type ProviderId = "opencode" | "claudecode" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini";
+function defaultModelProvider(providerId: AgentProviderId): string {
+  if (providerId === "codex") return "openai";
+  if (providerId === "kilo") return "kilo";
+  if (providerId === "pi") return "anthropic";
+  if (providerId === "openhands") return "anthropic";
+  if (providerId === "codebuddy") return "codebuddy";
+  if (providerId === "crush") return "chainbot";
+  return providerId;
+}
 
-function toKiloModel(modelValue: string | null | undefined): OpenCodeOptions["model"] | undefined {
+function toSelectedModel(
+  providerId: AgentProviderId,
+  modelValue: string | null | undefined
+): OpenCodeOptions["model"] | undefined {
   const trimmed = modelValue?.trim();
   if (!trimmed) return undefined;
-  const [providerID = "kilo", ...rest] = trimmed.split("/");
+  const [providerID = defaultModelProvider(providerId), ...rest] = trimmed.split("/");
   if (rest.length === 0) {
-    return { providerID: "kilo", modelID: trimmed };
+    return { providerID: defaultModelProvider(providerId), modelID: trimmed };
   }
   return { providerID, modelID: rest.join("/") };
 }
@@ -16,25 +31,23 @@ function toKiloModel(modelValue: string | null | undefined): OpenCodeOptions["mo
 export function buildMessageOptions(params: {
   text: string;
   channelId: string;
-  providerId: ProviderId;
+  providerId: AgentProviderId;
 }): OpenCodeOptions | undefined {
   const { text, channelId, providerId } = params;
   const normalizedText = text.trimStart().toLowerCase();
   const agent = /^plan\b/.test(normalizedText) ? "plan" : undefined;
 
   const channelModel = getChannelModel(channelId)?.trim();
-  const codexModel = providerId === "codex"
-    ? (channelModel && channelModel.length > 0 ? channelModel : undefined)
+  const selectedModel = providerSupportsModelSelection(providerId)
+    ? toSelectedModel(providerId, channelModel)
     : undefined;
-  const kiloModel = providerId === "kilo" ? toKiloModel(channelModel) : undefined;
 
-  if (!agent && !codexModel && !kiloModel) {
+  if (!agent && !selectedModel) {
     return undefined;
   }
 
   return {
     ...(agent ? { agent } : {}),
-    ...(codexModel ? { model: { providerID: "openai", modelID: codexModel } } : {}),
-    ...(kiloModel ? { model: kiloModel } : {}),
+    ...(selectedModel ? { model: selectedModel } : {}),
   };
 }

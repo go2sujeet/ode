@@ -10,6 +10,10 @@ export type AgentInstallStatus = {
   qwen: boolean;
   goose: boolean;
   gemini: boolean;
+  pi: boolean;
+  openhands: boolean;
+  codebuddy: boolean;
+  crush: boolean;
 };
 
 export type AgentCheckResult = AgentInstallStatus & {
@@ -18,6 +22,14 @@ export type AgentCheckResult = AgentInstallStatus & {
   opencodeModelError?: string;
   kiloModels: string[];
   kiloModelError?: string;
+  piModels: string[];
+  piModelError?: string;
+  openhandsModels: string[];
+  openhandsModelError?: string;
+  codebuddyModels: string[];
+  codebuddyModelError?: string;
+  crushModels: string[];
+  crushModelError?: string;
 };
 
 function extractProviderModelIds(providerId: string, models: unknown): string[] {
@@ -119,6 +131,73 @@ async function fetchKiloModels(): Promise<string[]> {
     .sort();
 }
 
+async function runModelCommand(cmd: string[]): Promise<string> {
+  const child = Bun.spawn({
+    cmd,
+    cwd: process.cwd(),
+    stdout: "pipe",
+    stderr: "pipe",
+    env: process.env,
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  if (exitCode !== 0) {
+    const details = stderr.trim() || stdout.trim() || "Unknown error";
+    throw new Error(details);
+  }
+  return stdout;
+}
+
+function parsePiModels(output: string): string[] {
+  return output
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) => parts.length >= 2 && parts[0] !== "provider")
+    .map((parts) => `${parts[0]}/${parts[1]}`)
+    .filter(Boolean)
+    .sort();
+}
+
+async function fetchPiModels(): Promise<string[]> {
+  return parsePiModels(await runModelCommand(["pi", "--list-models", "anthropic"]));
+}
+
+async function fetchCrushModels(): Promise<string[]> {
+  return (await runModelCommand(["crush", "models"]))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((model) => model.startsWith("chainbot/") || model.startsWith("openai/") || model === "gpt-5.1")
+    .sort();
+}
+
+function extractCodeBuddyModels(helpText: string): string[] {
+  const match = helpText.match(/Currently supported:\s*\(([^)]+)\)/);
+  const safeDefaults = ["gpt-5.1", "gpt-5.1-chat-latest", "gpt-5", "gpt-4.1"];
+  if (!match) return safeDefaults;
+  const supported = (match[1] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((model) => safeDefaults.includes(model));
+  const combined = [...safeDefaults, ...supported];
+  return Array.from(new Set(combined)).sort();
+}
+
+async function fetchCodeBuddyModels(): Promise<string[]> {
+  return extractCodeBuddyModels(await runModelCommand(["codebuddy", "--help"]));
+}
+
+async function fetchOpenHandsModels(): Promise<string[]> {
+  return [
+    "anthropic/claude-sonnet-4-5-20250929",
+    "anthropic/claude-sonnet-4-5",
+    "anthropic/claude-sonnet-4-20250514",
+  ];
+}
+
 export function getInstalledAgentStatus(): AgentInstallStatus {
   return {
     opencode: Boolean(Bun.which("opencode")),
@@ -130,6 +209,10 @@ export function getInstalledAgentStatus(): AgentInstallStatus {
     qwen: Boolean(Bun.which("qwen") || Bun.which("qwen-code")),
     goose: Boolean(Bun.which("goose")),
     gemini: Boolean(Bun.which("gemini")),
+    pi: Boolean(Bun.which("pi")),
+    openhands: Boolean(Bun.which("openhands")),
+    codebuddy: Boolean(Bun.which("codebuddy") || Bun.which("cbc")),
+    crush: Boolean(Bun.which("crush")),
   };
 }
 
@@ -139,6 +222,14 @@ export async function runAgentCheck(): Promise<AgentCheckResult> {
   let opencodeModelError: string | undefined;
   let kiloModels: string[] = [];
   let kiloModelError: string | undefined;
+  let piModels: string[] = [];
+  let piModelError: string | undefined;
+  let openhandsModels: string[] = [];
+  let openhandsModelError: string | undefined;
+  let codebuddyModels: string[] = [];
+  let codebuddyModelError: string | undefined;
+  let crushModels: string[] = [];
+  let crushModelError: string | undefined;
 
   if (installed.opencode) {
     try {
@@ -164,6 +255,38 @@ export async function runAgentCheck(): Promise<AgentCheckResult> {
     }
   }
 
+  if (installed.pi) {
+    try {
+      piModels = await fetchPiModels();
+    } catch (error) {
+      piModelError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (installed.openhands) {
+    try {
+      openhandsModels = await fetchOpenHandsModels();
+    } catch (error) {
+      openhandsModelError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (installed.codebuddy) {
+    try {
+      codebuddyModels = await fetchCodeBuddyModels();
+    } catch (error) {
+      codebuddyModelError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (installed.crush) {
+    try {
+      crushModels = await fetchCrushModels();
+    } catch (error) {
+      crushModelError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   return {
     ...installed,
     claude: installed.claudecode,
@@ -171,5 +294,13 @@ export async function runAgentCheck(): Promise<AgentCheckResult> {
     opencodeModelError,
     kiloModels,
     kiloModelError,
+    piModels,
+    piModelError,
+    openhandsModels,
+    openhandsModelError,
+    codebuddyModels,
+    codebuddyModelError,
+    crushModels,
+    crushModelError,
   };
 }

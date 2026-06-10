@@ -107,6 +107,69 @@ export function parseMarkdownTodos(content: string): SessionTodo[] | undefined {
   return todos.length > 0 ? todos : undefined;
 }
 
+function compactSingleLine(value: string, maxLength = 120): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 3)}...`;
+}
+
+function firstStringValue(input: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+  if (!input) return undefined;
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+export function buildToolTitle(
+  toolName: string,
+  input: Record<string, unknown> | undefined
+): string | undefined {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized || !input) return undefined;
+
+  if (normalized.includes("todo")) {
+    const todos = parseTodosFromToolInput(toolName, input);
+    return todos ? `${todos.length} tasks` : undefined;
+  }
+
+  if (normalized === "bash" || normalized === "shell" || normalized.includes("terminal")) {
+    return compactSingleLine(firstStringValue(input, ["command", "cmd", "script"]) ?? "");
+  }
+
+  if (normalized === "read" || normalized.includes("read")) {
+    return firstStringValue(input, ["file_path", "path", "uri", "target"]);
+  }
+
+  if (normalized === "file_editor") {
+    return firstStringValue(input, ["summary", "description", "title", "path"]);
+  }
+
+  if (normalized === "write" || normalized === "edit" || normalized.includes("edit")) {
+    return firstStringValue(input, ["file_path", "path", "target"]);
+  }
+
+  if (normalized === "grep" || normalized.includes("grep") || normalized.includes("search")) {
+    const pattern = firstStringValue(input, ["pattern", "query", "regex", "content"]);
+    const path = firstStringValue(input, ["path", "include", "glob"]);
+    return [pattern ? compactSingleLine(pattern, 80) : undefined, path].filter(Boolean).join(" in ") || undefined;
+  }
+
+  if (normalized === "glob" || normalized.includes("find") || normalized.includes("ls")) {
+    return firstStringValue(input, ["pattern", "path", "glob", "directory"]);
+  }
+
+  if (normalized === "agent" || normalized.includes("task")) {
+    const description = firstStringValue(input, ["description", "prompt", "task", "message"]);
+    return description ? compactSingleLine(description) : undefined;
+  }
+
+  return compactSingleLine(firstStringValue(input, ["description", "title", "summary", "prompt", "query", "path", "file_path"]) ?? "");
+}
+
 export function composeIndexedText(parts: Map<number, string>): string {
   if (parts.size === 0) return "";
   const sorted = [...parts.entries()].sort((a, b) => a[0] - b[0]);
@@ -205,7 +268,7 @@ export function applyAssistantBlocks<TTool extends StreamToolState>(
       input: input ?? existing?.input,
       output: existing?.output,
       error: existing?.error,
-      title: existing?.title,
+      title: buildToolTitle(toolName, input ?? existing?.input) ?? existing?.title,
       metadata: existing?.metadata,
     } as TTool;
     const parsedTodos = parseTodosFromToolInput(toolName, input);
@@ -215,7 +278,7 @@ export function applyAssistantBlocks<TTool extends StreamToolState>(
     toolById.set(toolId, tool);
     updateTool(state, tool);
     if (tool.status === "running") {
-      state.phaseStatus = `Running tool: ${toolName}`;
+      state.phaseStatus = tool.title ? `Running tool: ${toolName} - ${tool.title}` : `Running tool: ${toolName}`;
     }
   }
 }
@@ -247,7 +310,8 @@ export function applyUserToolResults<TTool extends StreamToolState>(
     } as TTool;
     toolById.set(toolId, updated);
     updateTool(state, updated);
-    state.phaseStatus = `${hasError ? "Tool failed" : "Finished tool"}: ${updated.name}`;
+    const detail = updated.title ? `${updated.name} - ${updated.title}` : updated.name;
+    state.phaseStatus = `${hasError ? "Tool failed" : "Finished tool"}: ${detail}`;
   }
 }
 
@@ -286,6 +350,7 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
           name: toolName,
           status: "running",
           input,
+          title: buildToolTitle(toolName, input),
         } as TTool;
         const parsedTodos = parseTodosFromToolInput(toolName, input);
         if (parsedTodos) {
@@ -296,7 +361,7 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
           toolByIndex.set(index, tool);
         }
         updateTool(state, tool);
-        state.phaseStatus = `Running tool: ${toolName}`;
+        state.phaseStatus = tool.title ? `Running tool: ${toolName} - ${tool.title}` : `Running tool: ${toolName}`;
         return true;
       }
 
@@ -347,6 +412,7 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
           const parsedInput = tryParseObject(tool.inputBuffer);
           if (parsedInput) {
             tool.input = parsedInput;
+            tool.title = buildToolTitle(tool.name, parsedInput) ?? tool.title;
             const parsedTodos = parseTodosFromToolInput(tool.name, tool.input);
             if (parsedTodos) {
               state.todos = parsedTodos;
@@ -357,7 +423,7 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
         toolById.set(tool.id, tool);
         toolByIndex.set(index, tool);
         updateTool(state, tool);
-        state.phaseStatus = `Running tool: ${tool.name}`;
+        state.phaseStatus = tool.title ? `Running tool: ${tool.name} - ${tool.title}` : `Running tool: ${tool.name}`;
         return true;
       }
 
@@ -389,7 +455,7 @@ export function applyAnthropicStyleStreamEvent<TTool extends StreamToolState>(
       toolById.set(tool.id, tool);
       toolByIndex.set(index, tool);
       updateTool(state, tool);
-      state.phaseStatus = `Finished tool: ${tool.name}`;
+      state.phaseStatus = tool.title ? `Finished tool: ${tool.name} - ${tool.title}` : `Finished tool: ${tool.name}`;
       return true;
     }
     case "message_stop": {

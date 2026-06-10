@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import type { DashboardConfig } from "@/config";
-import { normalizeAgentProviderId } from "@/shared/agent-provider";
+import {
+  normalizeAgentProviderId,
+  providerSupportsModelSelection,
+} from "@/shared/agent-provider";
 
 export type WorkspaceConfig = DashboardConfig["workspaces"][number];
 export type ChannelDetail = WorkspaceConfig["channelDetails"][number];
@@ -15,7 +18,7 @@ export function resolveFallbackModel(
   agentProvider: NonNullable<ChannelAgentProvider>,
   fallbackModel: string
 ): string {
-  return agentProvider === "opencode" || agentProvider === "codex"
+  return providerSupportsModelSelection(agentProvider)
     ? fallbackModel
     : "";
 }
