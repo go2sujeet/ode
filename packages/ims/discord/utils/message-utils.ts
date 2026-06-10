@@ -1,3 +1,7 @@
+export function markdownToDiscord(text: string): string {
+  return text;
+}
+
 export function splitForDiscord(text: string, limit: number): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];

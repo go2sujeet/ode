@@ -136,14 +136,16 @@ export function buildClaudeCommandArgs(params: {
   const sessionArgs = params.isNewSession
     ? ["--session-id", params.sessionId]
     : ["--resume", params.sessionId];
+  const systemPromptArgs = params.systemPrompt.trim()
+    ? ["--append-system-prompt", params.systemPrompt.trim()]
+    : [];
   return [
     "--print",
     "--verbose",
     "--output-format",
     "stream-json",
     "--include-partial-messages",
-    "--append-system-prompt",
-    params.systemPrompt,
+    ...systemPromptArgs,
     ...sessionArgs,
     "--add-dir",
     params.workingPath,
