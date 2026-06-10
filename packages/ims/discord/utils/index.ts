@@ -1,4 +1,5 @@
 export {
+  markdownToDiscord,
   splitForDiscord,
   cleanBotMention,
   isTopLevelMessage,

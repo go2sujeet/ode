@@ -4,6 +4,7 @@ import {
   cleanBotMention,
   formatThreadNameFromBranch,
   formatThreadNameFromStatusTitle,
+  markdownToDiscord,
   splitForDiscord,
 } from "@/ims/discord/utils/message-utils";
 import { isDiscordRateLimitErrorMessage, parseDiscordRetryAfterMs } from "@/ims/discord/utils/rate-limit";
@@ -12,6 +13,10 @@ describe("discord message utilities", () => {
   it("splits oversized content by limit", () => {
     const chunks = splitForDiscord("abcdef", 2);
     expect(chunks).toEqual(["ab", "cd", "ef"]);
+  });
+
+  it("keeps standard markdown unchanged for Discord", () => {
+    expect(markdownToDiscord("**bold** _italic_ `code`")).toBe("**bold** _italic_ `code`");
   });
 
   it("normalizes mention and thread names", () => {

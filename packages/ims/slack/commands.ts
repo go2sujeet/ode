@@ -1,4 +1,4 @@
-import { getApps } from "./client";
+import * as slackClient from "./client";
 import {
   findMatchingModel,
   getProviderModelList,
@@ -513,7 +513,7 @@ function buildGeneralSettingsModal(params: {
 }
 
 export function setupInteractiveHandlers(): void {
-  for (const slackApp of getApps()) {
+  for (const slackApp of slackClient.getApps()) {
     slackApp.action(SETTINGS_LAUNCH_ACTION, async ({ ack, body, client }) => {
     await ack();
 

@@ -44,6 +44,8 @@ export interface ActiveRequest {
   tools?: TrackedTool[];
   todos: TrackedTodo[];
   statusFrozen?: boolean;
+  statusStreamActive?: boolean;
+  statusStreamTs?: string;
   state: "processing" | "completed" | "failed";
   finalResponseTs?: string;
   error?: string;
@@ -387,6 +389,7 @@ export function createActiveRequest(
     tools: [],
     todos: [],
     statusFrozen: false,
+    statusStreamActive: false,
     state: "processing",
   };
 }

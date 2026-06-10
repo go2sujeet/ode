@@ -1,6 +1,7 @@
 import { basename } from "path";
 import { getApp, getSlackBotToken } from "./client";
 import { hasSimpleOptions } from "@/core/runtime/helpers";
+import type { StatusStreamChunk } from "@/core/types";
 
 // ---------------------------------------------------------------------------
 // Slack IM helper module.
@@ -297,4 +298,148 @@ export async function addSlackReaction(args: {
     name,
   }, token);
   return { status: "reaction_added" };
+}
+
+// ---------------------------------------------------------------------------
+// Streaming status (chat.startStream / chat.appendStream / chat.stopStream)
+//
+// Slack's text-streaming API (Feb 2026, expanded Apr 2026) is purpose-built
+// for AI agents rendering live progress as `task_card` / `plan` blocks.
+// We expose three thin helpers used by the Slack IMAdapter when the
+// `ODE_SLACK_STATUS_STREAMING=1` flag is on.
+//
+// Empirical quirks (the docs lie a bit):
+//   - Channel (non-DM) streams REQUIRE `recipient_user_id` +
+//     `recipient_team_id`. Omitting them yields `missing_recipient_team_id`.
+//   - A stream is locked to either "text" mode or "chunks" mode at
+//     `startStream` time. After that, you cannot mix `markdown_text` and
+//     `chunks` on `appendStream` (returns
+//     `cannot_provide_both_markdown_text_and_chunks`) nor switch modes
+//     (returns `streaming_mode_mismatch`). We always use chunks mode.
+//   - To start in chunks mode you MUST pass `chunks` on `startStream` (a
+//     `plan_update` is a natural opener); a bare/empty `markdown_text` locks
+//     you into text mode forever.
+//   - Per-chunk title/details/output cap = 256 chars (Slack-side).
+//   - `task_display_mode: "plan"` groups task_updates inside a single plan
+//     block; `"individual"` (default) renders each as a standalone card.
+// ---------------------------------------------------------------------------
+
+const STREAM_CHUNK_MAX_CHARS = 256;
+
+function truncateStreamField(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  if (value.length <= STREAM_CHUNK_MAX_CHARS) return value;
+  return value.slice(0, STREAM_CHUNK_MAX_CHARS - 1) + "…";
+}
+
+function serializeStreamChunk(chunk: StatusStreamChunk): Record<string, unknown> {
+  if (chunk.type === "task_update") {
+    return {
+      type: "task_update",
+      id: chunk.id,
+      title: truncateStreamField(chunk.title) ?? "",
+      status: chunk.status,
+      ...(chunk.details ? { details: truncateStreamField(chunk.details) } : {}),
+      ...(chunk.output ? { output: truncateStreamField(chunk.output) } : {}),
+      ...(chunk.sources && chunk.sources.length > 0 ? { sources: chunk.sources } : {}),
+    };
+  }
+  if (chunk.type === "plan_update") {
+    return { type: "plan_update", title: truncateStreamField(chunk.title) ?? "" };
+  }
+  // markdown_text — only valid in text-mode streams; the kernel currently
+  // never emits these, but we serialize defensively.
+  return { type: "markdown_text", text: chunk.text };
+}
+
+/**
+ * Start a Slack streaming status message in chunks mode.
+ *
+ * Channel (non-DM) streams require recipient identification; we resolve the
+ * team id via `auth.test` on the bot token and accept the requesting user id
+ * from the caller. `task_display_mode: "plan"` is what gives us the unified
+ * "thinking steps" card with a checklist of task_card rows.
+ *
+ * Seeds the stream with a single `plan_update` chunk (using `seedPlanTitle`)
+ * so subsequent `appendSlackStream` calls don't trip `streaming_mode_mismatch`.
+ *
+ * `token` is required: the adapter resolves the right bot token (processor-
+ * scoped or channel-scoped) at the call site so append/stop can use the
+ * same identity by passing it explicitly. Mixing tokens within a single
+ * stream lifecycle causes Slack to reject later calls.
+ */
+export async function startSlackStream(args: {
+  channelId: string;
+  threadId: string;
+  recipientUserId: string;
+  recipientTeamId: string;
+  seedPlanTitle?: string;
+  token: string;
+}): Promise<string | undefined> {
+  const channelId = requireString(args.channelId, "channelId");
+  const threadId = requireString(args.threadId, "threadId");
+  const recipientUserId = requireString(args.recipientUserId, "recipientUserId");
+  const recipientTeamId = requireString(args.recipientTeamId, "recipientTeamId");
+  const token = requireString(args.token, "token");
+  const client = getApp().client;
+  const result = await client.apiCall("chat.startStream", {
+    channel: channelId,
+    thread_ts: threadId,
+    task_display_mode: "plan",
+    recipient_user_id: recipientUserId,
+    recipient_team_id: recipientTeamId,
+    chunks: [{ type: "plan_update", title: truncateStreamField(args.seedPlanTitle ?? "Working") }],
+    token,
+  }) as { ts?: string };
+  return result.ts ?? undefined;
+}
+
+/**
+ * Append chunks to a running chunks-mode Slack stream message. Does NOT
+ * accept a markdown_text body — the API rejects messages that mix the two
+ * with `cannot_provide_both_markdown_text_and_chunks`.
+ *
+ * `token` must be the same bot token that started the stream — using a
+ * different workspace's token (e.g. when multiple Slack workspaces are
+ * installed) causes Slack to silently reject the append.
+ */
+export async function appendSlackStream(args: {
+  channelId: string;
+  messageTs: string;
+  chunks: StatusStreamChunk[];
+  token: string;
+}): Promise<void> {
+  const channelId = requireString(args.channelId, "channelId");
+  const messageTs = requireString(args.messageTs, "messageTs");
+  const token = requireString(args.token, "token");
+  if (!Array.isArray(args.chunks) || args.chunks.length === 0) return;
+  const client = getApp().client;
+  await client.apiCall("chat.appendStream", {
+    channel: channelId,
+    ts: messageTs,
+    chunks: args.chunks.map(serializeStreamChunk),
+    token,
+  });
+}
+
+/**
+ * Stop a chunks-mode stream. Cannot pass markdown_text here either — the
+ * stream is mode-locked. If you need a final summary line, append a final
+ * `plan_update` chunk before calling stop. `token` must match the start
+ * call's token (see `appendSlackStream`).
+ */
+export async function stopSlackStream(args: {
+  channelId: string;
+  messageTs: string;
+  token: string;
+}): Promise<void> {
+  const channelId = requireString(args.channelId, "channelId");
+  const messageTs = requireString(args.messageTs, "messageTs");
+  const token = requireString(args.token, "token");
+  const client = getApp().client;
+  await client.apiCall("chat.stopStream", {
+    channel: channelId,
+    ts: messageTs,
+    token,
+  });
 }

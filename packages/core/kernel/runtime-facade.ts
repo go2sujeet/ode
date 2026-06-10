@@ -241,8 +241,8 @@ export class KernelRuntimeFacade {
     });
   }
 
-  async recoverPendingRequests(): Promise<void> {
-    await recoverPendingRequestsInternal(this.runtimeDeps.im, this.deps.platform);
+  async recoverPendingRequests(options?: { startedBeforeMs?: number }): Promise<void> {
+    await recoverPendingRequestsInternal(this.runtimeDeps.im, this.deps.platform, options);
   }
 
   private async handleUserMessageInternal(context: RuntimeRequestContext, text: string): Promise<void> {

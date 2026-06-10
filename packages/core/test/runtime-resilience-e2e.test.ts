@@ -118,6 +118,7 @@ function createFakeAgent(params?: {
   streamStopAfterMs?: number;
   delayMs?: number;
   responseText?: string;
+  errorMessage?: string;
 }) {
   const sentPrompts: string[] = [];
   const supportsEventStream = Boolean(params?.supportsEventStream);
@@ -129,6 +130,9 @@ function createFakeAgent(params?: {
     getOrCreateSession: async () => ({ sessionId: "session-resilience", created: true }),
     sendMessage: async (_channelId, _sessionId, message) => {
       sentPrompts.push(message);
+      if (params?.errorMessage) {
+        throw new Error(params.errorMessage);
+      }
       if (params?.delayMs) {
         await sleep(params.delayMs);
       }
@@ -191,6 +195,7 @@ function toInboundEvent(params: {
 describe("core runtime resilience e2e", () => {
   const previousCi = process.env.CI;
   const previousInboxDbFile = process.env.ODE_INBOX_DB_FILE;
+  const previousSlackStatusStreaming = process.env.ODE_SLACK_STATUS_STREAMING;
 
   beforeAll(() => {
     process.env.CI = "1";
@@ -211,9 +216,14 @@ describe("core runtime resilience e2e", () => {
     fs.rmSync(tempInboxDir, { recursive: true, force: true });
     if (previousCi === undefined) {
       delete process.env.CI;
-      return;
+    } else {
+      process.env.CI = previousCi;
     }
-    process.env.CI = previousCi;
+    if (previousSlackStatusStreaming === undefined) {
+      delete process.env.ODE_SLACK_STATUS_STREAMING;
+    } else {
+      process.env.ODE_SLACK_STATUS_STREAMING = previousSlackStatusStreaming;
+    }
   });
 
   it("falls back to sending final message when status updates are rate-limited", async () => {
@@ -339,6 +349,140 @@ describe("core runtime resilience e2e", () => {
     expect(logs.sends.some((entry) => entry.text === "_Done_")).toBe(true);
 
     deleteSession(context.channelId, context.threadId);
+  });
+
+  it("preserves full error status after stopping an active status stream", async () => {
+    process.env.ODE_SLACK_STATUS_STREAMING = "1";
+    const logs = {
+      sends: [] as Array<{ channelId: string; threadId: string; text: string; messageTs: string }>,
+      updates: [] as Array<{ channelId: string; messageTs: string; text: string }>,
+      appends: [] as Array<{ channelId: string; messageTs: string; chunks: unknown[] }>,
+      stops: [] as Array<{ channelId: string; messageTs: string }>,
+      events: [] as string[],
+    };
+    let nextTs = 0;
+    const streamTs = "stream-1";
+    const im: IMAdapter = {
+      sendMessage: async (channelId, threadId, text) => {
+        nextTs += 1;
+        const messageTs = `ts-${nextTs}`;
+        logs.events.push(`send:${text}`);
+        logs.sends.push({ channelId, threadId, text, messageTs });
+        return messageTs;
+      },
+      updateMessage: async (channelId, messageTs, text) => {
+        logs.updates.push({ channelId, messageTs, text });
+        if (messageTs === streamTs) {
+          throw new Error("streaming_state_conflict");
+        }
+      },
+      deleteMessage: async () => {},
+      fetchThreadHistory: async () => null,
+      buildAgentContext: async () => ({ slack: { channelId: "C", threadId: "T", userId: "U" } }),
+      startStatusStream: async () => streamTs,
+      appendStatusStream: async (channelId, messageTs, chunks) => {
+        logs.appends.push({ channelId, messageTs, chunks });
+      },
+      stopStatusStream: async (channelId, messageTs) => {
+        logs.events.push(`stop:${messageTs}`);
+        logs.stops.push({ channelId, messageTs });
+      },
+    };
+    const { agent } = createFakeAgent({
+      supportsEventStream: true,
+      errorMessage: "tool exploded with full details",
+    });
+    const runtime = createCoreRuntime({ platform: "slack", im, agent });
+    const channelId = uniqueId("CE2E-STREAM-ERR");
+    const threadId = uniqueId("TE2E-STREAM-ERR");
+
+    await runtime.handleInboundEvent(toInboundEvent({
+      channelId,
+      threadId,
+      userId: "UE2E-stream-err",
+      messageId: uniqueId("ME2E-stream-err"),
+      text: "trigger streaming error",
+    }));
+
+    await waitFor(
+      () => logs.sends.some((entry) => entry.text.includes("Error: tool exploded with full details")),
+      5000
+    );
+
+    const errorMessage = logs.sends.find((entry) => entry.text.includes("Error: tool exploded with full details"));
+    expect(errorMessage?.text).toContain("_If this persists, try starting a new thread or contact support._");
+    expect(logs.stops).toEqual([{ channelId, messageTs: streamTs }]);
+    expect(logs.updates.some((entry) => entry.messageTs === streamTs)).toBe(false);
+    expect(logs.events.indexOf(`stop:${streamTs}`)).toBeLessThan(
+      logs.events.findIndex((entry) => entry.startsWith("send:Error: tool exploded"))
+    );
+
+    deleteSession(channelId, threadId);
+  });
+
+  it("keeps persisted stream state active when stopStream fails during finalization", async () => {
+    process.env.ODE_SLACK_STATUS_STREAMING = "1";
+    const streamTs = "stream-stop-fail";
+    const logs = {
+      sends: [] as Array<{ channelId: string; threadId: string; text: string; messageTs: string }>,
+      appends: [] as Array<{ channelId: string; messageTs: string; chunks: unknown[] }>,
+      stops: [] as Array<{ channelId: string; messageTs: string }>,
+      deletes: [] as Array<{ channelId: string; messageTs: string }>,
+    };
+    let nextTs = 0;
+    const im: IMAdapter = {
+      sendMessage: async (channelId, threadId, text) => {
+        nextTs += 1;
+        const messageTs = `ts-${nextTs}`;
+        logs.sends.push({ channelId, threadId, text, messageTs });
+        return messageTs;
+      },
+      updateMessage: async () => {},
+      deleteMessage: async (channelId, messageTs) => {
+        logs.deletes.push({ channelId, messageTs });
+        if (messageTs === streamTs) {
+          throw new Error("streaming_state_conflict");
+        }
+      },
+      fetchThreadHistory: async () => null,
+      buildAgentContext: async () => ({ slack: { channelId: "C", threadId: "T", userId: "U" } }),
+      startStatusStream: async () => streamTs,
+      appendStatusStream: async (channelId, messageTs, chunks) => {
+        logs.appends.push({ channelId, messageTs, chunks });
+      },
+      stopStatusStream: async (channelId, messageTs) => {
+        logs.stops.push({ channelId, messageTs });
+        throw new Error("temporarily_unavailable");
+      },
+    };
+    const { agent } = createFakeAgent({
+      supportsEventStream: true,
+      responseText: "finished despite stop failure",
+    });
+    const runtime = createCoreRuntime({ platform: "slack", im, agent });
+    const channelId = uniqueId("CE2E-STREAM-STOP-FAIL");
+    const threadId = uniqueId("TE2E-STREAM-STOP-FAIL");
+
+    await runtime.handleInboundEvent(toInboundEvent({
+      channelId,
+      threadId,
+      userId: "UE2E-stream-stop-fail",
+      messageId: uniqueId("ME2E-stream-stop-fail"),
+      text: "trigger streaming stop failure",
+    }));
+
+    await waitFor(
+      () => logs.sends.some((entry) => entry.text === "finished despite stop failure"),
+      5000
+    );
+
+    const savedRequest = loadSession(channelId, threadId)?.activeRequest;
+    expect(logs.stops).toEqual([{ channelId, messageTs: streamTs }]);
+    expect(logs.deletes).toContainEqual({ channelId, messageTs: streamTs });
+    expect(savedRequest?.statusStreamActive).toBe(true);
+    expect(savedRequest?.statusStreamTs).toBe(streamTs);
+
+    deleteSession(channelId, threadId);
   });
 
   it("does not crash when the initial status send throws", async () => {

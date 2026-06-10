@@ -39,6 +39,7 @@ import {
   formatThreadNameFromBranch,
   formatThreadNameFromStatusTitle,
   isTopLevelMessage,
+  markdownToDiscord,
   splitForDiscord,
 } from "@/ims/discord/utils/message-utils";
 import {
@@ -186,7 +187,8 @@ async function sendMessage(
   try {
     const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, resolvedProcessorId);
-    const chunks = splitForDiscord(text, DISCORD_MESSAGE_LIMIT);
+    const formattedText = markdownToDiscord(text);
+    const chunks = splitForDiscord(formattedText, DISCORD_MESSAGE_LIMIT);
     let firstId: string | undefined;
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index] ?? "";
@@ -223,7 +225,8 @@ export async function sendChannelMessage(
 ): Promise<string | undefined> {
   try {
     const channel = await resolveTextChannel(channelId, processorId);
-    const chunks = splitForDiscord(text, DISCORD_MESSAGE_LIMIT);
+    const formattedText = markdownToDiscord(text);
+    const chunks = splitForDiscord(formattedText, DISCORD_MESSAGE_LIMIT);
     let firstId: string | undefined;
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index] ?? "";
@@ -262,7 +265,8 @@ async function updateMessage(
     }
     const resolvedProcessorId = processorId || getRememberedThreadProcessor(channelId, threadId);
     const channel = await resolveTextChannel(threadId, resolvedProcessorId);
-    const content = splitForDiscord(text, DISCORD_MESSAGE_LIMIT)[0] ?? text;
+    const formattedText = markdownToDiscord(text);
+    const content = splitForDiscord(formattedText, DISCORD_MESSAGE_LIMIT)[0] ?? formattedText;
     let lastRateLimitError: unknown;
 
     for (let attempt = 1; attempt <= DISCORD_UPDATE_MAX_ATTEMPTS; attempt += 1) {
@@ -669,6 +673,6 @@ const discordRuntimeController = createRuntimeController({
   },
 });
 
-export async function recoverPendingRequests(): Promise<void> {
-  await discordRecoveryRuntime.recoverPendingRequests();
+export async function recoverPendingRequests(options?: { startedBeforeMs?: number }): Promise<void> {
+  await discordRecoveryRuntime.recoverPendingRequests(options);
 }

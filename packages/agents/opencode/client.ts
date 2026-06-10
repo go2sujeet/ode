@@ -264,8 +264,13 @@ export async function sendMessage(
 
       // Build system prompt with Slack context
       const system = buildSystemPrompt(context?.slack);
-      const payload = { directory: workingPath, parts, agent, model, system };
-      // const payload = { directory: workingPath, parts, agent, model };
+      const payload = {
+        directory: workingPath,
+        parts,
+        agent,
+        model,
+        ...(system ? { system } : {}),
+      };
       const serverUrl = getSessionServerUrl(activeSessionId);
       const command = serverUrl
         ? buildOpenCodeCommand(serverUrl, activeSessionId, payload)

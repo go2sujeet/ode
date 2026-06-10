@@ -25,6 +25,7 @@ export type CliCheckResult = {
 type LocalSettingState = {
   config: DashboardConfig;
   appVersion: string;
+  devEnabled: boolean;
   isLoading: boolean;
   isSaving: boolean;
   isSyncingSlack: boolean;
@@ -39,6 +40,7 @@ type LocalSettingState = {
 const initialState: LocalSettingState = {
   config: defaultDashboardConfig,
   appVersion: "",
+  devEnabled: false,
   isLoading: false,
   isSaving: false,
   isSyncingSlack: false,
@@ -218,6 +220,7 @@ async function loadConfig(): Promise<void> {
       ok?: boolean;
       error?: string;
       version?: string;
+      dev?: { enabled?: boolean };
       config?: DashboardConfig;
     };
     if (!response.ok || !payload.ok || !payload.config) {
@@ -227,6 +230,7 @@ async function loadConfig(): Promise<void> {
       ...state,
       config: normalizeConfig(payload.config as DashboardConfig),
       appVersion: typeof payload.version === "string" ? payload.version : state.appVersion,
+      devEnabled: payload.dev?.enabled === true,
       loaded: true,
       isLoading: false,
     }));
@@ -262,6 +266,7 @@ async function saveConfig(): Promise<void> {
       ok?: boolean;
       error?: string;
       version?: string;
+      dev?: { enabled?: boolean };
       config?: DashboardConfig;
     };
     if (!response.ok || !result.ok || !result.config) {
@@ -271,6 +276,7 @@ async function saveConfig(): Promise<void> {
       ...state,
       config: normalizeConfig(result.config as DashboardConfig),
       appVersion: typeof result.version === "string" ? result.version : state.appVersion,
+      devEnabled: result.dev?.enabled === true,
       isSaving: false,
       message: "Saved.",
     }));

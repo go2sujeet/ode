@@ -33,10 +33,10 @@ import {
 import { matchesCronExpression } from "@/core/cron/expression";
 import { buildMessageOptions } from "@/core/runtime/message-options";
 import { buildFinalResponseText, categorizeRuntimeError } from "@/core/runtime/helpers";
+import { sendSlackChannelMessage } from "@/core/runtime/slack-senders";
 import { buildSessionEnvironment, prepareSessionWorkspace } from "@/core/session";
 import { sendChannelMessage as sendDiscordChannelMessage } from "@/ims/discord/client";
 import { sendChannelMessage as sendLarkChannelMessage } from "@/ims/lark/client";
-import { sendChannelMessage as sendSlackChannelMessage } from "@/ims/slack/client";
 import { log } from "@/utils";
 
 const CRON_POLL_INTERVAL_MS = 15_000;

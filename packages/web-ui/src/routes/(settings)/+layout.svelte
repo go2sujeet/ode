@@ -2,7 +2,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
-  import { Building2, Github, Plus, Trash2 } from "lucide-svelte";
+  import { Building2, FlaskConical, Github, Plus, Trash2 } from "lucide-svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import { Button, Card, Input, Label, Select } from "$lib/components/ui";
   import { initLocale, locale, setLocalePreference, type Locale } from "$lib/i18n";
@@ -13,7 +13,7 @@
 
   const pathname = $derived($page.url.pathname);
   const normalizedPathname = $derived(pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname);
-  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "tasks" | "prTracker" | "workspace">(() =>
+  const activeSection = $derived.by<"general" | "agents" | "inbox" | "cronJobs" | "tasks" | "prTracker" | "dev" | "workspace">(() =>
     normalizedPathname === "/agents"
       ? "agents"
       : normalizedPathname === "/inbox"
@@ -24,6 +24,8 @@
         ? "tasks"
       : normalizedPathname === "/pr-tracker"
         ? "prTracker"
+      : normalizedPathname === "/dev"
+        ? "dev"
         : normalizedPathname.startsWith("/workspace")
           ? "workspace"
           : "general"
@@ -233,6 +235,16 @@
         >
           {t("PR Tracker", "PR 追踪")}
         </Button>
+        {#if $localSettingStore.devEnabled}
+          <Button
+            variant={activeSection === "dev" ? "default" : "secondary"}
+            className="w-full justify-start"
+            on:click={() => goto("/dev")}
+          >
+            <FlaskConical class="h-4 w-4" />
+            {t("Dev Tools", "开发工具")}
+          </Button>
+        {/if}
       </div>
     </Card>
 
