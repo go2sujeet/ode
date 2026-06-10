@@ -1,3 +1,7 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { setThreadSessionId } from "@/config/local/sessions";
+import { BoundedSet } from "@/utils";
 import { log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt, buildSystemWrappedPrompt } from "../shared";
 import {
@@ -19,13 +23,19 @@ export type SessionEnvironment = RuntimeSessionEnvironment;
 type KimiJsonRecord = {
   role?: string;
   content?: string | { type?: string; text?: string; think?: string } | Array<{ type?: string; text?: string; think?: string }>;
+  session_id?: string;
+  sessionId?: string;
+  sessionID?: string;
 };
 
 const runtime = new CliAgentRuntime("Kimi");
+const NEW_SESSIONS_MAX_ENTRIES = 1000;
+const newSessions = new BoundedSet<string>(NEW_SESSIONS_MAX_ENTRIES);
 export const { createSession, getOrCreateSession } = createCliThreadSessionManager({
   providerId: "kimi",
   providerName: "Kimi",
   runtime,
+  newSessions,
 });
 
 const KIMI_PLAN_SYSTEM_PROMPT = [
@@ -47,18 +57,17 @@ export function buildKimiCommandArgs(params: {
   sessionId: string;
   workingPath: string;
   prompt: string;
+  isNewSession?: boolean;
 }): string[] {
-  return [
-    "--print",
+  const args = [
     "--output-format",
     "stream-json",
-    "--session",
-    params.sessionId,
-    "--work-dir",
-    params.workingPath,
-    "-p",
-    params.prompt,
   ];
+  if (!params.isNewSession) {
+    args.push("--session", params.sessionId);
+  }
+  args.push("-p", params.prompt);
+  return args;
 }
 
 export function buildKimiCommand(args: string[]): string {
@@ -142,6 +151,75 @@ export function parseKimiResponse(output: string): string {
   return "Kimi completed without textual output.";
 }
 
+function getKimiRecordSessionId(record: KimiJsonRecord): string | undefined {
+  if (typeof record.session_id === "string" && record.session_id.trim()) return record.session_id.trim();
+  if (typeof record.sessionId === "string" && record.sessionId.trim()) return record.sessionId.trim();
+  if (typeof record.sessionID === "string" && record.sessionID.trim()) return record.sessionID.trim();
+  return undefined;
+}
+
+function parseKimiSessionId(output: string): string | undefined {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i] ?? "") as KimiJsonRecord;
+      const sessionId = getKimiRecordSessionId(parsed);
+      if (sessionId) return sessionId;
+    } catch {
+      // ignore non-json lines
+    }
+  }
+  return undefined;
+}
+
+async function readLatestKimiSessionIdForWorkDir(workingPath: string, startedAtMs: number): Promise<string | undefined> {
+  const indexPath = join(homedir(), ".kimi-code", "session_index.jsonl");
+  let text = "";
+  try {
+    text = await Bun.file(indexPath).text();
+  } catch {
+    return undefined;
+  }
+
+  let latest: { sessionId: string; updatedAtMs: number } | undefined;
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        sessionId?: unknown;
+        workDir?: unknown;
+        sessionDir?: unknown;
+      };
+      if (parsed.workDir !== workingPath || typeof parsed.sessionId !== "string") continue;
+      let updatedAtMs = 0;
+      if (typeof parsed.sessionDir === "string") {
+        try {
+          const stateText = await Bun.file(join(parsed.sessionDir, "state.json")).text();
+          const state = JSON.parse(stateText) as { updatedAt?: unknown; createdAt?: unknown };
+          const timestamp = typeof state.updatedAt === "string" ? state.updatedAt : state.createdAt;
+          updatedAtMs = typeof timestamp === "string" ? Date.parse(timestamp) : 0;
+        } catch {
+          updatedAtMs = 0;
+        }
+      }
+      if (Number.isFinite(updatedAtMs) && updatedAtMs > 0 && updatedAtMs + 5_000 < startedAtMs) {
+        continue;
+      }
+      if (!latest || updatedAtMs >= latest.updatedAtMs) {
+        latest = { sessionId: parsed.sessionId, updatedAtMs };
+      }
+    } catch {
+      // ignore malformed lines
+    }
+  }
+  return latest?.sessionId;
+}
+
 export async function sendMessage(
   channelId: string,
   sessionId: string,
@@ -160,11 +238,14 @@ export async function sendMessage(
       const prompt = buildPromptText(parts);
       const systemPrompt = buildKimiSystemPrompt(buildSystemPrompt(context?.slack), agent);
       const kimiPrompt = buildSystemWrappedPrompt(systemPrompt, prompt);
+      const isNewSession = newSessions.has(sessionId);
+      const startedAtMs = Date.now();
 
       const args = buildKimiCommandArgs({
         sessionId,
         workingPath,
         prompt: kimiPrompt,
+        isNewSession,
       });
       const command = buildKimiCommand(args);
       const envOverrides = runtime.getSessionEnvironment(sessionId);
@@ -185,6 +266,16 @@ export async function sendMessage(
           publishKimiEvent(sessionId, record);
         },
       });
+      const responseSessionId = parseKimiSessionId(output)
+        ?? (isNewSession ? await readLatestKimiSessionIdForWorkDir(workingPath, startedAtMs) : undefined);
+      if (responseSessionId && responseSessionId !== sessionId && context?.slack?.threadId) {
+        runtime.setSessionEnvironment(responseSessionId, envOverrides);
+        setThreadSessionId(channelId, context.slack.threadId, responseSessionId);
+      }
+      newSessions.delete(sessionId);
+      if (responseSessionId) {
+        newSessions.delete(responseSessionId);
+      }
       const text = parseKimiResponse(output);
       return [{ text, messageType: "assistant" }];
     });

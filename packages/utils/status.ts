@@ -147,10 +147,12 @@ export function trimToolPath(label: string, workingPath: string): string {
 function formatTodoLines(todos: StatusTodo[], limit = PLAN_TODO_LIMIT): string[] {
   const lines: string[] = [];
   for (const todo of todos.slice(0, limit)) {
-    const statusLabel = todo.status === "in_progress"
-      ? "in progress"
-      : todo.status;
-    lines.push(`\`${statusLabel}\` ${todo.content}`);
+    const checkbox = todo.status === "completed"
+      ? "[x]"
+      : todo.status === "in_progress"
+        ? "[~]"
+        : "[ ]";
+    lines.push(`- ${checkbox} ${todo.content}`);
   }
   if (todos.length > limit) {
     lines.push(`_(+${todos.length - limit} more)_`);
@@ -186,7 +188,10 @@ function normalizeToolName(name: string): string {
     case "write_file":
       return "write";
     case "run_shell_command":
+    case "shell":
       return "bash";
+    case "tree":
+      return "tree";
     case "grep_search":
       return "grep";
     case "list_directory":
@@ -206,6 +211,8 @@ function getToolDisplayName(name: string): string {
       return "write";
     case "run_shell_command":
       return "bash";
+    case "shell":
+      return "shell";
     case "grep_search":
       return "grep";
     default:
@@ -256,6 +263,12 @@ function buildToolDetails(tool: SessionMessageState["tools"][number], workingPat
     if (path) {
       return trimToolPath(String(path), workingPath);
     }
+  }
+
+  if (name === "tree") {
+    const path = input.path || input.directory;
+    const depth = typeof input.depth === "number" ? `depth ${input.depth}` : "";
+    return [path ? trimToolPath(String(path), workingPath) : "", depth].filter(Boolean).join(" ");
   }
 
   if (name === "bash") {

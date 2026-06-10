@@ -4,6 +4,7 @@ import {
   applyAssistantBlocks,
   applyUserToolResults,
   extractPrefixedRecord,
+  parseMarkdownTodos,
   parseTodosFromToolInput,
   extractSessionTitle,
   tryParseObject,
@@ -98,8 +99,28 @@ function parseTodosFromGooseToolInput(toolName: string, input: Record<string, un
   if (direct) return direct;
   const content = typeof input?.content === "string" ? input.content : "";
   if (!content) return undefined;
+  const markdownTodos = parseMarkdownTodos(content);
+  if (markdownTodos) return markdownTodos;
   const parsed = tryParseObject(content);
   return parsed ? parseTodosFromToolInput(toolName, parsed) : undefined;
+}
+
+function buildGooseToolTitle(toolName: string, input: Record<string, unknown> | undefined): string | undefined {
+  const normalized = toolName.trim().toLowerCase();
+  if (normalized.includes("todo")) {
+    const todos = parseTodosFromGooseToolInput(toolName, input);
+    return todos ? `${todos.length} tasks` : undefined;
+  }
+  if (normalized === "shell") {
+    const command = typeof input?.command === "string" ? input.command.trim() : "";
+    return command || undefined;
+  }
+  if (normalized === "tree") {
+    const path = typeof input?.path === "string" ? input.path.trim() : "";
+    const depth = typeof input?.depth === "number" ? `depth ${input.depth}` : "";
+    return [path, depth].filter(Boolean).join(" ");
+  }
+  return undefined;
 }
 
 export function extractGooseRecord(
@@ -164,6 +185,7 @@ export function applyGooseRecordToState(
         if (parsedTodos) {
           state.todos = parsedTodos;
         }
+        const title = buildGooseToolTitle(toolName, input);
         const existing = toolById.get(callId);
         textByIndex.delete(-1);
         state.currentText = "";
@@ -174,7 +196,7 @@ export function applyGooseRecordToState(
           input: input ?? existing?.input,
           output: existing?.output,
           error: existing?.error,
-          title: existing?.title,
+          title: title ?? existing?.title,
           metadata: {
             ...(existing?.metadata ?? {}),
             startedAtMs: typeof existing?.metadata?.startedAtMs === "number"
@@ -241,6 +263,13 @@ export function applyGooseRecordToState(
     const parsedTodos = parseTodosFromGooseToolInput(toolName, input);
     if (parsedTodos) {
       state.todos = parsedTodos;
+    }
+    const title = buildGooseToolTitle(toolName, input);
+    if (title && typeof record.event.index === "number") {
+      const tool = streamState.toolByIndex.get(record.event.index);
+      if (tool) {
+        tool.title = title;
+      }
     }
   }
 

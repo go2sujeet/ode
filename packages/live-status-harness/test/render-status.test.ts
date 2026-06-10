@@ -315,7 +315,7 @@ describe("live status harness renderer", () => {
     const finalText = statuses[statuses.length - 1]?.text || "";
 
     expect(finalText).toContain("*Tasks*");
-    expect(finalText).toContain("`in progress` Verify harness parser");
+    expect(finalText).toContain("- [~] Verify harness parser");
     expect(finalText).toContain("_Waiting_");
   });
 });

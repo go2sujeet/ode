@@ -142,7 +142,7 @@ export async function runCliJsonCommand<TRecord>(params: RunCliJsonCommandParams
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
       cwd,
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, PWD: cwd },
       signal: entry.controller.signal,
     });
 

@@ -86,6 +86,27 @@ export function parseTodosFromToolInput(
   return todos;
 }
 
+export function parseMarkdownTodos(content: string): SessionTodo[] | undefined {
+  const todos = content
+    .split("\n")
+    .map((line) => {
+      const match = line.match(/^\s*[-*]\s+\[([ xX~-])\]\s+(.+?)\s*$/);
+      if (!match) return null;
+      const marker = match[1] ?? " ";
+      const text = (match[2] ?? "").trim();
+      if (!text) return null;
+      const status = marker.toLowerCase() === "x"
+        ? "completed"
+        : marker === "~" || marker === "-"
+          ? "in_progress"
+          : "pending";
+      return { content: text, status };
+    })
+    .filter((todo): todo is SessionTodo => todo !== null);
+
+  return todos.length > 0 ? todos : undefined;
+}
+
 export function composeIndexedText(parts: Map<number, string>): string {
   if (parts.size === 0) return "";
   const sorted = [...parts.entries()].sort((a, b) => a[0] - b[0]);

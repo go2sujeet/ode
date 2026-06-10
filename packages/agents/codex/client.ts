@@ -1,6 +1,6 @@
 import { DEFAULT_CODEX_MODEL, getCodexModels, setCodexModels } from "@/config";
 import { setThreadSessionId } from "@/config/local/sessions";
-import { log } from "@/utils";
+import { BoundedSet, log } from "@/utils";
 import { buildPromptParts, buildPromptText, buildSystemPrompt, buildSystemWrappedPrompt } from "../shared";
 import {
   CliAgentRuntime,
@@ -16,10 +16,13 @@ import type {
 } from "../types";
 
 const runtime = new CliAgentRuntime("Codex");
+const NEW_SESSIONS_MAX_ENTRIES = 1000;
+const newSessions = new BoundedSet<string>(NEW_SESSIONS_MAX_ENTRIES);
 export const { createSession, getOrCreateSession } = createCliThreadSessionManager({
   providerId: "codex",
   providerName: "Codex",
   runtime,
+  newSessions,
 });
 
 export type SessionEnvironment = RuntimeSessionEnvironment;
@@ -82,6 +85,7 @@ export function buildCodexCommandArgs(params: {
   prompt: string;
   model?: string;
   planMode?: boolean;
+  isNewSession?: boolean;
 }): string[] {
   const args = ["exec", "--json", "--skip-git-repo-check"];
   if (params.planMode) {
@@ -92,7 +96,11 @@ export function buildCodexCommandArgs(params: {
   if (params.model) {
     args.push("--model", params.model);
   }
-  args.push("resume", params.sessionId, params.prompt);
+  if (params.isNewSession) {
+    args.push(params.prompt);
+  } else {
+    args.push("resume", params.sessionId, params.prompt);
+  }
   return args;
 }
 
@@ -178,12 +186,14 @@ export async function sendMessage(
       const systemPrompt = buildSystemPrompt(context?.slack);
       const codexPrompt = buildSystemWrappedPrompt(systemPrompt, prompt);
       const model = getCodexModel(options);
+      const isNewSession = newSessions.has(sessionId);
 
       const args = buildCodexCommandArgs({
         sessionId,
         prompt: codexPrompt,
         model,
         planMode,
+        isNewSession,
       });
 
       const command = buildCodexCommand(args);
@@ -219,6 +229,10 @@ export async function sendMessage(
       if (responseSessionId && responseSessionId !== sessionId && context?.slack?.threadId) {
         runtime.setSessionEnvironment(responseSessionId, envOverrides);
         setThreadSessionId(channelId, context.slack.threadId, responseSessionId);
+      }
+      newSessions.delete(sessionId);
+      if (responseSessionId) {
+        newSessions.delete(responseSessionId);
       }
 
       return [{ text: parsed.text, messageType: "assistant" }];

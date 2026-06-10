@@ -5,6 +5,7 @@ import {
   applyUserToolResults,
   extractPrefixedRecord,
   extractSessionTitle,
+  parseTodosFromToolInput,
   type StreamStateMaps,
   type StreamToolState,
   updateTool,
@@ -105,6 +106,10 @@ export function applyKiloRecordToState(
     const toolId = record.part?.callID || record.part?.id || `kilo-tool-${Date.now()}`;
     const toolState = record.part?.state || {};
     const status = typeof toolState.status === "string" ? toolState.status : "running";
+    const parsedTodos = parseTodosFromToolInput(toolName, toolState.input);
+    if (parsedTodos) {
+      state.todos = parsedTodos;
+    }
     const tool: KiloInspectorToolState = {
       id: toolId,
       name: toolName,

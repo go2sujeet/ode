@@ -67,6 +67,7 @@ type ClaudeJsonRecord = {
   is_error?: boolean;
   error?: string;
   session_id?: string;
+  permission_denials?: Array<{ tool_name?: string }>;
 };
 
 function deriveSessionTitleFromPrompt(message: string): string | undefined {
@@ -391,6 +392,27 @@ export function extractAskUserQuestionToolUse(output: string): ClaudeAskUserQues
   return lastFound;
 }
 
+export function didClaudeDenyAskUserQuestion(output: string): boolean {
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(lines[i] ?? "") as ClaudeJsonRecord;
+      const denials = parsed.permission_denials;
+      if (!Array.isArray(denials)) continue;
+      if (denials.some((entry) => entry?.tool_name === "AskUserQuestion")) {
+        return true;
+      }
+    } catch {
+      // ignore non-json lines
+    }
+  }
+  return false;
+}
+
 function formatAskUserQuestionAnswers(
   questions: ClaudeAskUserQuestion[],
   answers: string[]
@@ -632,7 +654,10 @@ export async function sendMessage(
           runtimeSessionId = responseSessionId;
         }
 
-        if (parsed?.is_error) {
+        const askUser = extractAskUserQuestionToolUse(output);
+        const askUserDenied = Boolean(askUser) && didClaudeDenyAskUserQuestion(output);
+
+        if (parsed?.is_error && !askUserDenied) {
           // Surface the upstream error text so isTransientClaudeError (and
           // categorizeRuntimeError downstream) can recognise 5xx / 524 even
           // when claude reports the failure in-band via stream-json.
@@ -640,7 +665,7 @@ export async function sendMessage(
         }
 
         const text = parsed?.result?.trim() ?? "";
-        if (text) {
+        if (text && !askUserDenied) {
           newSessions.delete(sessionId);
           newSessions.delete(runtimeSessionId);
           return [{ text, messageType: "assistant" }];
@@ -652,7 +677,6 @@ export async function sendMessage(
         // question.asked event the kernel already wires for OpenCode) and
         // resume the Claude CLI with the user's answer instead of failing
         // the whole turn.
-        const askUser = extractAskUserQuestionToolUse(output);
         if (!askUser) {
           if (parseError) {
             throw new Error(`Failed to parse Claude output: ${parseError.message}`);

@@ -79,4 +79,36 @@ describe("gemini stream status parsing", () => {
 
     expect(text).toContain("*Gemini is running...*");
   });
+
+  it("renders Gemini CLI errors as live status content", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "init",
+        session_id: "s3",
+      }),
+      rawEvent(now + 1, {
+        type: "error",
+        error: {
+          message: "Gemini CLI timed out",
+        },
+      }),
+    ]);
+
+    const text = buildStatusMessageByProvider(
+      "gemini",
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "medium"
+    );
+
+    expect(text).toContain("Gemini error: Gemini CLI timed out");
+  });
 });

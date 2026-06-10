@@ -39,6 +39,10 @@ type GeminiJsonRecord = {
 const runtime = new CliAgentRuntime("Gemini");
 /** See note in claude/client.ts — FIFO-bounded so abandoned sessions don't leak. */
 const NEW_SESSIONS_MAX_ENTRIES = 1000;
+function resolveGeminiCliTimeoutMs(): number {
+  const parsed = Number(process.env.ODE_GEMINI_CLI_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+}
 const newSessions = new BoundedSet<string>(NEW_SESSIONS_MAX_ENTRIES);
 export const { createSession, getOrCreateSession } = createCliThreadSessionManager({
   providerId: "gemini",
@@ -61,6 +65,7 @@ export function buildGeminiCommandArgs(params: {
   isNewSession: boolean;
   prompt: string;
   approvalMode?: "plan";
+  model?: string;
 }): string[] {
   const args = [
     "-p",
@@ -70,6 +75,9 @@ export function buildGeminiCommandArgs(params: {
     "--approval-mode",
     params.approvalMode ?? "yolo",
   ];
+  if (params.model?.trim()) {
+    args.push("--model", params.model.trim());
+  }
   if (!params.isNewSession) {
     args.push("--resume", params.sessionId);
   }
@@ -180,6 +188,7 @@ export async function sendMessage(
     return await runtime.withSessionLock(sessionKey, async () => {
       const agent = options?.agent;
       const approvalMode = resolveGeminiApprovalMode(agent);
+      const model = options?.model?.modelID;
       const parts = buildPromptParts(channelId, message, { ...options, agent }, context);
       const prompt = buildPromptText(parts);
       const systemPrompt = buildSystemPrompt(context?.slack);
@@ -193,6 +202,7 @@ export async function sendMessage(
           isNewSession,
           prompt: geminiPrompt,
           approvalMode: forceApprovalMode,
+          model,
         });
         const command = buildGeminiCommand(args);
         log.info("Running Gemini CLI", {
@@ -202,17 +212,32 @@ export async function sendMessage(
           approvalMode: forceApprovalMode ?? "yolo",
         });
 
-        return runCliJsonCommand<GeminiJsonRecord>({
-          providerName: "Gemini",
-          binary: resolveGeminiBinary(),
-          args,
-          cwd: workingPath,
-          env: envOverrides,
-          entry,
-          onRecord: (record) => {
-            publishGeminiRecordAsSessionEvents(record, sessionId);
-          },
-        });
+        try {
+          return await runCliJsonCommand<GeminiJsonRecord>({
+            providerName: "Gemini",
+            binary: resolveGeminiBinary(),
+            args,
+            cwd: workingPath,
+            env: {
+              GEMINI_CLI_TRUST_WORKSPACE: "true",
+              ...envOverrides,
+            },
+            entry,
+            timeoutMs: resolveGeminiCliTimeoutMs(),
+            onRecord: (record) => {
+              publishGeminiRecordAsSessionEvents(record, sessionId);
+            },
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          publishGeminiRecordAsSessionEvents({
+            type: "error",
+            error: {
+              message,
+            },
+          }, sessionId);
+          throw error;
+        }
       };
 
       let output = "";

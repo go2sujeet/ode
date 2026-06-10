@@ -161,6 +161,7 @@ describe("agent cli command formatting", () => {
       sessionId: "session-3",
       model: "gpt-5-codex",
       prompt: "hello from codex",
+      isNewSession: false,
     });
     const command = buildCodexCommand(args);
 
@@ -178,6 +179,7 @@ describe("agent cli command formatting", () => {
       model: "gpt-5-codex",
       prompt: "plan this change",
       planMode: true,
+      isNewSession: false,
     });
     const command = buildCodexCommand(args);
 
@@ -193,6 +195,7 @@ describe("agent cli command formatting", () => {
     const args = buildCodexCommandArgs({
       sessionId: "session-3",
       prompt: "hello from codex",
+      isNewSession: false,
     });
     const command = buildCodexCommand(args);
 
@@ -201,18 +204,46 @@ describe("agent cli command formatting", () => {
     expect(command).toContain("'hello from codex'");
   });
 
-  it("builds the Kimi print command", () => {
+  it("starts a new Codex exec session without resume", () => {
+    const args = buildCodexCommandArgs({
+      sessionId: "session-3",
+      prompt: "hello from codex",
+      isNewSession: true,
+    });
+    const command = buildCodexCommand(args);
+
+    expect(command).toContain("codex exec --json --skip-git-repo-check");
+    expect(command).not.toContain("resume session-3");
+    expect(command).toContain("'hello from codex'");
+  });
+
+  it("builds the Kimi prompt command", () => {
     const args = buildKimiCommandArgs({
       sessionId: "session-4",
       workingPath: "/tmp/project",
       prompt: "hello from kimi",
+      isNewSession: false,
     });
     const command = buildKimiCommand(args);
 
-    expect(command).toContain("kimi --print");
+    expect(command).not.toContain("--print");
     expect(command).toContain("--output-format stream-json");
     expect(command).toContain("--session session-4");
-    expect(command).toContain("--work-dir /tmp/project");
+    expect(command).not.toContain("--work-dir");
+    expect(command).toContain("-p 'hello from kimi'");
+  });
+
+  it("starts a new Kimi prompt without a resume session", () => {
+    const args = buildKimiCommandArgs({
+      sessionId: "session-4",
+      workingPath: "/tmp/project",
+      prompt: "hello from kimi",
+      isNewSession: true,
+    });
+    const command = buildKimiCommand(args);
+
+    expect(command).toContain("--output-format stream-json");
+    expect(command).not.toContain("--session session-4");
     expect(command).toContain("-p 'hello from kimi'");
   });
 
@@ -307,12 +338,14 @@ describe("agent cli command formatting", () => {
       isNewSession: false,
       prompt: "plan migration",
       approvalMode: "plan",
+      model: "gemini-3.1-flash-lite",
     });
     const command = buildGeminiCommand(args);
 
     expect(command).toContain("gemini");
     expect(command).toContain("--output-format stream-json");
     expect(command).toContain("--approval-mode plan");
+    expect(command).toContain("--model gemini-3.1-flash-lite");
     expect(command).toContain("--resume session-10");
     expect(command).toContain("-p 'plan migration'");
   });

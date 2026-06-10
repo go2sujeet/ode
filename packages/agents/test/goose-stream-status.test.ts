@@ -200,4 +200,72 @@ describe("goose stream status parsing", () => {
       { content: "Write test", status: "completed" },
     ]);
   });
+
+  it("hydrates markdown checklist todos and shell details from Goose tools", () => {
+    const now = Date.now();
+    const state = buildSessionMessageState([
+      rawEvent(now, {
+        type: "message",
+        message: {
+          id: "m1",
+          role: "assistant",
+          content: [{
+            type: "toolRequest",
+            id: "call-todo-1",
+            toolCall: {
+              value: {
+                name: "todo__todo_write",
+                arguments: {
+                  content: "- [ ] Inspect repository\n- [x] Read README\n- [~] Write report",
+                },
+              },
+            },
+          }],
+        },
+      }),
+      rawEvent(now + 1, {
+        type: "message",
+        message: {
+          id: "m2",
+          role: "assistant",
+          content: [{
+            type: "toolRequest",
+            id: "call-shell-1",
+            toolCall: {
+              value: {
+                name: "shell",
+                arguments: {
+                  command: "cat README.md",
+                },
+              },
+            },
+          }],
+        },
+      }),
+    ]);
+
+    const text = buildLiveStatusMessage(
+      {
+        channelId: "C1",
+        threadId: "T1",
+        statusMessageTs: "S1",
+        startedAt: now,
+        currentText: "",
+      },
+      "/tmp/repo",
+      state,
+      "medium"
+    );
+
+    expect(state.todos).toEqual([
+      { content: "Inspect repository", status: "pending" },
+      { content: "Read README", status: "completed" },
+      { content: "Write report", status: "in_progress" },
+    ]);
+    expect(text).toContain("*Tasks*");
+    expect(text).toContain("- [ ] Inspect repository");
+    expect(text).toContain("- [x] Read README");
+    expect(text).toContain("- [~] Write report");
+    expect(text).toContain("`shell` cat README.md");
+  });
 });

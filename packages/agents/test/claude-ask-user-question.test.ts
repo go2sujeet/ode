@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractAskUserQuestionToolUse, replyToQuestion } from "../claude/client";
+import { didClaudeDenyAskUserQuestion, extractAskUserQuestionToolUse, replyToQuestion } from "../claude/client";
 import { createAgentAdapter } from "../adapter";
 
 const ASSISTANT_WITH_ASK = JSON.stringify({
@@ -143,6 +143,33 @@ describe("extractAskUserQuestionToolUse", () => {
       },
     });
     expect(extractAskUserQuestionToolUse(out)).toBeNull();
+  });
+});
+
+describe("didClaudeDenyAskUserQuestion", () => {
+  it("detects AskUserQuestion permission denials in Claude result records", () => {
+    const out = [
+      STREAM_WITH_ASK,
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "I need your answer before continuing.",
+        permission_denials: [
+          { tool_name: "AskUserQuestion", tool_use_id: "toolu_test_123" },
+        ],
+      }),
+    ].join("\n");
+
+    expect(didClaudeDenyAskUserQuestion(out)).toBe(true);
+  });
+
+  it("ignores unrelated permission denials", () => {
+    const out = JSON.stringify({
+      type: "result",
+      permission_denials: [{ tool_name: "Bash" }],
+    });
+
+    expect(didClaudeDenyAskUserQuestion(out)).toBe(false);
   });
 });
 

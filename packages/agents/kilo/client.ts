@@ -50,6 +50,21 @@ type KiloJsonRecord = {
     content?: KiloContentBlock[];
   };
   content?: KiloContentBlock[] | string;
+  part?: {
+    type?: string;
+    text?: string;
+    tool?: string;
+    callID?: string;
+    id?: string;
+    state?: {
+      status?: string;
+      input?: Record<string, unknown>;
+      output?: string;
+      error?: string;
+      title?: string;
+      metadata?: Record<string, unknown>;
+    };
+  };
   tool_calls?: KiloToolCall[];
   tool_call_id?: string;
   result?: string;
@@ -174,6 +189,7 @@ function contentBlocks(record: KiloJsonRecord): KiloContentBlock[] {
 }
 
 function textFromContent(record: KiloJsonRecord): string {
+  if (typeof record.part?.text === "string" && record.part.text.trim()) return record.part.text.trim();
   if (typeof record.result === "string" && record.result.trim()) return record.result.trim();
   if (typeof record.text === "string" && record.text.trim()) return record.text.trim();
   if (typeof record.output === "string" && record.output.trim()) return record.output.trim();
@@ -266,7 +282,7 @@ function extractToolResults(record: KiloJsonRecord): Array<{ id: string; output?
     .filter((result) => result.id.length > 0);
 }
 
-function extractKiloFinalResponse(output: string): string {
+export function extractKiloFinalResponse(output: string): string {
   const cleaned = sanitizeKiloOutput(output);
   const lines = cleaned
     .split("\n")
@@ -279,7 +295,7 @@ function extractKiloFinalResponse(output: string): string {
       const record = JSON.parse(line) as KiloJsonRecord;
       const role = typeof record.role === "string" ? record.role.trim().toLowerCase() : "";
       const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
-      if (role === "assistant" || type === "assistant" || type === "result") {
+      if (role === "assistant" || type === "assistant" || type === "result" || type === "text") {
         const text = textFromContent(record);
         if (text) assistantMessages.push(text);
       }
@@ -353,7 +369,7 @@ export async function sendMessage(
 
         const role = typeof record.role === "string" ? record.role.trim().toLowerCase() : "";
         const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
-        if (role === "assistant" || type === "assistant") {
+        if (role === "assistant" || type === "assistant" || type === "text") {
           const text = textFromContent(record);
           if (text) {
             publishKiloTextUpdate(recordSessionId, text);
@@ -391,7 +407,22 @@ export async function sendMessage(
 
       const text = extractKiloFinalResponse(output);
       if (!text) {
-        throw new Error("Kilo returned empty response");
+        log.warn("Kilo returned empty output after successful CLI exit", { sessionId });
+        const fallbackText = "Kilo completed without textual output.";
+        publishKiloTextUpdate(observedSessionId ?? sessionId, fallbackText);
+        runtime.publishSessionEvent(observedSessionId ?? sessionId, {
+          type: "session.status",
+          properties: {
+            status: {
+              type: "idle",
+            },
+          },
+        });
+        newSessions.delete(sessionId);
+        if (observedSessionId) {
+          newSessions.delete(observedSessionId);
+        }
+        return [{ text: fallbackText, messageType: "assistant" }];
       }
 
       publishKiloTextUpdate(observedSessionId ?? sessionId, text);
@@ -403,9 +434,7 @@ export async function sendMessage(
           },
         },
       });
-      if (!isNewSession || observedSessionId) {
-        newSessions.delete(sessionId);
-      }
+      newSessions.delete(sessionId);
       if (observedSessionId) {
         newSessions.delete(observedSessionId);
       }
