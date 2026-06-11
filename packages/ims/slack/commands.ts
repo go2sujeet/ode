@@ -65,6 +65,7 @@ import {
   CronJobNotFoundError,
   beginTriggerCronJobNow,
 } from "@/core/cron/scheduler";
+import { log } from "@/utils";
 
 const SETTINGS_LAUNCH_ACTION = "open_settings_modal";
 const SETTINGS_MODAL_ID = "settings_modal";
@@ -100,7 +101,9 @@ const GENERAL_AUTO_UPDATE_ACTION = "general_auto_update_select";
 type AgentProvider = AgentProviderId;
 
 type SlackActionBody = {
+  api_app_id?: string;
   actions?: Array<{
+    action_id?: string;
     value?: string;
     selected_option?: {
       value?: string;
@@ -108,6 +111,10 @@ type SlackActionBody = {
   }>;
   channel?: {
     id?: string;
+  };
+  team?: {
+    id?: string;
+    domain?: string;
   };
   user?: {
     id?: string;
@@ -186,6 +193,11 @@ function getActionMessageTs(body: SlackActionBody): string | undefined {
 
 function getActionMessageText(body: SlackActionBody): string {
   return body.message?.text || "Question";
+}
+
+function getSlackErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 function buildSettingsModal(params: {
@@ -531,30 +543,59 @@ export function setupInteractiveHandlers(): void {
     const channelId = getActionChannelId(actionBody);
     const triggerId = getActionTriggerId(actionBody);
     if (!channelId || !triggerId) return;
+    log.info("Slack channel settings action received", {
+      channelId,
+      userId: getActionUserId(actionBody),
+      teamId: actionBody.team?.id,
+      teamDomain: actionBody.team?.domain,
+      apiAppId: actionBody.api_app_id,
+      actionId: actionBody.actions?.[0]?.action_id,
+      actionValue: actionBody.actions?.[0]?.value,
+      hasTriggerId: Boolean(triggerId),
+    });
 
-    const refreshedData = await refreshSettingsProviderData(toSelectableProvider(getChannelAgentProvider(channelId)));
+    const selectedProvider = toSelectableProvider(getChannelAgentProvider(channelId));
+    const modelLists = getProviderModelLists();
 
     const view = buildSettingsModal({
       channelId,
-      enabledProviders: refreshedData.enabledProviders,
-      opencodeModels: refreshedData.opencodeModels,
-      codexModels: refreshedData.codexModels,
-      kiloModels: refreshedData.kiloModels,
-      piModels: refreshedData.piModels,
-      openhandsModels: refreshedData.openhandsModels,
-      codebuddyModels: refreshedData.codebuddyModels,
-      crushModels: refreshedData.crushModels,
-      selectedProvider: toSelectableProvider(getChannelAgentProvider(channelId)),
+      enabledProviders: getSelectableProviders(),
+      opencodeModels: modelLists.opencode,
+      codexModels: modelLists.codex,
+      kiloModels: modelLists.kilo,
+      piModels: modelLists.pi,
+      openhandsModels: modelLists.openhands,
+      codebuddyModels: modelLists.codebuddy,
+      crushModels: modelLists.crush,
+      selectedProvider,
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
       baseBranch: getChannelBaseBranch(channelId),
       channelSystemMessage: getChannelSystemMessage(channelId),
     });
 
-    await client.views.open({
-      trigger_id: triggerId,
-      view,
-    });
+    try {
+      await client.views.open({
+        trigger_id: triggerId,
+        view,
+      });
+    } catch (error) {
+      log.warn("Failed to open Slack channel settings modal", {
+        channelId,
+        userId: getActionUserId(actionBody),
+        teamId: actionBody.team?.id,
+        apiAppId: actionBody.api_app_id,
+        error: getSlackErrorMessage(error),
+      });
+      const userId = getActionUserId(actionBody);
+      if (userId) {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: `Failed to open channel settings: ${getSlackErrorMessage(error)}`,
+        });
+      }
+    }
     });
 
     slackApp.action(GITHUB_LAUNCH_ACTION, async ({ ack, body, client }) => {
