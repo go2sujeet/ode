@@ -150,7 +150,7 @@ describe("kiro stream status parsing", () => {
     );
 
     expect(text).toContain("*Tasks*");
-    expect(text).toContain("`in progress` Outline plan");
+    expect(text).toContain("- [~] Outline plan");
     expect(text).toContain("`Bash`");
     expect(text).not.toContain("`Task`");
     expect(text).toContain("rm -rf /tmp/work");

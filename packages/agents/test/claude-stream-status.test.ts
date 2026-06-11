@@ -145,7 +145,7 @@ describe("claude stream status parsing", () => {
       }),
     ]);
 
-    expect(state.phaseStatus).toBe("Finished tool: Read");
+    expect(state.phaseStatus).toBe("Finished tool: Read - /tmp/repo/README.md");
     expect(state.tools.length).toBe(2);
     expect(state.tools[0]?.name).toBe("Read");
     expect(state.tools[0]?.status).toBe("completed");
