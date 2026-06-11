@@ -5,16 +5,21 @@ import {
   getCodexModels,
   getEnabledAgentProviders,
   getKiloModels,
+  getPiModels,
+  getOpenHandsModels,
+  getCodeBuddyModels,
+  getCrushModels,
   getOpenCodeModels,
   isAgentEnabled,
   resolveChannelCwd,
 } from "@/config";
 import {
+  AGENT_PROVIDERS,
   getAgentProviderLabel,
   providerSupportsModelSelection,
   type AgentProviderId,
 } from "@/shared/agent-provider";
-import type { ProviderModelLists } from "@/shared/channel-settings";
+import { getProviderModelList, type ProviderModelLists } from "@/shared/channel-settings";
 
 export type SettingsLauncherAction = "general" | "channel" | "github";
 
@@ -29,22 +34,16 @@ export function getProviderModelListsFromConfig(): ProviderModelLists {
     opencode: getOpenCodeModels(),
     codex: getCodexModels(),
     kilo: getKiloModels(),
+    pi: getPiModels(),
+    openhands: getOpenHandsModels(),
+    codebuddy: getCodeBuddyModels(),
+    crush: getCrushModels(),
   };
 }
 
 export function getEnabledProvidersWithFallback(): AgentProviderId[] {
   const enabled = getEnabledAgentProviders();
-  return enabled.length > 0 ? enabled : [
-    "opencode",
-    "claudecode",
-    "codex",
-    "kimi",
-    "kiro",
-    "kilo",
-    "qwen",
-    "goose",
-    "gemini",
-  ];
+  return enabled.length > 0 ? enabled : Array.from(AGENT_PROVIDERS);
 }
 
 export function describeChannelSettingsIssues(channelId: string): string[] {
@@ -60,11 +59,7 @@ export function describeChannelSettingsIssues(channelId: string): string[] {
 
   if (providerSupportsModelSelection(provider)) {
     const lists = getProviderModelListsFromConfig();
-    const models = provider === "opencode"
-      ? lists.opencode
-      : provider === "codex"
-        ? lists.codex
-        : lists.kilo;
+    const models = getProviderModelList(provider, lists);
     const modelSet = new Set(models.map(normalizeModel));
     if (!model && provider !== "codex") {
       issues.push("Model not configured.");

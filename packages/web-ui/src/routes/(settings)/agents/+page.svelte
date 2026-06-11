@@ -1,16 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Bot } from "lucide-svelte";
+  import { Bot, ChevronDown } from "lucide-svelte";
   import { Badge, Button, Card } from "$lib/components/ui";
   import { locale } from "$lib/i18n";
   import { localSettingStore } from "$lib/local-setting/store";
+  import {
+    AGENT_PROVIDERS,
+    providerSupportsModelSelection,
+    type AgentProviderId,
+  } from "@/shared/agent-provider";
 
-  type AgentWithModels = "opencode" | "codex" | "kilo" | "pi" | "openhands" | "codebuddy" | "crush";
-  type AgentStatusKey = "opencode" | "claude" | "codex" | "kimi" | "kiro" | "kilo" | "qwen" | "goose" | "gemini" | "pi" | "openhands" | "codebuddy" | "crush";
-
-  const AGENT_DOCS: Record<AgentStatusKey, string> = {
+  const AGENT_DOCS: Record<AgentProviderId, string> = {
     opencode: "https://opencode.ai",
-    claude: "https://docs.anthropic.com/en/docs/claude-code/overview",
+    claudecode: "https://docs.anthropic.com/en/docs/claude-code/overview",
     codex: "https://github.com/openai/codex",
     kimi: "https://www.moonshot.ai/kimi-code",
     kiro: "https://kiro.dev",
@@ -24,12 +26,64 @@
     crush: "https://github.com/charmbracelet/crush",
   };
 
+  const AGENT_TITLES: Record<AgentProviderId, string> = {
+    opencode: "OpenCode CLI",
+    claudecode: "Claude Code",
+    codex: "Codex CLI",
+    kimi: "Kimi CLI",
+    kiro: "Kiro CLI",
+    kilo: "Kilo CLI",
+    qwen: "Qwen CLI",
+    goose: "Goose CLI",
+    gemini: "Gemini CLI",
+    pi: "Pi CLI",
+    openhands: "OpenHands CLI",
+    codebuddy: "CodeBuddy CLI",
+    crush: "Crush CLI",
+  };
+
+  let expandedModelAgents = $state<Partial<Record<AgentProviderId, boolean>>>({});
+
   const isBusy = $derived($localSettingStore.isCheckingCli || $localSettingStore.isLoading || $localSettingStore.isSaving);
 
-  function getAgentModels(agent: AgentWithModels): string[] {
+  function getAgentModels(agent: AgentProviderId): string[] {
     const agents = $localSettingStore.config.agents as Record<string, { models?: string[] }>;
     const models = agents[agent]?.models;
     return Array.isArray(models) ? models : [];
+  }
+
+  function getInstallStatus(agent: AgentProviderId): boolean | undefined {
+    const result = $localSettingStore.cliCheckResult;
+    if (!result) return undefined;
+    if (agent === "claudecode") return result.claudecode ?? result.claude;
+    return result[agent];
+  }
+
+  function getModelError(agent: AgentProviderId): string | undefined {
+    const result = $localSettingStore.cliCheckResult;
+    if (!result) return undefined;
+    if (agent === "opencode") return result.opencodeModelError;
+    if (agent === "kilo") return result.kiloModelError;
+    if (agent === "pi") return result.piModelError;
+    if (agent === "openhands") return result.openhandsModelError;
+    if (agent === "codebuddy") return result.codebuddyModelError;
+    if (agent === "crush") return result.crushModelError;
+    return undefined;
+  }
+
+  function isCheckingAgent(agent: AgentProviderId): boolean {
+    return $localSettingStore.checkingAgents[agent] === true;
+  }
+
+  function isExpanded(agent: AgentProviderId): boolean {
+    return expandedModelAgents[agent] === true;
+  }
+
+  function toggleModels(agent: AgentProviderId): void {
+    expandedModelAgents = {
+      ...expandedModelAgents,
+      [agent]: !expandedModelAgents[agent],
+    };
   }
 
   function t(en: string, zh: string): string {
@@ -52,7 +106,7 @@
     </div>
     <Button
       variant="outline"
-      on:click={() => void localSettingStore.checkAgents()}
+      onclick={() => void localSettingStore.checkAgents()}
       disabled={isBusy}
     >
       {$localSettingStore.isCheckingCli ? t("Syncing...", "同步中...") : t("Sync", "同步")}
@@ -60,238 +114,58 @@
   </div>
 
   <div class="grid gap-2">
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Claude Code</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.claude ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.claude ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.claude}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.claude} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
+    {#each AGENT_PROVIDERS as agent}
+      {@const supportsModels = providerSupportsModelSelection(agent)}
+      {@const models = getAgentModels(agent)}
+      {@const installed = getInstallStatus(agent)}
+      {@const modelError = getModelError(agent)}
+      <div class="rounded-lg border p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <strong class="text-sm">{AGENT_TITLES[agent]}</strong>
+            {#if isCheckingAgent(agent)}
+              <Badge variant="secondary">{t("Checking...", "检查中...")}</Badge>
+            {:else if installed !== undefined}
+              <Badge variant={installed ? "success" : "secondary"}>
+                {installed ? t("Installed", "已安装") : t("Not found", "未安装")}
+              </Badge>
+            {/if}
+            {#if modelError}
+              <Badge variant="destructive">{t("Model sync failed", "模型同步失败")}</Badge>
+            {/if}
+            {#if installed === false}
+              <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS[agent]} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+            {/if}
+          </div>
 
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">Codex CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.codex ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.codex ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.codex}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.codex} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
+          {#if supportsModels}
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted)/0.45)]"
+              aria-expanded={isExpanded(agent)}
+              onclick={() => toggleModels(agent)}
+            >
+              <span>({models.length} models)</span>
+              <ChevronDown class={`h-3.5 w-3.5 transition-transform ${isExpanded(agent) ? "rotate-180" : ""}`} />
+            </button>
           {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("codex").length > 0}
-          {#each getAgentModels("codex") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.codex}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
+        </div>
 
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Kimi CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.kimi ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.kimi ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.kimi}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kimi} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Kiro CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.kiro ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.kiro ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.kiro}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kiro} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">Kilo CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.kilo ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.kilo ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.kilo}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.kilo} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
+        {#if supportsModels && isExpanded(agent)}
+          <div class="mt-3 flex flex-wrap gap-1">
+            {#if models.length > 0}
+              {#each models as model}
+                <Badge variant="outline">{model}</Badge>
+              {/each}
+            {:else if installed}
+              <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
+            {:else}
+              <Badge variant="outline">{t("No models", "无模型")}</Badge>
+            {/if}
+          </div>
         {/if}
       </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("kilo").length > 0}
-          {#each getAgentModels("kilo") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.kilo}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Qwen CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.qwen ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.qwen ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.qwen}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.qwen} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Goose CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.goose ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.goose ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.goose}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.goose} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
-
-    <div class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <strong class="text-sm">Gemini CLI</strong>
-      {#if $localSettingStore.cliCheckResult}
-        <Badge variant={$localSettingStore.cliCheckResult.gemini ? "success" : "secondary"}>
-          {$localSettingStore.cliCheckResult.gemini ? t("Installed", "已安装") : t("Not found", "未安装")}
-        </Badge>
-        {#if !$localSettingStore.cliCheckResult.gemini}
-          <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.gemini} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-        {/if}
-      {/if}
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">Pi CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.pi ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.pi ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.pi}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.pi} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("pi").length > 0}
-          {#each getAgentModels("pi") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.pi}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">OpenHands CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.openhands ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.openhands ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.openhands}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.openhands} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("openhands").length > 0}
-          {#each getAgentModels("openhands") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.openhands}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">CodeBuddy CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.codebuddy ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.codebuddy ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.codebuddy}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.codebuddy} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("codebuddy").length > 0}
-          {#each getAgentModels("codebuddy") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.codebuddy}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">Crush CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.crush ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.crush ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.crush}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.crush} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("crush").length > 0}
-          {#each getAgentModels("crush") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.crush}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
-
-    <div class="rounded-lg border p-3">
-      <div class="mb-2 flex flex-wrap items-center gap-2">
-        <strong class="text-sm">OpenCode CLI</strong>
-        {#if $localSettingStore.cliCheckResult}
-          <Badge variant={$localSettingStore.cliCheckResult.opencode ? "success" : "secondary"}>
-            {$localSettingStore.cliCheckResult.opencode ? t("Installed", "已安装") : t("Not found", "未安装")}
-          </Badge>
-          {#if !$localSettingStore.cliCheckResult.opencode}
-            <a class="text-xs text-[hsl(var(--primary))] underline" href={AGENT_DOCS.opencode} target="_blank" rel="noreferrer">{t("Install docs", "安装文档")}</a>
-          {/if}
-        {/if}
-      </div>
-      <div class="flex flex-wrap gap-1">
-        {#if getAgentModels("opencode").length > 0}
-          {#each getAgentModels("opencode") as model}
-            <Badge variant="outline">{model}</Badge>
-          {/each}
-        {:else if $localSettingStore.cliCheckResult?.opencode}
-          <Badge variant="outline">{t("No models configured", "未配置模型")}</Badge>
-        {/if}
-      </div>
-    </div>
+    {/each}
   </div>
 
   {#if $localSettingStore.agentMessage}

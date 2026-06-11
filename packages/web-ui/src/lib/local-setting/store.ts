@@ -4,22 +4,10 @@ import {
   parseStatusMessageFrequencyMs,
   type DashboardConfig,
 } from "../localConfig";
+import { AGENT_PROVIDERS, type AgentProviderId } from "@/shared/agent-provider";
 
-export type CliCheckResult = {
-  opencode: boolean;
-  claudecode: boolean;
+export type CliCheckResult = Partial<Record<AgentProviderId, boolean>> & {
   claude?: boolean;
-  codex: boolean;
-  kimi: boolean;
-  kiro: boolean;
-  kilo: boolean;
-  qwen: boolean;
-  goose: boolean;
-  gemini: boolean;
-  pi: boolean;
-  openhands: boolean;
-  codebuddy: boolean;
-  crush: boolean;
   opencodeModels?: string[];
   opencodeModelError?: string;
   kiloModels?: string[];
@@ -47,6 +35,7 @@ type LocalSettingState = {
   message: string;
   agentMessage: string;
   cliCheckResult: CliCheckResult | null;
+  checkingAgents: Partial<Record<AgentProviderId, boolean>>;
 };
 
 const initialState: LocalSettingState = {
@@ -62,6 +51,7 @@ const initialState: LocalSettingState = {
   message: "",
   agentMessage: "",
   cliCheckResult: null,
+  checkingAgents: {},
 };
 
 const store = writable<LocalSettingState>(initialState);
@@ -159,6 +149,12 @@ function normalizeConfig(input: DashboardConfig): DashboardConfig {
     updates: {
       autoUpgrade: input.updates?.autoUpgrade !== false,
     },
+    workspaces: (input.workspaces ?? []).map((workspace) => ({
+      ...workspace,
+      slackStatusMode: workspace.type === "slack" && workspace.slackStatusMode === "legacy"
+        ? "legacy"
+        : "ai_card",
+    })),
     agents: {
       opencode: {
         enabled: input.agents?.opencode?.enabled ?? true,
@@ -318,115 +314,164 @@ async function saveConfig(): Promise<void> {
 }
 
 async function checkAgents(): Promise<void> {
-  store.update((state) => ({ ...state, isCheckingCli: true, agentMessage: "" }));
-  try {
-    const response = await fetch("/api/agent-check");
-    const payload = (await response.json()) as {
-      ok?: boolean;
-      error?: string;
-      result?: CliCheckResult;
-    };
-    if (!response.ok || !payload.ok || !payload.result) {
-      throw new Error(payload.error || "Failed to check local CLIs");
+  const checkingAgents = Object.fromEntries(AGENT_PROVIDERS.map((provider) => [provider, true])) as Record<AgentProviderId, boolean>;
+  store.update((state) => ({
+    ...state,
+    isCheckingCli: true,
+    checkingAgents,
+    agentMessage: "Checking local agent CLIs...",
+  }));
+
+  const checkProvider = async (provider: AgentProviderId): Promise<void> => {
+    try {
+      const response = await fetch(`/api/agent-check/${provider}`);
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        result?: CliCheckResult;
+      };
+      if (!response.ok || !payload.ok || !payload.result) {
+        throw new Error(payload.error || `Failed to check ${provider}`);
+      }
+      const result = payload.result;
+      store.update((state) => {
+        const nextCheckingAgents = { ...state.checkingAgents, [provider]: false };
+        return {
+          ...state,
+          cliCheckResult: {
+            ...(state.cliCheckResult ?? {}),
+            ...result,
+          },
+          checkingAgents: nextCheckingAgents,
+          isCheckingCli: Object.values(nextCheckingAgents).some(Boolean),
+          config: updateConfigWithAgentCheckResult(state.config, result),
+          agentMessage: buildIncrementalAgentMessage(provider, result),
+        };
+      });
+    } catch (error) {
+      store.update((state) => {
+        const nextCheckingAgents = { ...state.checkingAgents, [provider]: false };
+        return {
+          ...state,
+          checkingAgents: nextCheckingAgents,
+          isCheckingCli: Object.values(nextCheckingAgents).some(Boolean),
+          agentMessage: `Check failed for ${provider}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      });
     }
-    const result = payload.result;
-    const fetchedModels = Array.isArray(result.opencodeModels) ? result.opencodeModels : null;
-    const fetchedKiloModels = Array.isArray(result.kiloModels) ? result.kiloModels : null;
-    const fetchedPiModels = Array.isArray(result.piModels) ? result.piModels : null;
-    const fetchedOpenHandsModels = Array.isArray(result.openhandsModels) ? result.openhandsModels : null;
-    const fetchedCodeBuddyModels = Array.isArray(result.codebuddyModels) ? result.codebuddyModels : null;
-    const fetchedCrushModels = Array.isArray(result.crushModels) ? result.crushModels : null;
+  };
+
+  try {
+    await Promise.allSettled(AGENT_PROVIDERS.map((provider) => checkProvider(provider)));
     store.update((state) => ({
       ...state,
-      cliCheckResult: result,
       isCheckingCli: false,
-      config: {
-        ...state.config,
-        agents: {
-          ...state.config.agents,
-          opencode: {
-            ...state.config.agents.opencode,
-            enabled: result.opencode,
-            models: fetchedModels ?? state.config.agents.opencode.models,
-          },
-          claudecode: {
-            ...state.config.agents.claudecode,
-            enabled: result.claudecode ?? result.claude ?? state.config.agents.claudecode.enabled,
-          },
-          codex: {
-            ...state.config.agents.codex,
-            enabled: result.codex,
-          },
-          kimi: {
-            ...state.config.agents.kimi,
-            enabled: result.kimi,
-          },
-          kiro: {
-            ...state.config.agents.kiro,
-            enabled: result.kiro,
-          },
-          kilo: {
-            ...state.config.agents.kilo,
-            enabled: result.kilo,
-            models: fetchedKiloModels ?? state.config.agents.kilo.models,
-          },
-          qwen: {
-            ...state.config.agents.qwen,
-            enabled: result.qwen,
-          },
-          goose: {
-            ...state.config.agents.goose,
-            enabled: result.goose,
-          },
-          gemini: {
-            ...state.config.agents.gemini,
-            enabled: result.gemini,
-          },
-          pi: {
-            ...state.config.agents.pi,
-            enabled: result.pi,
-            models: fetchedPiModels ?? state.config.agents.pi.models,
-          },
-          openhands: {
-            ...state.config.agents.openhands,
-            enabled: result.openhands,
-            models: fetchedOpenHandsModels ?? state.config.agents.openhands.models,
-          },
-          codebuddy: {
-            ...state.config.agents.codebuddy,
-            enabled: result.codebuddy,
-            models: fetchedCodeBuddyModels ?? state.config.agents.codebuddy.models,
-          },
-          crush: {
-            ...state.config.agents.crush,
-            enabled: result.crush,
-            models: fetchedCrushModels ?? state.config.agents.crush.models,
-          },
-        },
-      },
-      agentMessage: result.opencode && result.opencodeModelError
-        ? `Checked local agent CLIs. OpenCode model fetch failed: ${result.opencodeModelError}`
-        : result.kilo && result.kiloModelError
-          ? `Checked local agent CLIs. Kilo model fetch failed: ${result.kiloModelError}`
-          : result.pi && result.piModelError
-            ? `Checked local agent CLIs. Pi model fetch failed: ${result.piModelError}`
-            : result.openhands && result.openhandsModelError
-              ? `Checked local agent CLIs. OpenHands model fetch failed: ${result.openhandsModelError}`
-              : result.codebuddy && result.codebuddyModelError
-                ? `Checked local agent CLIs. CodeBuddy model fetch failed: ${result.codebuddyModelError}`
-                : result.crush && result.crushModelError
-                  ? `Checked local agent CLIs. Crush model fetch failed: ${result.crushModelError}`
-                  : (fetchedModels || fetchedKiloModels || fetchedPiModels || fetchedOpenHandsModels || fetchedCodeBuddyModels || fetchedCrushModels)
-                    ? `Checked local agent CLIs.${fetchedModels ? ` Synced ${fetchedModels.length} OpenCode models.` : ""}${fetchedKiloModels ? ` Synced ${fetchedKiloModels.length} Kilo models.` : ""}${fetchedPiModels ? ` Synced ${fetchedPiModels.length} Pi models.` : ""}${fetchedOpenHandsModels ? ` Synced ${fetchedOpenHandsModels.length} OpenHands models.` : ""}${fetchedCodeBuddyModels ? ` Synced ${fetchedCodeBuddyModels.length} CodeBuddy models.` : ""}${fetchedCrushModels ? ` Synced ${fetchedCrushModels.length} Crush models.` : ""}`
-            : "Checked local agent CLIs.",
+      checkingAgents: {},
+      agentMessage: "Checked local agent CLIs.",
     }));
   } catch (error) {
     store.update((state) => ({
       ...state,
       isCheckingCli: false,
+      checkingAgents: {},
       agentMessage: `Check failed: ${error instanceof Error ? error.message : String(error)}`,
     }));
   }
+}
+
+function buildIncrementalAgentMessage(provider: AgentProviderId, result: CliCheckResult): string {
+  const modelError = getModelErrorFromResult(provider, result);
+  if (modelError) return `Checked ${provider}. Model fetch failed: ${modelError}`;
+  const modelCount = getModelCountFromResult(provider, result);
+  if (modelCount !== null) return `Checked ${provider}. Synced ${modelCount} models.`;
+  return `Checked ${provider}.`;
+}
+
+function getModelErrorFromResult(provider: AgentProviderId, result: CliCheckResult): string | undefined {
+  if (provider === "opencode") return result.opencodeModelError;
+  if (provider === "kilo") return result.kiloModelError;
+  if (provider === "pi") return result.piModelError;
+  if (provider === "openhands") return result.openhandsModelError;
+  if (provider === "codebuddy") return result.codebuddyModelError;
+  if (provider === "crush") return result.crushModelError;
+  return undefined;
+}
+
+function getModelCountFromResult(provider: AgentProviderId, result: CliCheckResult): number | null {
+  if (provider === "opencode" && Array.isArray(result.opencodeModels)) return result.opencodeModels.length;
+  if (provider === "kilo" && Array.isArray(result.kiloModels)) return result.kiloModels.length;
+  if (provider === "pi" && Array.isArray(result.piModels)) return result.piModels.length;
+  if (provider === "openhands" && Array.isArray(result.openhandsModels)) return result.openhandsModels.length;
+  if (provider === "codebuddy" && Array.isArray(result.codebuddyModels)) return result.codebuddyModels.length;
+  if (provider === "crush" && Array.isArray(result.crushModels)) return result.crushModels.length;
+  return null;
+}
+
+function updateConfigWithAgentCheckResult(config: DashboardConfig, result: CliCheckResult): DashboardConfig {
+  return {
+    ...config,
+    agents: {
+      ...config.agents,
+      opencode: {
+        ...config.agents.opencode,
+        enabled: result.opencode ?? config.agents.opencode.enabled,
+        models: Array.isArray(result.opencodeModels) ? result.opencodeModels : config.agents.opencode.models,
+      },
+      claudecode: {
+        ...config.agents.claudecode,
+        enabled: result.claudecode ?? result.claude ?? config.agents.claudecode.enabled,
+      },
+      codex: {
+        ...config.agents.codex,
+        enabled: result.codex ?? config.agents.codex.enabled,
+      },
+      kimi: {
+        ...config.agents.kimi,
+        enabled: result.kimi ?? config.agents.kimi.enabled,
+      },
+      kiro: {
+        ...config.agents.kiro,
+        enabled: result.kiro ?? config.agents.kiro.enabled,
+      },
+      kilo: {
+        ...config.agents.kilo,
+        enabled: result.kilo ?? config.agents.kilo.enabled,
+        models: Array.isArray(result.kiloModels) ? result.kiloModels : config.agents.kilo.models,
+      },
+      qwen: {
+        ...config.agents.qwen,
+        enabled: result.qwen ?? config.agents.qwen.enabled,
+      },
+      goose: {
+        ...config.agents.goose,
+        enabled: result.goose ?? config.agents.goose.enabled,
+      },
+      gemini: {
+        ...config.agents.gemini,
+        enabled: result.gemini ?? config.agents.gemini.enabled,
+      },
+      pi: {
+        ...config.agents.pi,
+        enabled: result.pi ?? config.agents.pi.enabled,
+        models: Array.isArray(result.piModels) ? result.piModels : config.agents.pi.models,
+      },
+      openhands: {
+        ...config.agents.openhands,
+        enabled: result.openhands ?? config.agents.openhands.enabled,
+        models: Array.isArray(result.openhandsModels) ? result.openhandsModels : config.agents.openhands.models,
+      },
+      codebuddy: {
+        ...config.agents.codebuddy,
+        enabled: result.codebuddy ?? config.agents.codebuddy.enabled,
+        models: Array.isArray(result.codebuddyModels) ? result.codebuddyModels : config.agents.codebuddy.models,
+      },
+      crush: {
+        ...config.agents.crush,
+        enabled: result.crush ?? config.agents.crush.enabled,
+        models: Array.isArray(result.crushModels) ? result.crushModels : config.agents.crush.models,
+      },
+    },
+  };
 }
 
 async function syncSlackWorkspace(workspaceId: string): Promise<void> {

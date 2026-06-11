@@ -30,10 +30,6 @@ import { checkForUpdate, isInstalledBinary, performUpgrade } from "./upgrade";
 import { runOnboardingIfNeeded } from "./onboarding";
 import { startCronJobScheduler, stopCronJobScheduler } from "@/core/cron/scheduler";
 import { startTaskScheduler, stopTaskScheduler } from "@/core/tasks/scheduler";
-import {
-  startPrTrackerScheduler,
-  stopPrTrackerScheduler,
-} from "@/core/pr-tracker/scheduler";
 import { initSentry, shutdownSentry } from "@/core/observability/sentry";
 import packageJson from "../../package.json" with { type: "json" };
 
@@ -57,6 +53,23 @@ async function timeStartupStep<T>(name: string, run: () => T | Promise<T>): Prom
     log.warn("Startup step failed", { step: name, elapsedMs: Date.now() - startedAt, error: String(error) });
     throw error;
   }
+}
+
+function startBackgroundStartupStep(name: string, run: () => void | Promise<void>): void {
+  const startedAt = Date.now();
+  log.info("Background startup step started", { step: name });
+  void Promise.resolve()
+    .then(run)
+    .then(() => {
+      log.info("Background startup step complete", { step: name, elapsedMs: Date.now() - startedAt });
+    })
+    .catch((error) => {
+      log.warn("Background startup step failed", {
+        step: name,
+        elapsedMs: Date.now() - startedAt,
+        error: String(error),
+      });
+    });
 }
 
 let webDevServer: ChildProcess | null = null;
@@ -120,7 +133,7 @@ async function startSlackRuntime(reason: string): Promise<void> {
     slackClient.setupMessageHandlers();
     setupInteractiveHandlers();
     await Promise.all(slackApps.map((app) => app.start()));
-    log.debug("Slack connections ready", { reason, count: slackApps.length });
+    log.info("Slack connections ready", { reason, count: slackApps.length });
   } catch (error) {
     log.warn("Slack connection failed", { reason, error: String(error) });
     await stopSlackRuntime("startup failed");
@@ -291,14 +304,15 @@ async function main(): Promise<void> {
     await timeStartupStep("auto-upgrade scheduler", () => updateAutoUpgradeScheduler("startup"));
   }
 
-  await timeStartupStep("IM runtimes", () => Promise.all([
-    startSlackRuntime("startup"),
-    startDiscordRuntime("startup"),
-    startLarkRuntime("startup"),
-  ]));
+  startBackgroundStartupStep("IM runtimes", async () => {
+    await Promise.all([
+      startSlackRuntime("startup"),
+      startDiscordRuntime("startup"),
+      startLarkRuntime("startup"),
+    ]);
+  });
   await timeStartupStep("cron scheduler", () => startCronJobScheduler());
   await timeStartupStep("task scheduler", () => startTaskScheduler());
-  await timeStartupStep("pr tracker scheduler", () => startPrTrackerScheduler());
 
   if (slackApps.length > 0) {
     log.debug("Slack app created");
@@ -319,7 +333,6 @@ async function main(): Promise<void> {
     try {
       stopCronJobScheduler();
       stopTaskScheduler();
-      stopPrTrackerScheduler();
       stopOAuthServer();
       await stopSlackRuntime("shutdown");
       await stopDiscordRuntime("shutdown");

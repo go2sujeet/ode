@@ -306,7 +306,7 @@ export async function addSlackReaction(args: {
 // Slack's text-streaming API (Feb 2026, expanded Apr 2026) is purpose-built
 // for AI agents rendering live progress as `task_card` / `plan` blocks.
 // We expose three thin helpers used by the Slack IMAdapter when the
-// `ODE_SLACK_STATUS_STREAMING=1` flag is on.
+// Slack workspace status mode is configured for AI cards.
 //
 // Empirical quirks (the docs lie a bit):
 //   - Channel (non-DM) streams REQUIRE `recipient_user_id` +

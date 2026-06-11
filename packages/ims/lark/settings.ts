@@ -19,6 +19,7 @@ import {
   SETTINGS_LAUNCHER_ITEMS,
 } from "@/ims/shared/settings-domain";
 import type { SettingsProviderData } from "@/ims/shared/settings-provider-data";
+import { getProviderModelList, type ProviderModelLists } from "@/shared/channel-settings";
 
 export type LarkSettingsCardAction =
   | "open_settings_launcher"
@@ -147,6 +148,18 @@ function buildCardV2(
     body: {
       elements,
     },
+  };
+}
+
+function getProviderModelListsFromProviderData(providerData: SettingsProviderData): ProviderModelLists {
+  return {
+    opencode: providerData.opencodeModels,
+    codex: providerData.codexModels,
+    kilo: providerData.kiloModels,
+    pi: providerData.piModels,
+    openhands: providerData.openhandsModels,
+    codebuddy: providerData.codebuddyModels,
+    crush: providerData.crushModels,
   };
 }
 
@@ -297,19 +310,9 @@ export function buildLarkSettingsDetailCard(params: {
       value: item,
     }));
     const modelLists = providerData
-      ? {
-          opencode: providerData.opencodeModels,
-          codex: providerData.codexModels,
-          kilo: providerData.kiloModels,
-        }
+      ? getProviderModelListsFromProviderData(providerData)
       : getProviderModelListsFromConfig();
-    const providerModels = provider === "codex"
-      ? modelLists.codex
-      : provider === "kilo"
-        ? modelLists.kilo
-        : provider === "opencode"
-          ? modelLists.opencode
-          : [];
+    const providerModels = getProviderModelList(provider, modelLists);
     const modelOptions = Array.from(new Set(providerModels.map((item) => item.trim()).filter((item) => item.length > 0)));
     if (model !== "(not set)" && !modelOptions.includes(model)) {
       modelOptions.unshift(model);

@@ -13,28 +13,43 @@
 //   if (chunks.length > 0) await im.appendStatusStream(...chunks);
 //
 // Design notes:
-//   - We use SessionTool.id as the task_update.id; ids must be stable across
-//     ticks for Slack to update the same card instead of appending a new one.
-//   - We only emit a chunk when a tool's effective shape (title/status/output)
+//   - We render one complete live-status card: run context, current phase,
+//     todo slots, and recent-tool slots all update in place inside the same
+//     Slack plan card.
+//   - We use stable synthetic task_update ids (meta/context, todo:0, tool:0,
+//     etc.) instead of raw tool ids. Slack updates rows with the same id, so
+//     long runs stay compact instead of appending an unbounded tool log.
+//     Empirically, Slack may accumulate details/output text for repeated ids;
+//     reusable rows keep dynamic content in title/status only.
+//   - We only emit a chunk when a row's effective shape (title/status/output)
 //     actually changes — Slack drops near-duplicate appends but emitting them
 //     anyway wastes the Tier-4 budget (100/min).
-//   - The plan title is driven by phaseStatus, with sessionTitle as fallback.
+//   - The plan title summarizes the full status and intentionally avoids
+//     per-tool phases such as "Running tool: Bash"; those live in the phase
+//     row so the card header does not flicker.
 //   - All free-text fields are pre-truncated to Slack's 256-char chunk limit
 //     inside serializeStreamChunk (api.ts) — here we focus on shape & diffing.
 // ---------------------------------------------------------------------------
 
-import type { SessionMessageState, SessionTool } from "./session-inspector";
+import type { SessionMessageState, SessionTodo, SessionTool } from "./session-inspector";
 import type { StatusStreamChunk } from "@/core/types";
 import { formatElapsedTime, trimToolPath } from "./status";
 
 type TaskStatus = "pending" | "in_progress" | "complete" | "error";
 
-type ToolFingerprint = {
+type RowFingerprint = {
   title: string;
   status: TaskStatus;
   details?: string;
   output?: string;
 };
+
+type TaskRow = RowFingerprint & {
+  id: string;
+};
+
+const MAX_TODO_ROWS = 5;
+const MAX_TOOL_ROWS = 6;
 
 function mapToolStatus(status: string): TaskStatus {
   switch (status) {
@@ -48,6 +63,115 @@ function mapToolStatus(status: string): TaskStatus {
     default:
       return "complete";
   }
+}
+
+function mapTodoStatus(status: string): TaskStatus {
+  switch ((status || "").toLowerCase()) {
+    case "completed":
+    case "complete":
+    case "done":
+      return "complete";
+    case "in_progress":
+    case "in progress":
+    case "running":
+      return "in_progress";
+    case "error":
+    case "failed":
+      return "error";
+    case "pending":
+    default:
+      return "pending";
+  }
+}
+
+function normalizePhaseForTitle(phaseStatus?: string): string | undefined {
+  const phase = phaseStatus?.trim();
+  if (!phase) return undefined;
+  if (/^(running|finished)\s+tool:/i.test(phase)) return "Working";
+  return phase;
+}
+
+function formatCompactCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const sign = value < 0 ? "-" : "";
+  let current = Math.abs(value);
+  let unitIndex = 0;
+  const units = ["", "k", "m", "b", "t"];
+
+  while (current >= 1000 && unitIndex < units.length - 1) {
+    current /= 1000;
+    unitIndex += 1;
+  }
+
+  if (unitIndex === 0) return `${sign}${Math.round(current)}`;
+
+  const rounded = current >= 10
+    ? Math.round(current)
+    : Math.round(current * 10) / 10;
+  return `${sign}${rounded}${units[unitIndex]}`;
+}
+
+function truncateField(value: string, maxLength = 220): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength - 1)}…`;
+}
+
+function compactFinalTextPreview(text: string | undefined, maxLength = 110): string | undefined {
+  const compact = text
+    ?.split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ")
+    .replace(/[`*_#]/g, "")
+    .trim();
+  if (!compact) return undefined;
+  return truncateField(compact, maxLength);
+}
+
+function compactPath(path: string): string {
+  const home = process.env.HOME;
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+  if (home && trimmed.startsWith(`${home}/`)) {
+    return `~/${trimmed.slice(home.length + 1)}`;
+  }
+  return trimmed;
+}
+
+function buildPlanTitle(state: SessionMessageState): string {
+  const title = state.sessionTitle?.trim() || state.agent?.trim() || "Working";
+  const phase = normalizePhaseForTitle(state.phaseStatus) || "Working";
+  const totalTokens = state.tokenUsage?.total;
+  const tokenPart = typeof totalTokens === "number" && totalTokens > 0
+    ? `${formatCompactCount(totalTokens)} tokens`
+    : undefined;
+  return truncateField([title, phase, tokenPart].filter(Boolean).join(" · "), 160);
+}
+
+function buildContextRow(state: SessionMessageState, workingPath: string): TaskRow {
+  const details = [
+    state.model?.trim(),
+    state.agent?.trim(),
+  ].filter(Boolean).join(" · ");
+  return {
+    id: "meta:context",
+    title: "Run context",
+    status: "complete",
+    ...(details ? { details } : {}),
+    output: truncateField(compactPath(workingPath), 180),
+  };
+}
+
+function buildPhaseRow(state: SessionMessageState): TaskRow {
+  const phase = state.phaseStatus?.trim() || "Working";
+  const waitingForUser = /\b(waiting|question|approval|permission|confirm|choose|select|input)\b/i.test(phase);
+  const finalizing = /\b(done|complete|completed|finalizing|finalized)\b/i.test(phase);
+  return {
+    id: "meta:phase",
+    title: truncateField(`Current phase: ${phase}`, 180),
+    status: waitingForUser ? "in_progress" : finalizing ? "complete" : "in_progress",
+  };
 }
 
 function getToolDisplayName(name: string): string {
@@ -83,7 +207,7 @@ function buildTaskTitle(tool: SessionTool, workingPath: string): string {
 
   if (lowered === "bash" || lowered === "run_shell_command") {
     const cmd = String(input.command || input.cmd || "").trim();
-    if (cmd) return `bash \`${cmd.slice(0, 180)}\``;
+    if (cmd) return `bash: ${cmd.slice(0, 180)}`;
   }
   if (lowered === "read" || lowered === "read_file" || lowered === "read_many_files") {
     const file = String(input.filePath || input.file_path || input.absolute_path || "");
@@ -109,25 +233,56 @@ function buildTaskTitle(tool: SessionTool, workingPath: string): string {
   return title ? `${display} ${trimToolPath(title, workingPath)}` : display;
 }
 
-function fingerprintTool(tool: SessionTool, workingPath: string): ToolFingerprint {
+function fingerprintTool(tool: SessionTool, workingPath: string): RowFingerprint {
   const status = mapToolStatus(tool.status);
   const title = buildTaskTitle(tool, workingPath);
-  const output = status === "complete" || status === "error"
-    ? (tool.output || tool.error || "").trim() || undefined
-    : undefined;
-  const details = status === "in_progress" || status === "pending"
-    ? (tool.title?.trim() || undefined)
-    : undefined;
-  return { title, status, details, output };
+  return { title, status };
 }
 
-function fingerprintsEqual(a: ToolFingerprint, b: ToolFingerprint): boolean {
+function fingerprintTodo(todo: SessionTodo): RowFingerprint {
+  return {
+    title: truncateField(todo.content || "Task", 180),
+    status: mapTodoStatus(todo.status),
+  };
+}
+
+function fingerprintsEqual(a: RowFingerprint, b: RowFingerprint): boolean {
   return (
     a.title === b.title &&
     a.status === b.status &&
     (a.details ?? "") === (b.details ?? "") &&
     (a.output ?? "") === (b.output ?? "")
   );
+}
+
+function selectRecentTools(tools: SessionTool[]): SessionTool[] {
+  const visible = tools.filter((tool) => tool.id);
+  return visible.slice(Math.max(0, visible.length - MAX_TOOL_ROWS));
+}
+
+function buildTaskRows(input: StatusStreamDiffInput): TaskRow[] {
+  const { state, workingPath } = input;
+  const rows: TaskRow[] = [
+    buildContextRow(state, workingPath),
+    buildPhaseRow(state),
+  ];
+
+  state.todos.slice(0, MAX_TODO_ROWS).forEach((todo, index) => {
+    rows.push({
+      id: `todo:${index}`,
+      ...fingerprintTodo(todo),
+    });
+  });
+
+  const selectedTools = selectRecentTools(state.tools);
+  selectedTools.forEach((tool, index) => {
+    rows.push({
+      id: `tool:${index}`,
+      ...fingerprintTool(tool, workingPath),
+    });
+  });
+
+  return rows;
 }
 
 export type StatusStreamDiffInput = {
@@ -163,11 +318,11 @@ export type StatusStreamDiffer = {
    * we emit just before chat.stopStream. Kept separate from `diff()`
    * because stopping is a one-shot terminal transition.
    */
-  finalize(input: StatusStreamDiffInput): string;
+  finalize(input: StatusStreamDiffInput, finalText?: string): string;
 };
 
 export function createStatusStreamDiffer(): StatusStreamDiffer {
-  const lastFingerprints = new Map<string, ToolFingerprint>();
+  const lastFingerprints = new Map<string, RowFingerprint>();
   let lastPlanTitle: string | undefined;
 
   return {
@@ -177,33 +332,25 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
       // lastFingerprints / lastPlanTitle when commit() runs, so a network
       // failure leaves the old state in place and the next tick re-emits
       // the same delta.
-      const pendingFingerprints: Array<[string, ToolFingerprint]> = [];
+      const pendingFingerprints: Array<[string, RowFingerprint]> = [];
       let pendingPlanTitle: string | undefined;
       let planTitleChanged = false;
 
-      // Plan title: prefer the live phase (e.g. "Running tool: bash"), fall
-      // back to the session title, then a generic "Working".
-      const planTitle = (state.phaseStatus?.trim()
-        || state.sessionTitle?.trim()
-        || `Working (${formatElapsedTime(startedAt)})`);
+      const planTitle = buildPlanTitle(state);
       if (planTitle !== lastPlanTitle) {
         chunks.push({ type: "plan_update", title: planTitle });
         pendingPlanTitle = planTitle;
         planTitleChanged = true;
       }
 
-      // Tools: emit a task_update for each tool whose fingerprint changed.
-      // Tools array is append-ordered by the inspector, so this naturally
-      // surfaces new tools in the order they fired.
-      for (const tool of state.tools) {
-        if (!tool.id) continue;
-        const fp = fingerprintTool(tool, workingPath);
-        const prev = lastFingerprints.get(tool.id);
+      for (const row of buildTaskRows({ state, workingPath, startedAt })) {
+        const { id, ...fp } = row;
+        const prev = lastFingerprints.get(id);
         if (prev && fingerprintsEqual(prev, fp)) continue;
-        pendingFingerprints.push([tool.id, fp]);
+        pendingFingerprints.push([id, fp]);
         chunks.push({
           type: "task_update",
-          id: tool.id,
+          id,
           title: fp.title,
           status: fp.status,
           ...(fp.details ? { details: fp.details } : {}),
@@ -222,17 +369,24 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
       };
     },
 
-    finalize({ state, startedAt }) {
+    finalize({ state, startedAt }, finalText) {
       const elapsed = formatElapsedTime(startedAt);
       const usage = state.tokenUsage;
       const tokenSuffix = usage && usage.total > 0
-        ? ` · ${Math.round(usage.total / 1000)}K tokens`
+        ? ` · ${formatCompactCount(usage.total)} tokens`
         : "";
       const costSuffix = usage && typeof usage.cost === "number" && usage.cost > 0
         ? ` · $${usage.cost.toFixed(3)}`
         : "";
-      const titlePart = state.sessionTitle ? `*${state.sessionTitle}* — ` : "";
-      return `${titlePart}done in ${elapsed}${tokenSuffix}${costSuffix}`;
+      const titlePart = state.sessionTitle ? `${state.sessionTitle} · ` : "";
+      const resultPart = compactFinalTextPreview(finalText);
+      const statusPart = `Done in ${elapsed}${tokenSuffix}${costSuffix}`;
+      return truncateField(
+        resultPart
+          ? `${titlePart}Result: ${resultPart} · ${statusPart}`
+          : `${titlePart}${statusPart}`,
+        240
+      );
     },
   };
 }

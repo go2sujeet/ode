@@ -1,4 +1,5 @@
 import { getAnyServerUrl, startServer as startOpenCodeServer } from "@/agents/opencode";
+import { type AgentProviderId } from "@/shared/agent-provider";
 
 export type AgentInstallStatus = {
   opencode: boolean;
@@ -31,6 +32,8 @@ export type AgentCheckResult = AgentInstallStatus & {
   crushModels: string[];
   crushModelError?: string;
 };
+
+export type AgentCheckProviderResult = Partial<AgentCheckResult>;
 
 function extractProviderModelIds(providerId: string, models: unknown): string[] {
   if (Array.isArray(models)) {
@@ -216,6 +219,96 @@ export function getInstalledAgentStatus(): AgentInstallStatus {
   };
 }
 
+async function fetchOpenCodeModels(): Promise<string[]> {
+  await startOpenCodeServer();
+  const baseUrl = await getAnyServerUrl();
+  const providersUrl = new URL("/config/providers", baseUrl).toString();
+  const response = await fetch(providersUrl);
+  if (!response.ok) {
+    throw new Error(`providers endpoint returned ${response.status}`);
+  }
+  const payload = await response.json();
+  return extractOpenCodeModels(payload);
+}
+
+export async function runSingleAgentCheck(provider: AgentProviderId): Promise<AgentCheckProviderResult> {
+  const installed = getInstalledAgentStatus();
+
+  if (provider === "claudecode") {
+    return { claudecode: installed.claudecode, claude: installed.claudecode };
+  }
+  if (provider === "codex") return { codex: installed.codex };
+  if (provider === "kimi") return { kimi: installed.kimi };
+  if (provider === "kiro") return { kiro: installed.kiro };
+  if (provider === "qwen") return { qwen: installed.qwen };
+  if (provider === "goose") return { goose: installed.goose };
+  if (provider === "gemini") return { gemini: installed.gemini };
+
+  if (provider === "opencode") {
+    const result: AgentCheckProviderResult = { opencode: installed.opencode, opencodeModels: [] };
+    if (!installed.opencode) return result;
+    try {
+      result.opencodeModels = await fetchOpenCodeModels();
+    } catch (error) {
+      result.opencodeModelError = error instanceof Error ? error.message : String(error);
+    }
+    return result;
+  }
+
+  if (provider === "kilo") {
+    const result: AgentCheckProviderResult = { kilo: installed.kilo, kiloModels: [] };
+    if (!installed.kilo) return result;
+    try {
+      result.kiloModels = await fetchKiloModels();
+    } catch (error) {
+      result.kiloModelError = error instanceof Error ? error.message : String(error);
+    }
+    return result;
+  }
+
+  if (provider === "pi") {
+    const result: AgentCheckProviderResult = { pi: installed.pi, piModels: [] };
+    if (!installed.pi) return result;
+    try {
+      result.piModels = await fetchPiModels();
+    } catch (error) {
+      result.piModelError = error instanceof Error ? error.message : String(error);
+    }
+    return result;
+  }
+
+  if (provider === "openhands") {
+    const result: AgentCheckProviderResult = { openhands: installed.openhands, openhandsModels: [] };
+    if (!installed.openhands) return result;
+    try {
+      result.openhandsModels = await fetchOpenHandsModels();
+    } catch (error) {
+      result.openhandsModelError = error instanceof Error ? error.message : String(error);
+    }
+    return result;
+  }
+
+  if (provider === "codebuddy") {
+    const result: AgentCheckProviderResult = { codebuddy: installed.codebuddy, codebuddyModels: [] };
+    if (!installed.codebuddy) return result;
+    try {
+      result.codebuddyModels = await fetchCodeBuddyModels();
+    } catch (error) {
+      result.codebuddyModelError = error instanceof Error ? error.message : String(error);
+    }
+    return result;
+  }
+
+  const result: AgentCheckProviderResult = { crush: installed.crush, crushModels: [] };
+  if (!installed.crush) return result;
+  try {
+    result.crushModels = await fetchCrushModels();
+  } catch (error) {
+    result.crushModelError = error instanceof Error ? error.message : String(error);
+  }
+  return result;
+}
+
 export async function runAgentCheck(): Promise<AgentCheckResult> {
   const installed = getInstalledAgentStatus();
   let opencodeModels: string[] = [];
@@ -233,15 +326,7 @@ export async function runAgentCheck(): Promise<AgentCheckResult> {
 
   if (installed.opencode) {
     try {
-      await startOpenCodeServer();
-      const baseUrl = await getAnyServerUrl();
-      const providersUrl = new URL("/config/providers", baseUrl).toString();
-      const response = await fetch(providersUrl);
-      if (!response.ok) {
-        throw new Error(`providers endpoint returned ${response.status}`);
-      }
-      const payload = await response.json();
-      opencodeModels = extractOpenCodeModels(payload);
+      opencodeModels = await fetchOpenCodeModels();
     } catch (error) {
       opencodeModelError = error instanceof Error ? error.message : String(error);
     }

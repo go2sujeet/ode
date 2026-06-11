@@ -13,6 +13,7 @@ import {
   findMatchingModel,
   getProviderModelList,
   resolveStoredModelForProvider,
+  type ProviderModelLists,
 } from "@/shared/channel-settings";
 import {
   getProviderModelListsFromConfig,
@@ -155,11 +156,19 @@ function getProviderModels(provider: AgentProviderId, providerData?: SettingsPro
     return getProviderModelList(provider, getProviderModelListsFromConfig());
   }
 
-  return getProviderModelList(provider, {
+  return getProviderModelList(provider, getProviderModelListsFromProviderData(providerData));
+}
+
+function getProviderModelListsFromProviderData(providerData: SettingsProviderData): ProviderModelLists {
+  return {
     opencode: providerData.opencodeModels,
     codex: providerData.codexModels,
     kilo: providerData.kiloModels,
-  });
+    pi: providerData.piModels,
+    openhands: providerData.openhandsModels,
+    codebuddy: providerData.codebuddyModels,
+    crush: providerData.crushModels,
+  };
 }
 
 function draftKey(userId: string, channelId: string): string {
@@ -658,11 +667,7 @@ async function handleModalSubmitInteraction(interaction: any): Promise<boolean> 
     setChannelModel(channelId, resolveStoredModelForProvider({
       provider: parsedProvider,
       selectedModel: modelInput,
-      lists: {
-        opencode: providerData.opencodeModels,
-        codex: providerData.codexModels,
-        kilo: providerData.kiloModels,
-      },
+      lists: getProviderModelListsFromProviderData(providerData),
     }));
     setChannelWorkingDirectory(channelId, workingDirectory.length > 0 ? workingDirectory : null);
     setChannelBaseBranch(channelId, baseBranch);
@@ -885,11 +890,7 @@ async function handleChannelSettingsComponentInteraction(interaction: any): Prom
     setChannelModel(channelId, resolveStoredModelForProvider({
       provider: draft.provider,
       selectedModel: draft.model,
-      lists: {
-        opencode: providerData.opencodeModels,
-        codex: providerData.codexModels,
-        kilo: providerData.kiloModels,
-      },
+      lists: getProviderModelListsFromProviderData(providerData),
     }));
     channelSettingsDrafts.delete(key);
     await interaction.reply({ content: "Channel provider/model updated.", flags: MessageFlags.Ephemeral });

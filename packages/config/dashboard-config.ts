@@ -84,6 +84,7 @@ export type DashboardConfig = {
     name: string;
     domain: string;
     status: "active" | "paused";
+    slackStatusMode?: "ai_card" | "legacy";
     channels: number;
     members: number;
     lastSync: string;
@@ -111,6 +112,7 @@ const defaultWorkspace: DashboardConfig["workspaces"][number] = {
   name: "Workspace 1",
   domain: "",
   status: "active",
+  slackStatusMode: "ai_card",
   channels: 0,
   members: 0,
   lastSync: "",
@@ -167,6 +169,9 @@ const asGitStrategy = (
 
 const asStatus = (value: unknown): DashboardConfig["workspaces"][number]["status"] =>
   value === "paused" ? "paused" : "active";
+
+const asSlackStatusMode = (value: unknown): NonNullable<DashboardConfig["workspaces"][number]["slackStatusMode"]> =>
+  value === "legacy" ? "legacy" : "ai_card";
 
 const asAgentProvider = (
   value: unknown
@@ -263,6 +268,7 @@ const sanitizeWorkspace = (
     name: asString(workspace.name) || fallbackName,
     domain: asString(workspace.domain),
     status: asStatus(workspace.status),
+    slackStatusMode: asSlackStatusMode(workspace.slackStatusMode),
     channels: asNumber(workspace.channels),
     members: asNumber(workspace.members),
     lastSync: asString(workspace.lastSync),

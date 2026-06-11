@@ -10,6 +10,10 @@ export type ProviderModelLists = {
   opencode: string[];
   codex: string[];
   kilo: string[];
+  pi: string[];
+  openhands: string[];
+  codebuddy: string[];
+  crush: string[];
 };
 
 function normalizeModel(value: string): string {
@@ -29,9 +33,7 @@ export function getProviderModelList(
   provider: AgentProviderId,
   lists: ProviderModelLists
 ): string[] {
-  if (provider === "opencode") return lists.opencode;
-  if (provider === "codex") return lists.codex;
-  if (provider === "kilo") return lists.kilo;
+  if (provider in lists) return lists[provider as keyof ProviderModelLists];
   return [];
 }
 

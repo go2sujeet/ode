@@ -113,7 +113,7 @@
 
   function onWorkspaceFieldInput(
     workspaceId: string,
-    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret",
+    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "slackStatusMode" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret",
     value: string
   ): void {
     localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
@@ -129,6 +129,11 @@
     event: Event
   ): void {
     onWorkspaceFieldInput(workspaceId, field, (event.currentTarget as HTMLInputElement).value);
+  }
+
+  function onSlackStatusModeChange(workspaceId: string, event: Event): void {
+    const value = (event.currentTarget as HTMLSelectElement).value === "legacy" ? "legacy" : "ai_card";
+    onWorkspaceFieldInput(workspaceId, "slackStatusMode", value);
   }
 
   function onChannelProviderChange(workspaceId: string, channelId: string, event: Event): void {
@@ -356,9 +361,7 @@
           on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "domain", event)}
         />
       </div>
-    </div>
 
-    <div class="mt-4 grid gap-4 md:grid-cols-2">
       {#if selectedWorkspace.type === "slack"}
         <div class="grid gap-2">
           <Label for="workspace-app-token">Slack App Token</Label>
@@ -381,8 +384,20 @@
             autocomplete="new-password"
           />
         </div>
+
+        <div class="grid gap-2">
+          <Label for="workspace-slack-status-mode">{t("Status Messages", "状态消息")}</Label>
+          <Select
+            id="workspace-slack-status-mode"
+            value={selectedWorkspace.slackStatusMode ?? "ai_card"}
+            on:change={(event) => onSlackStatusModeChange(selectedWorkspace.id, event)}
+          >
+            <option value="ai_card">{t("AI card (default)", "AI 卡片（默认）")}</option>
+            <option value="legacy">{t("Legacy message", "传统消息")}</option>
+          </Select>
+        </div>
       {:else if selectedWorkspace.type === "discord"}
-        <div class="grid gap-2 md:col-span-2">
+        <div class="grid gap-2">
           <Label for="workspace-discord-bot-token">Discord Bot Token</Label>
           <Input
             id="workspace-discord-bot-token"

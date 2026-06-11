@@ -86,6 +86,7 @@ function mergeDashboardConfig(config: OdeConfig, dashboardConfig: DashboardConfi
   } = dashboardConfig.user;
   const workspaces: WorkspaceConfig[] = dashboardConfig.workspaces.map((workspace) => ({
     ...workspace,
+    slackStatusMode: workspace.slackStatusMode === "legacy" ? "legacy" : "ai_card",
     slackAppToken: workspace.slackAppToken ?? "",
     slackBotToken: workspace.slackBotToken ?? "",
     discordBotToken: workspace.discordBotToken ?? "",
@@ -189,6 +190,22 @@ export function getKiloModels(): string[] {
   return getAgentsConfig().kilo.models ?? [];
 }
 
+export function getPiModels(): string[] {
+  return getAgentsConfig().pi.models ?? [];
+}
+
+export function getOpenHandsModels(): string[] {
+  return getAgentsConfig().openhands.models ?? [];
+}
+
+export function getCodeBuddyModels(): string[] {
+  return getAgentsConfig().codebuddy.models ?? [];
+}
+
+export function getCrushModels(): string[] {
+  return getAgentsConfig().crush.models ?? [];
+}
+
 export function setKiloModels(models: string[]): void {
   updateOdeConfig((config) => ({
     ...config,
@@ -240,6 +257,13 @@ export function getSlackTargetChannels(): string[] | null {
     .flatMap((workspace) => workspace.channelDetails);
   const ids = channels.map((channel) => channel.id).filter(Boolean);
   return ids.length > 0 ? ids : null;
+}
+
+export function getSlackStatusModeForChannel(channelId: string): WorkspaceConfig["slackStatusMode"] {
+  const workspace = getWorkspaces()
+    .filter((item) => item.type === "slack")
+    .find((item) => item.channelDetails.some((channel) => channel.id === channelId));
+  return workspace?.slackStatusMode === "legacy" ? "legacy" : "ai_card";
 }
 
 export function getDiscordBotTokens(): Array<{ token: string; workspaceId: string; workspaceName?: string }> {

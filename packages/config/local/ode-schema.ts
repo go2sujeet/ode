@@ -104,6 +104,7 @@ const workspaceSchema = z.object({
   name: z.string().optional().default(""),
   domain: z.string().optional().default(""),
   status: z.enum(["active", "paused"]).optional().default("active"),
+  slackStatusMode: z.enum(["ai_card", "legacy"]).optional().default("ai_card"),
   channels: z.number().optional().default(0),
   members: z.number().optional().default(0),
   lastSync: z.string().optional().default(""),

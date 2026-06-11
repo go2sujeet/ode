@@ -3,6 +3,10 @@ import {
   getCodexModels,
   getEnabledAgentProviders,
   getKiloModels,
+  getPiModels,
+  getOpenHandsModels,
+  getCodeBuddyModels,
+  getCrushModels,
   getOpenCodeModels,
   invalidateOdeConfigCache,
 } from "@/config";
@@ -14,6 +18,10 @@ export type SettingsProviderData = {
   opencodeModels: string[];
   codexModels: string[];
   kiloModels: string[];
+  piModels: string[];
+  openhandsModels: string[];
+  codebuddyModels: string[];
+  crushModels: string[];
 };
 
 function getSelectableProvidersFromConfig(): AgentProviderId[] {
@@ -64,5 +72,9 @@ export async function refreshSettingsProviderData(selectedProvider?: AgentProvid
     opencodeModels: agentCheckResult ? agentCheckResult.opencodeModels : getOpenCodeModels(),
     codexModels: getCodexModels(),
     kiloModels: agentCheckResult ? agentCheckResult.kiloModels : getKiloModels(),
+    piModels: agentCheckResult ? agentCheckResult.piModels : getPiModels(),
+    openhandsModels: agentCheckResult ? agentCheckResult.openhandsModels : getOpenHandsModels(),
+    codebuddyModels: agentCheckResult ? agentCheckResult.codebuddyModels : getCodeBuddyModels(),
+    crushModels: agentCheckResult ? agentCheckResult.crushModels : getCrushModels(),
   };
 }

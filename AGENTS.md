@@ -6,7 +6,7 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 - Runtime entry: `packages/core/index.ts`
 - CLI entry: `packages/core/cli.ts`
 - Config: `packages/config/` (Zod env/config validation, local `ode.json`, channel settings)
-- Core orchestration: `packages/core/` (daemon, kernel, runtime, tasks, cron, PR tracker, Web/API server)
+- Core orchestration: `packages/core/` (daemon, kernel, runtime, tasks, cron, Web/API server)
 - IM adapters: `packages/ims/` (`slack`, `discord`, `lark`, shared inbound/delivery/runtime helpers)
 - Agent adapters: `packages/agents/` (`opencode`, `claude`, `codex`, `kimi`, `kiro`, `kilo`, `qwen`, `goose`, `gemini`, `pi`, `openhands`, `codebuddy`, `crush`)
 - Shared utilities: `packages/shared/` and `packages/utils/`
@@ -16,11 +16,12 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 ## Runtime behavior
 - Ode runs as a local daemon with a settings UI, starts configured IM runtimes, and watches config changes.
 - Local config lives at `~/.config/ode/ode.json`.
-- SQLite state lives at `~/.config/ode/inbox.db` for tasks, cron jobs, PR trackers, and related scheduler data.
+- SQLite state lives at `~/.config/ode/inbox.db` for tasks, cron jobs, and related scheduler data.
 - Sessions live under `~/.config/ode/sessions/`.
 - Channel details include agent provider, model when supported, working directory, base branch, and system message.
 - Bot replies and status updates should stay in the originating IM thread.
 - Status updates include phases, tool progress, elapsed time, and are preserved as an operation record.
+- Slack workspaces default to AI card status messages; use the workspace Status Messages setting to switch a Slack workspace back to legacy message updates.
 - SDK/CLI event loops handle permission or question flows where supported; OpenCode and Claude question replies are wired through the adapter.
 - When capturing screenshots, save images to the system temp folder and upload them with `ode send file` to the current thread as soon as possible.
 - When merging PRs, do not delete the branch if the current worktree is on that branch.
@@ -74,19 +75,6 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 - Persistence: same `~/.config/ode/inbox.db` (table `cron_jobs`); scheduler polls every 15s and claims runs at the SQL level.
 - HTTP API mirrors the CLI under `/api/cron-jobs*`; the Web UI lives at Settings -> Cron.
 
-## PR Trackers (`ode pr-tracker`)
-- PR trackers watch GitHub PR activity for repos discovered from configured channel working directories.
-- CLI:
-  - `ode pr-tracker scan [--json]`
-  - `ode pr-tracker list [--enabled | --disabled | --missing] [--json]`
-  - `ode pr-tracker show <id> [--json]`
-  - `ode pr-tracker enable <id>` / `ode pr-tracker disable <id>`
-  - `ode pr-tracker update <id> [--prompt <text>] [--prompt-file <path>] [--interval <seconds>] [--token <token>]`
-  - `ode pr-tracker run <id>` / `ode pr-tracker delete <id>`
-  - `ode pr-tracker events <id> [--limit N] [--json]`
-  - `ode pr-tracker settings [--show | --set-interval <seconds> | --set-prompt-file <path> | --set-token <token>]`
-- Tracker rows are created by `ode pr-tracker scan`; they are disabled by default and post results back to the source channel with its configured default agent.
-
 ## Sending Files / Images (`ode send`)
 - `ode send file <path> --channel <channelId> [--thread <threadId>] [--filename <name>] [--title <title>] [--comment <text>]` uploads any file to a chat channel.
 - The command resolves platform (Slack / Discord / Lark) from the channel's configured workspace; agents do not need to know the underlying SDK.
@@ -117,7 +105,7 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 
 ## Agent Live Status Workflow
 - Use `packages/live-status-harness/fixed-prompt.md` as the baseline stream-capture prompt.
-- Capture stream events with `bun run live-status:capture --provider <opencode|claudecode|codex|kimi|kiro|kilo|qwen|goose|gemini>`.
+- Capture stream events with `bun run live-status:capture --provider <opencode|claudecode|codex|kimi|kiro|kilo|qwen|goose|gemini|pi|openhands|codebuddy|crush>`.
 - Store raw ordered events in Redis under the harness keyspace (`harness:live_status:*`).
 - Render status outputs from captured events with `bun run live-status:render --run-id <runId>`.
 - Generate combined reports with `bun run live-status:report`.

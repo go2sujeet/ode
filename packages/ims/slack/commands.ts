@@ -23,6 +23,10 @@ import {
   getOpenCodeModels,
   getCodexModels,
   getKiloModels,
+  getPiModels,
+  getOpenHandsModels,
+  getCodeBuddyModels,
+  getCrushModels,
   isAgentEnabled,
   getGitHubInfoForUser,
   setChannelAgentProvider,
@@ -145,6 +149,10 @@ function getProviderModelLists(): ProviderModelLists {
     opencode: getOpenCodeModels(),
     codex: getCodexModels(),
     kilo: getKiloModels(),
+    pi: getPiModels(),
+    openhands: getOpenHandsModels(),
+    codebuddy: getCodeBuddyModels(),
+    crush: getCrushModels(),
   };
 }
 
@@ -186,6 +194,10 @@ function buildSettingsModal(params: {
   opencodeModels: string[];
   codexModels: string[];
   kiloModels: string[];
+  piModels: string[];
+  openhandsModels: string[];
+  codebuddyModels: string[];
+  crushModels: string[];
   selectedProvider?: AgentProvider;
   selectedModel?: string | null;
   workingDirectory?: string | null;
@@ -198,6 +210,10 @@ function buildSettingsModal(params: {
     opencodeModels,
     codexModels,
     kiloModels,
+    piModels,
+    openhandsModels,
+    codebuddyModels,
+    crushModels,
     selectedProvider = "opencode",
     selectedModel,
     workingDirectory,
@@ -213,30 +229,25 @@ function buildSettingsModal(params: {
       opencode: opencodeModels,
       codex: codexModels,
       kilo: kiloModels,
+      pi: piModels,
+      openhands: openhandsModels,
+      codebuddy: codebuddyModels,
+      crush: crushModels,
     })
     : null;
-  const modelOptions = providerModels && selectedProvider === "opencode"
-    ? (opencodeModels.length > 0
-      ? opencodeModels.map((model) => ({
-          text: { type: "plain_text" as const, text: model },
-          value: model,
-        }))
-      : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: MODEL_NONE_SENTINEL }])
-    : providerModels && selectedProvider === "codex"
-      ? [
-          { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: MODEL_DEFAULT_SENTINEL },
-          ...codexModels.map((model) => ({
-            text: { type: "plain_text" as const, text: model },
-            value: model,
-          })),
-        ]
-      : providerModels && selectedProvider === "kilo"
-        ? (kiloModels.length > 0
-          ? kiloModels.map((model) => ({
-              text: { type: "plain_text" as const, text: model },
-              value: model,
-            }))
-          : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: MODEL_NONE_SENTINEL }])
+  const configuredModelOptions = providerModels?.map((model) => ({
+    text: { type: "plain_text" as const, text: model },
+    value: model,
+  })) ?? [];
+  const modelOptions = providerModels && selectedProvider === "codex"
+    ? [
+        { text: { type: "plain_text" as const, text: "Use default (gpt-5.3-codex)" }, value: MODEL_DEFAULT_SENTINEL },
+        ...configuredModelOptions,
+      ]
+    : providerModels
+      ? (configuredModelOptions.length > 0
+        ? configuredModelOptions
+        : [{ text: { type: "plain_text" as const, text: "No models configured" }, value: MODEL_NONE_SENTINEL }])
       : [];
 
   const availableModels = selectedProvider === "codex"
@@ -247,15 +258,13 @@ function buildSettingsModal(params: {
     ? matchedSelectedModel
     : (selectedProvider === "codex"
       ? MODEL_DEFAULT_SENTINEL
-      : selectedProvider === "kilo"
-        ? (kiloModels[0] ?? MODEL_NONE_SENTINEL)
-        : (opencodeModels[0] ?? MODEL_NONE_SENTINEL));
+      : (providerModels?.[0] ?? MODEL_NONE_SENTINEL));
   const introText = selectedProvider === "opencode"
     ? "Configure agent, model (OpenCode), working directory, and base branch for this channel."
     : selectedProvider === "codex"
       ? "Configure agent, optional Codex model, working directory, and base branch for this channel."
-      : selectedProvider === "kilo"
-        ? "Configure agent, model (Kilo), working directory, and base branch for this channel."
+      : providerModels
+        ? `Configure agent, model (${getAgentProviderLabel(selectedProvider)}), working directory, and base branch for this channel.`
       : "Configure agent, working directory, and base branch for this channel.";
 
   const blocks: any[] = [
@@ -531,6 +540,10 @@ export function setupInteractiveHandlers(): void {
       opencodeModels: refreshedData.opencodeModels,
       codexModels: refreshedData.codexModels,
       kiloModels: refreshedData.kiloModels,
+      piModels: refreshedData.piModels,
+      openhandsModels: refreshedData.openhandsModels,
+      codebuddyModels: refreshedData.codebuddyModels,
+      crushModels: refreshedData.crushModels,
       selectedProvider: toSelectableProvider(getChannelAgentProvider(channelId)),
       selectedModel: getChannelModel(channelId),
       workingDirectory: resolveChannelCwd(channelId).workingDirectory,
@@ -623,6 +636,10 @@ export function setupInteractiveHandlers(): void {
       opencodeModels: refreshedData.opencodeModels,
       codexModels: refreshedData.codexModels,
       kiloModels: refreshedData.kiloModels,
+      piModels: refreshedData.piModels,
+      openhandsModels: refreshedData.openhandsModels,
+      codebuddyModels: refreshedData.codebuddyModels,
+      crushModels: refreshedData.crushModels,
       selectedProvider,
       selectedModel,
       workingDirectory,
@@ -653,36 +670,17 @@ export function setupInteractiveHandlers(): void {
       errors[PROVIDER_BLOCK] = "Selected agent is disabled.";
     }
 
-    if (selectedProvider === "opencode") {
-      if (!selectedModel || selectedModel === MODEL_NONE_SENTINEL) {
+    if (providerSupportsModelSelection(selectedProvider)) {
+      if (selectedProvider !== "codex" && (!selectedModel || selectedModel === MODEL_NONE_SENTINEL)) {
         errors[MODEL_BLOCK] = "Select a model.";
       }
 
       if (!validateProviderModelSelection({
-        provider: "opencode",
+        provider: selectedProvider,
         selectedModel,
         lists: getProviderModelLists(),
       })) {
-        errors[MODEL_BLOCK] = "Model not available in ~/.config/ode/ode.json agents.opencode.models.";
-      }
-    } else if (selectedProvider === "codex") {
-      if (!validateProviderModelSelection({
-        provider: "codex",
-        selectedModel,
-        lists: getProviderModelLists(),
-      })) {
-        errors[MODEL_BLOCK] = "Model not available in local Codex model list.";
-      }
-    } else if (selectedProvider === "kilo") {
-      if (!selectedModel || selectedModel === MODEL_NONE_SENTINEL) {
-        errors[MODEL_BLOCK] = "Select a model.";
-      }
-      if (!validateProviderModelSelection({
-        provider: "kilo",
-        selectedModel,
-        lists: getProviderModelLists(),
-      })) {
-        errors[MODEL_BLOCK] = "Model not available in local Kilo model list.";
+        errors[MODEL_BLOCK] = `Model not available in local ${getAgentProviderLabel(selectedProvider)} model list.`;
       }
     }
 

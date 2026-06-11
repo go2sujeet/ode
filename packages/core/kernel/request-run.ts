@@ -20,11 +20,11 @@ import {
   recordAgentQuestion,
   completeAgentQuestion,
 } from "@/config/local/inbox";
-import { getMessageUpdateIntervalMs, getUserGeneralSettings } from "@/config";
+import { getMessageUpdateIntervalMs, getSlackStatusModeForChannel, getUserGeneralSettings } from "@/config";
 import { buildFinalResponseText, categorizeRuntimeError, createDeferred } from "@/core/runtime/helpers";
 import { buildStatusMessageForAgent } from "@/core/runtime/status-message";
 import { maybeGenerateSessionTitle } from "@/core/runtime/session-title";
-import type { AgentAdapter, IMAdapter } from "@/core/types";
+import type { AgentAdapter, IMAdapter, StatusStreamChunk } from "@/core/types";
 import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 import { formatSingleQuestionPrompt } from "@/core/runtime/helpers";
 import {
@@ -40,14 +40,20 @@ import {
 } from "@/utils";
 
 /**
- * When ODE_SLACK_STATUS_STREAMING=1 and the IM adapter supports the
- * Slack-style streaming API (chat.startStream/appendStream/stopStream), we
- * render live status as task_update/plan_update chunks instead of repeated
- * chat.update edits. Currently Slack-only; other adapters lack the methods
- * and the code path automatically falls back.
+ * Slack defaults to AI card status streams when the IM adapter supports the
+ * Slack-style streaming API (chat.startStream/appendStream/stopStream). The
+ * per-workspace setting can switch Slack back to legacy chat.update status
+ * messages, while ODE_SLACK_STATUS_STREAMING remains a debug override.
  */
-function isStatusStreamingEnabled(): boolean {
-  return process.env.ODE_SLACK_STATUS_STREAMING === "1";
+function isStatusStreamingEnabled(
+  platform: "slack" | "discord" | "lark" | undefined,
+  channelId: string
+): boolean {
+  const override = process.env.ODE_SLACK_STATUS_STREAMING?.toLowerCase();
+  if (override === "1" || override === "true") return true;
+  if (override === "0" || override === "false") return false;
+  if (platform && platform !== "slack") return false;
+  return getSlackStatusModeForChannel(channelId) !== "legacy";
 }
 
 /**
@@ -64,6 +70,28 @@ function isPromptEcho(candidate: string | undefined, prompt: string | undefined)
   const p = prompt.trim();
   if (!c || !p) return false;
   return c === p;
+}
+
+function compactFinalResultForStream(text: string): string | undefined {
+  const compact = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ");
+  if (!compact) return undefined;
+  return compact.length > 220 ? `${compact.slice(0, 219)}…` : compact;
+}
+
+function buildFinalResultStreamChunk(text: string): StatusStreamChunk | undefined {
+  const output = compactFinalResultForStream(text);
+  if (!output) return undefined;
+  return {
+    type: "task_update",
+    id: "result",
+    title: "Result",
+    status: "complete",
+    output,
+  };
 }
 
 type RunnerDeps = {
@@ -576,11 +604,11 @@ export async function runOpenRequest(
 
   const providerLabel = deps.agent.getDisplayNameForSession(sessionId);
 
-  // Streaming-API path is opt-in via env var, requires live agent events,
-  // and requires the adapter to implement the stream lifecycle methods
-  // (currently Slack-only). When unavailable we silently fall back to the
+  // Streaming-API path is enabled by Slack workspace config by default,
+  // requires live agent events, and requires the adapter to implement the
+  // stream lifecycle methods. When unavailable we silently fall back to the
   // chat.postMessage + chat.update path.
-  const streamingRequested = isStatusStreamingEnabled()
+  const streamingRequested = isStatusStreamingEnabled(deps.platform, context.channelId)
     && deps.agent.supportsEventStream
     && typeof deps.im.startStatusStream === "function"
     && typeof deps.im.appendStatusStream === "function";
@@ -706,7 +734,7 @@ export async function runOpenRequest(
   // send chunks for tools whose shape actually changed.
   const streamDiffer: StatusStreamDiffer | null = useStreaming ? createStatusStreamDiffer() : null;
 
-  async function stopTrackedStatusStream(reason: string, appendChunks?: Array<{ type: "plan_update"; title: string }>): Promise<void> {
+  async function stopTrackedStatusStream(reason: string, appendChunks?: StatusStreamChunk[]): Promise<void> {
     const streamTs = streamingStatusTs ?? request.statusStreamTs;
     if (!streamTs || !deps.im.stopStatusStream) {
       useStreaming = false;
@@ -943,8 +971,11 @@ export async function runOpenRequest(
             state: currentState,
             workingPath: cwd,
             startedAt: request.startedAt,
-          });
-          await stopTrackedStatusStream("final text", [{ type: "plan_update", title: summary }]);
+          }, text);
+          const finalChunks: StatusStreamChunk[] = [{ type: "plan_update", title: summary }];
+          const resultChunk = buildFinalResultStreamChunk(text);
+          if (resultChunk) finalChunks.push(resultChunk);
+          await stopTrackedStatusStream("final text", finalChunks);
         } else {
           await stopTrackedStatusStream("final text");
         }
