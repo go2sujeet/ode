@@ -1,7 +1,34 @@
 import type { OpenCodeMessageContext, OpenCodeOptions, PromptPart, SlackContext } from "./types";
 
 export function buildSystemPrompt(slack?: SlackContext): string {
-  return slack?.channelSystemMessage?.trim() ?? "";
+  if (!slack) return "";
+
+  const platform = slack.platform ?? "slack";
+  const lines = [
+    "ODE RUNTIME CONTEXT:",
+    `- Platform: ${platform}`,
+    `- Channel: ${slack.channelId}`,
+    `- Thread: ${slack.threadId}`,
+    `- User: ${slack.userId}`,
+    `- GitHub token available: ${slack.hasGitHubToken ? "yes" : "no"}`,
+    "",
+    "ODE CLI CAPABILITIES:",
+    "- The `ode` binary is how you interact with the current IM thread outside of plain text output.",
+    "- These commands auto-detect Slack / Discord / Lark from the `--channel` value; do not call platform APIs directly.",
+    "- Upload files or screenshots: `ode send file <path> --channel <channelId> --thread <threadId> [--comment \"...\"] [--filename <name>] [--title <text>]`.",
+    "- If the user asks for a screenshot, image, rendered design, or other local file, save it to the system temp folder and upload it with `ode send file` to the current thread.",
+    "- Read thread messages: `ode messages get <threadId> --channel <channelId> [--limit N] [--json]`.",
+    "- React to a message: `ode reaction add <messageId> --channel <channelId> --emoji <thumbsup|eyes|ok_hand> [--thread <threadId>]`.",
+    "- Schedule one-time follow-up work: `ode task create --time <ISO8601> --channel <channelId> --message \"<prompt>\" [--thread <threadId>] [--agent <agentId>] [--run-now]`.",
+    "- Schedule recurring work: `ode cron create --schedule \"<5-field cron>\" --channel <channelId> --message \"<prompt>\" [--title <title>] [--disabled] [--run-now]`.",
+  ];
+
+  const channelSystemMessage = slack.channelSystemMessage?.trim();
+  if (channelSystemMessage) {
+    lines.push("", "CHANNEL SYSTEM MESSAGE:", channelSystemMessage);
+  }
+
+  return lines.join("\n");
 }
 
 export function buildPromptParts(

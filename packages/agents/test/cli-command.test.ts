@@ -39,23 +39,32 @@ describe("agent cli command formatting", () => {
 
     expect(command).toContain("claude");
     expect(command).toContain("--permission-mode dontAsk --");
-    expect(command).not.toContain("--append-system-prompt");
+    expect(command).toContain("--append-system-prompt");
+    expect(command).toContain("ode send file");
     expect(command).toContain("--session-id session-1");
     expect(command).toContain("--add-dir /tmp/project");
     expect(command).toContain("'hello world'");
   });
 
-  it("does not inject an Ode system prompt by default", () => {
+  it("injects Ode CLI capability guidance by default when platform context is present", () => {
     const systemPrompt = buildSystemPrompt({
       channelId: "C123",
       threadId: "T456",
       userId: "U789",
     });
 
-    expect(systemPrompt).toBe("");
+    expect(systemPrompt).toContain("ODE RUNTIME CONTEXT:");
+    expect(systemPrompt).toContain("Channel: C123");
+    expect(systemPrompt).toContain("Thread: T456");
+    expect(systemPrompt).toContain("ODE CLI CAPABILITIES:");
+    expect(systemPrompt).toContain("ode send file <path> --channel <channelId> --thread <threadId>");
+    expect(systemPrompt).toContain("ode messages get <threadId> --channel <channelId>");
+    expect(systemPrompt).toContain("ode reaction add <messageId> --channel <channelId>");
+    expect(systemPrompt).toContain("ode task create --time <ISO8601>");
+    expect(systemPrompt).toContain("ode cron create --schedule");
   });
 
-  it("uses only the explicit channel system message as system prompt", () => {
+  it("appends the explicit channel system message to Ode CLI guidance", () => {
     const systemPrompt = buildSystemPrompt({
       channelId: "C123",
       threadId: "T456",
@@ -63,7 +72,9 @@ describe("agent cli command formatting", () => {
       channelSystemMessage: "Always ask for confirmation before destructive file operations.",
     });
 
-    expect(systemPrompt).toBe("Always ask for confirmation before destructive file operations.");
+    expect(systemPrompt).toContain("ODE CLI CAPABILITIES:");
+    expect(systemPrompt).toContain("CHANNEL SYSTEM MESSAGE:");
+    expect(systemPrompt).toContain("Always ask for confirmation before destructive file operations.");
   });
 
   it("does not inject git or pull request guidance", () => {
@@ -77,7 +88,7 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).not.toContain("Preferred branch format before PR");
   });
 
-  it("does not inject Discord context or platform formatting guidance", () => {
+  it("injects Discord runtime context without platform formatting guidance", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "discord",
       channelId: "C123",
@@ -85,14 +96,13 @@ describe("agent cli command formatting", () => {
       userId: "U789",
     });
 
-    expect(systemPrompt).toBe("");
-    expect(systemPrompt).not.toContain("DISCORD CONTEXT:");
-    expect(systemPrompt).not.toContain("ODE CLI:");
+    expect(systemPrompt).toContain("Platform: discord");
+    expect(systemPrompt).toContain("ODE CLI CAPABILITIES:");
     expect(systemPrompt).not.toContain("FORMATTING:");
     expect(systemPrompt).not.toContain("Discord supports markdown");
   });
 
-  it("does not inject Lark context or platform formatting guidance", () => {
+  it("injects Lark runtime context without platform formatting guidance", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "lark",
       channelId: "oc_123",
@@ -100,9 +110,8 @@ describe("agent cli command formatting", () => {
       userId: "ou_789",
     });
 
-    expect(systemPrompt).toBe("");
-    expect(systemPrompt).not.toContain("LARK CONTEXT:");
-    expect(systemPrompt).not.toContain("ODE CLI:");
+    expect(systemPrompt).toContain("Platform: lark");
+    expect(systemPrompt).toContain("ODE CLI CAPABILITIES:");
     expect(systemPrompt).not.toContain("FORMATTING:");
     expect(systemPrompt).not.toContain("Lark output should be plain text");
   });
@@ -122,7 +131,7 @@ describe("agent cli command formatting", () => {
     expect(systemPrompt).not.toContain("Use four states");
   });
 
-  it("does not inject Ode CLI command guidance", () => {
+  it("injects Ode CLI command guidance", () => {
     const systemPrompt = buildSystemPrompt({
       platform: "slack",
       channelId: "C9XXX",
@@ -130,12 +139,12 @@ describe("agent cli command formatting", () => {
       userId: "U42",
     });
 
-    expect(systemPrompt).not.toContain("ode task create");
-    expect(systemPrompt).not.toContain("ode cron create");
-    expect(systemPrompt).not.toContain("ode send file");
-    expect(systemPrompt).not.toContain("ode messages get");
-    expect(systemPrompt).not.toContain("ode reaction add");
-    expect(systemPrompt).not.toContain("VISUAL TESTING:");
+    expect(systemPrompt).toContain("ode task create");
+    expect(systemPrompt).toContain("ode cron create");
+    expect(systemPrompt).toContain("ode send file");
+    expect(systemPrompt).toContain("ode messages get");
+    expect(systemPrompt).toContain("ode reaction add");
+    expect(systemPrompt).toContain("save it to the system temp folder and upload it with `ode send file`");
   });
 
   it("does not wrap prompts when no system prompt is present", () => {
