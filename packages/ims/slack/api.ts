@@ -320,8 +320,8 @@ export async function addSlackReaction(args: {
 //     `plan_update` is a natural opener); a bare/empty `markdown_text` locks
 //     you into text mode forever.
 //   - Per-chunk title/details/output cap = 256 chars (Slack-side).
-//   - `task_display_mode: "plan"` groups task_updates inside a single plan
-//     block; `"individual"` (default) renders each as a standalone card.
+//   - `task_display_mode: "dense"` asks Slack to collapse consecutive tool
+//     calls into a summarized task card instead of expanding every update.
 // ---------------------------------------------------------------------------
 
 const STREAM_CHUNK_MAX_CHARS = 256;
@@ -357,8 +357,8 @@ function serializeStreamChunk(chunk: StatusStreamChunk): Record<string, unknown>
  *
  * Channel (non-DM) streams require recipient identification; we resolve the
  * team id via `auth.test` on the bot token and accept the requesting user id
- * from the caller. `task_display_mode: "plan"` is what gives us the unified
- * "thinking steps" card with a checklist of task_card rows.
+ * from the caller. `task_display_mode: "dense"` keeps Slack's native AI card
+ * compact when an agent emits many consecutive tool updates.
  *
  * Seeds the stream with a single `plan_update` chunk (using `seedPlanTitle`)
  * so subsequent `appendSlackStream` calls don't trip `streaming_mode_mismatch`.
@@ -385,7 +385,7 @@ export async function startSlackStream(args: {
   const result = await client.apiCall("chat.startStream", {
     channel: channelId,
     thread_ts: threadId,
-    task_display_mode: "plan",
+    task_display_mode: "dense",
     recipient_user_id: recipientUserId,
     recipient_team_id: recipientTeamId,
     chunks: [{ type: "plan_update", title: truncateStreamField(args.seedPlanTitle ?? "Working") }],

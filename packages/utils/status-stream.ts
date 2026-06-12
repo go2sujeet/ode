@@ -139,13 +139,14 @@ function buildPlanTitle(state: SessionMessageState, startedAt: number): string {
   return truncateField([title, state.agent?.trim(), state.model?.trim(), elapsed].filter(Boolean).join(" · "), 160);
 }
 
-function buildContextRow(runMode: string | undefined, workingPath: string): TaskRow {
+function buildContextRow(agentLabel: string | undefined, runMode: string | undefined, workingPath: string): TaskRow {
   const mode = runMode?.trim() || "build mode";
+  const details = [agentLabel?.trim(), mode].filter(Boolean).join(" · ");
   return {
     id: "meta:context",
     title: "Run context",
     status: "complete",
-    details: mode,
+    details,
     output: truncateField(compactPath(workingPath), 180),
   };
 }
@@ -317,9 +318,9 @@ function buildToolsRow(
 }
 
 function buildTaskRows(input: StatusStreamDiffInput): TaskRow[] {
-  const { state, workingPath, runMode, statusMessageFormat = "medium" } = input;
+  const { state, workingPath, agentLabel, runMode, statusMessageFormat = "medium" } = input;
   return [
-    buildContextRow(runMode, workingPath),
+    buildContextRow(agentLabel, runMode, workingPath),
     buildCurrentStatusRow(state),
     buildTasksRow(state.todos),
     buildToolsRow(state.tools, workingPath, statusMessageFormat),
@@ -330,6 +331,7 @@ export type StatusStreamDiffInput = {
   state: SessionMessageState;
   workingPath: string;
   startedAt: number;
+  agentLabel?: string;
   runMode?: string;
   statusMessageFormat?: StatusMessageFormat;
 };
@@ -369,7 +371,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
   let lastPlanTitle: string | undefined;
 
   return {
-    diff({ state, workingPath, startedAt, runMode, statusMessageFormat }) {
+    diff({ state, workingPath, startedAt, agentLabel, runMode, statusMessageFormat }) {
       const chunks: StatusStreamChunk[] = [];
       // Pending updates accumulated this tick. Only applied to
       // lastFingerprints / lastPlanTitle when commit() runs, so a network
@@ -386,7 +388,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
         planTitleChanged = true;
       }
 
-      for (const row of buildTaskRows({ state, workingPath, startedAt, runMode, statusMessageFormat })) {
+      for (const row of buildTaskRows({ state, workingPath, startedAt, agentLabel, runMode, statusMessageFormat })) {
         const { id, ...fp } = row;
         const prev = lastFingerprints.get(id);
         if (prev && fingerprintsEqual(prev, fp)) continue;

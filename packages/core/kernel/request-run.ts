@@ -949,6 +949,7 @@ export async function runOpenRequest(
       state: currentState,
       workingPath: cwd,
       startedAt: request.startedAt,
+      agentLabel: providerLabel,
       runMode,
       statusMessageFormat,
     });
@@ -1084,6 +1085,7 @@ export async function runOpenRequest(
           state: currentState,
           workingPath: cwd,
           startedAt: request.startedAt,
+          agentLabel: providerLabel,
           runMode,
           statusMessageFormat,
         });

@@ -50,6 +50,7 @@ describe("Slack streaming API helpers", () => {
     expect(apiCalls[0]?.args).toMatchObject({
       channel: "C1",
       thread_ts: "1700000000.000001",
+      task_display_mode: "dense",
       recipient_user_id: "U1",
       recipient_team_id: "T1",
       token: "xoxb-test",

@@ -68,6 +68,7 @@ describe("createStatusStreamDiffer", () => {
       state: baseState(),
       workingPath: cwd,
       startedAt: 0,
+      agentLabel: "OpenCode",
       runMode: "plan mode",
     });
     const contextChunk = chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "meta:context");
@@ -75,7 +76,7 @@ describe("createStatusStreamDiffer", () => {
       type: "task_update",
       id: "meta:context",
       title: "Run context",
-      details: "plan mode",
+      details: "OpenCode · plan mode",
       output: cwd,
     });
   });
