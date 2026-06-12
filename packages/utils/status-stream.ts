@@ -14,13 +14,11 @@
 //
 // Design notes:
 //   - We render one complete live-status card: run context, current phase,
-//     todo slots, and recent-tool slots all update in place inside the same
+//     tasks, and tool calling all update in place inside the same
 //     Slack plan card.
-//   - We use stable synthetic task_update ids (meta/context, todo:0, tool:0,
+//   - We use stable synthetic task_update ids (meta/context, group:tasks,
 //     etc.) instead of raw tool ids. Slack updates rows with the same id, so
 //     long runs stay compact instead of appending an unbounded tool log.
-//     Empirically, Slack may accumulate details/output text for repeated ids;
-//     reusable rows keep dynamic content in title/status only.
 //   - We only emit a chunk when a row's effective shape (title/status/output)
 //     actually changes — Slack drops near-duplicate appends but emitting them
 //     anyway wastes the Tier-4 budget (100/min).
@@ -84,13 +82,6 @@ function mapTodoStatus(status: string): TaskStatus {
   }
 }
 
-function normalizePhaseForTitle(phaseStatus?: string): string | undefined {
-  const phase = phaseStatus?.trim();
-  if (!phase) return undefined;
-  if (/^(running|finished)\s+tool:/i.test(phase)) return "Working";
-  return phase;
-}
-
 function formatCompactCount(value: number): string {
   if (!Number.isFinite(value)) return "0";
   const sign = value < 0 ? "-" : "";
@@ -139,38 +130,33 @@ function compactPath(path: string): string {
   return trimmed;
 }
 
-function buildPlanTitle(state: SessionMessageState): string {
+function buildPlanTitle(state: SessionMessageState, startedAt: number): string {
   const title = state.sessionTitle?.trim() || state.agent?.trim() || "Working";
-  const phase = normalizePhaseForTitle(state.phaseStatus) || "Working";
-  const totalTokens = state.tokenUsage?.total;
-  const tokenPart = typeof totalTokens === "number" && totalTokens > 0
-    ? `${formatCompactCount(totalTokens)} tokens`
-    : undefined;
-  return truncateField([title, phase, tokenPart].filter(Boolean).join(" · "), 160);
+  const elapsed = formatElapsedTime(startedAt);
+  return truncateField([title, state.agent?.trim(), state.model?.trim(), elapsed].filter(Boolean).join(" · "), 160);
 }
 
-function buildContextRow(state: SessionMessageState, workingPath: string): TaskRow {
-  const details = [
-    state.model?.trim(),
-    state.agent?.trim(),
-  ].filter(Boolean).join(" · ");
+function buildContextRow(runMode: string | undefined, workingPath: string): TaskRow {
+  const mode = runMode?.trim() || "build mode";
   return {
     id: "meta:context",
     title: "Run context",
     status: "complete",
-    ...(details ? { details } : {}),
+    details: mode,
     output: truncateField(compactPath(workingPath), 180),
   };
 }
 
-function buildPhaseRow(state: SessionMessageState): TaskRow {
+function buildCurrentStatusRow(state: SessionMessageState): TaskRow {
   const phase = state.phaseStatus?.trim() || "Working";
+  const detail = state.thinkingText?.trim() || state.currentText?.trim();
   const waitingForUser = /\b(waiting|question|approval|permission|confirm|choose|select|input)\b/i.test(phase);
   const finalizing = /\b(done|complete|completed|finalizing|finalized)\b/i.test(phase);
   return {
     id: "meta:phase",
-    title: truncateField(`Current phase: ${phase}`, 180),
+    title: "Current status",
     status: waitingForUser ? "in_progress" : finalizing ? "complete" : "in_progress",
+    details: truncateField(detail ? `${phase}: ${detail}` : phase, 220),
   };
 }
 
@@ -233,19 +219,6 @@ function buildTaskTitle(tool: SessionTool, workingPath: string): string {
   return title ? `${display} ${trimToolPath(title, workingPath)}` : display;
 }
 
-function fingerprintTool(tool: SessionTool, workingPath: string): RowFingerprint {
-  const status = mapToolStatus(tool.status);
-  const title = buildTaskTitle(tool, workingPath);
-  return { title, status };
-}
-
-function fingerprintTodo(todo: SessionTodo): RowFingerprint {
-  return {
-    title: truncateField(todo.content || "Task", 180),
-    status: mapTodoStatus(todo.status),
-  };
-}
-
 function fingerprintsEqual(a: RowFingerprint, b: RowFingerprint): boolean {
   return (
     a.title === b.title &&
@@ -260,35 +233,82 @@ function selectRecentTools(tools: SessionTool[]): SessionTool[] {
   return visible.slice(Math.max(0, visible.length - MAX_TOOL_ROWS));
 }
 
+function aggregateStatuses(statuses: TaskStatus[]): TaskStatus {
+  if (statuses.includes("error")) return "error";
+  if (statuses.includes("in_progress")) return "in_progress";
+  if (statuses.length > 0 && statuses.every((status) => status === "complete")) return "complete";
+  return "pending";
+}
+
+function formatTodoStatus(status: string): string {
+  switch (mapTodoStatus(status)) {
+    case "complete":
+      return "done";
+    case "in_progress":
+      return "in progress";
+    case "error":
+      return "error";
+    case "pending":
+    default:
+      return "pending";
+  }
+}
+
+function formatToolStatus(status: string): string {
+  switch (mapToolStatus(status)) {
+    case "complete":
+      return "done";
+    case "in_progress":
+      return "running";
+    case "error":
+      return "error";
+    case "pending":
+    default:
+      return "pending";
+  }
+}
+
+function buildTasksRow(todos: SessionTodo[]): TaskRow {
+  const visibleTodos = todos.slice(0, MAX_TODO_ROWS);
+  const details = visibleTodos.length > 0
+    ? visibleTodos.map((todo) => `- ${formatTodoStatus(todo.status)}: ${todo.content || "Task"}`).join("\n")
+    : "- pending: waiting for task updates";
+  return {
+    id: "group:tasks",
+    title: "Tasks",
+    status: aggregateStatuses(visibleTodos.map((todo) => mapTodoStatus(todo.status))),
+    details: truncateField(details, 220),
+  };
+}
+
+function buildToolsRow(tools: SessionTool[], workingPath: string): TaskRow {
+  const visibleTools = selectRecentTools(tools);
+  const details = visibleTools.length > 0
+    ? visibleTools.map((tool) => `- ${formatToolStatus(tool.status)}: ${buildTaskTitle(tool, workingPath)}`).join("\n")
+    : "- pending: no active tool call";
+  return {
+    id: "group:tools",
+    title: "Tool calling",
+    status: aggregateStatuses(visibleTools.map((tool) => mapToolStatus(tool.status))),
+    details: truncateField(details, 220),
+  };
+}
+
 function buildTaskRows(input: StatusStreamDiffInput): TaskRow[] {
-  const { state, workingPath } = input;
-  const rows: TaskRow[] = [
-    buildContextRow(state, workingPath),
-    buildPhaseRow(state),
+  const { state, workingPath, runMode } = input;
+  return [
+    buildContextRow(runMode, workingPath),
+    buildCurrentStatusRow(state),
+    buildTasksRow(state.todos),
+    buildToolsRow(state.tools, workingPath),
   ];
-
-  state.todos.slice(0, MAX_TODO_ROWS).forEach((todo, index) => {
-    rows.push({
-      id: `todo:${index}`,
-      ...fingerprintTodo(todo),
-    });
-  });
-
-  const selectedTools = selectRecentTools(state.tools);
-  selectedTools.forEach((tool, index) => {
-    rows.push({
-      id: `tool:${index}`,
-      ...fingerprintTool(tool, workingPath),
-    });
-  });
-
-  return rows;
 }
 
 export type StatusStreamDiffInput = {
   state: SessionMessageState;
   workingPath: string;
   startedAt: number;
+  runMode?: string;
 };
 
 export type StatusStreamDiffResult = {
@@ -326,7 +346,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
   let lastPlanTitle: string | undefined;
 
   return {
-    diff({ state, workingPath, startedAt }) {
+    diff({ state, workingPath, startedAt, runMode }) {
       const chunks: StatusStreamChunk[] = [];
       // Pending updates accumulated this tick. Only applied to
       // lastFingerprints / lastPlanTitle when commit() runs, so a network
@@ -336,14 +356,14 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
       let pendingPlanTitle: string | undefined;
       let planTitleChanged = false;
 
-      const planTitle = buildPlanTitle(state);
+      const planTitle = buildPlanTitle(state, startedAt);
       if (planTitle !== lastPlanTitle) {
         chunks.push({ type: "plan_update", title: planTitle });
         pendingPlanTitle = planTitle;
         planTitleChanged = true;
       }
 
-      for (const row of buildTaskRows({ state, workingPath, startedAt })) {
+      for (const row of buildTaskRows({ state, workingPath, startedAt, runMode })) {
         const { id, ...fp } = row;
         const prev = lastFingerprints.get(id);
         if (prev && fingerprintsEqual(prev, fp)) continue;

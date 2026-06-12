@@ -94,6 +94,36 @@ function buildFinalResultStreamChunk(text: string): StatusStreamChunk | undefine
   };
 }
 
+const STREAM_STATUS_HEARTBEAT_MS = 1_000;
+
+function migrateLiveStatusMessageKey(params: {
+  liveEventHistory: Map<string, SessionEvent[]>;
+  liveParsedState: Map<string, SessionMessageState>;
+  oldKey: string;
+  newKey: string;
+  eventHistory?: SessionEvent[];
+}): void {
+  const { liveEventHistory, liveParsedState, oldKey, newKey, eventHistory } = params;
+  if (newKey === oldKey) return;
+
+  const history = eventHistory ?? liveEventHistory.get(oldKey);
+  if (history) {
+    liveEventHistory.delete(oldKey);
+    liveEventHistory.set(newKey, history);
+  }
+
+  const parsed = liveParsedState.get(oldKey);
+  if (parsed) {
+    liveParsedState.delete(oldKey);
+    liveParsedState.set(newKey, parsed);
+  }
+}
+
+function isNonRecoverableStreamStateError(error: unknown): boolean {
+  const message = String(error);
+  return /message_not_in_streaming_state|streaming_state_conflict/i.test(message);
+}
+
 type RunnerDeps = {
   im: IMAdapter;
   agent: AgentAdapter;
@@ -133,6 +163,7 @@ export type RunTrackedRequestParams = {
   onComplete: () => void;
   onFail: (message: string) => void;
   publishFinalText: (text: string) => Promise<void>;
+  progressIntervalMs?: number;
   /**
    * Optional. When the runner used the streaming API for live status, the
    * failure path needs to stop the stream before chat.update would 409 with
@@ -258,12 +289,13 @@ async function startKernelEventStreamWatcher(params: {
    * object as before — only the Map keys move.
    */
   function migrateMessageKey(newKey: string): void {
-    if (newKey === messageKey) return;
-    liveEventHistory.delete(messageKey);
-    liveEventHistory.set(newKey, eventHistory);
-    const parsed = liveParsedState.get(messageKey);
-    liveParsedState.delete(messageKey);
-    if (parsed) liveParsedState.set(newKey, parsed);
+    migrateLiveStatusMessageKey({
+      liveEventHistory,
+      liveParsedState,
+      oldKey: messageKey,
+      newKey,
+      eventHistory,
+    });
     messageKey = newKey;
   }
 
@@ -723,16 +755,19 @@ export async function runOpenRequest(
     },
   });
 
-  const progressIntervalMs = getMessageUpdateIntervalMs();
+  const legacyProgressIntervalMs = getMessageUpdateIntervalMs();
+  const progressIntervalMs = useStreaming ? STREAM_STATUS_HEARTBEAT_MS : legacyProgressIntervalMs;
   let lastHeartbeat = Date.now();
+  let lastLegacyStatusUpdateAt = useStreaming ? Date.now() : 0;
   const resolvedModel = options?.model?.providerID && options.model.modelID
     ? `${options.model.providerID}/${options.model.modelID}`
     : null;
   const providerId = deps.agent.getProviderForSession(sessionId);
+  const runMode = options?.agent === "plan" ? "plan mode" : "build mode";
 
   // One differ instance per run; keeps last-seen fingerprints so we only
   // send chunks for tools whose shape actually changed.
-  const streamDiffer: StatusStreamDiffer | null = useStreaming ? createStatusStreamDiffer() : null;
+  let streamDiffer: StatusStreamDiffer | null = useStreaming ? createStatusStreamDiffer() : null;
 
   async function stopTrackedStatusStream(reason: string, appendChunks?: StatusStreamChunk[]): Promise<void> {
     const streamTs = streamingStatusTs ?? request.statusStreamTs;
@@ -771,6 +806,23 @@ export async function runOpenRequest(
         statusStreamTs: undefined,
       }, { immediate: true });
     } catch (err) {
+      if (isNonRecoverableStreamStateError(err)) {
+        useStreaming = false;
+        streamingStatusTs = undefined;
+        request.statusStreamActive = false;
+        request.statusStreamTs = undefined;
+        updateActiveRequest(context.channelId, context.threadId, {
+          statusStreamActive: false,
+          statusStreamTs: undefined,
+        }, { immediate: true });
+        log.warn("Slack status stream was already non-streaming; cleared active stream state", {
+          reason,
+          channelId: context.channelId,
+          statusTs: streamTs,
+          error: String(err),
+        });
+        return;
+      }
       useStreaming = true;
       streamingStatusTs = streamTs;
       request.statusStreamActive = true;
@@ -786,6 +838,186 @@ export async function runOpenRequest(
         error: String(err),
       });
     }
+  }
+
+  async function switchToLegacyStatusFromSnapshot(
+    currentState: SessionMessageState,
+    extra?: {
+      failedStreamTs?: string;
+      oldStatusTs?: string;
+      oldStreamTs?: string;
+    }
+  ): Promise<void> {
+    const oldStatusKey = getStatusMessageKey(request);
+    useStreaming = false;
+    streamingStatusTs = undefined;
+    streamDiffer = null;
+    request.statusStreamActive = false;
+    request.statusStreamTs = undefined;
+
+    const statusText = buildStatusMessageForAgent({
+      agent: deps.agent,
+      request,
+      workingPath: cwd,
+      state: currentState,
+      statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
+    });
+    const legacyStatusTs = await deps.im.sendMessage(
+      context.channelId,
+      context.replyThreadId,
+      statusText
+    );
+    if (typeof legacyStatusTs === "string" && legacyStatusTs.length > 0) {
+      statusTs = legacyStatusTs;
+      request.statusMessageTs = legacyStatusTs;
+      lastLegacyStatusUpdateAt = Date.now();
+      migrateLiveStatusMessageKey({
+        liveEventHistory,
+        liveParsedState,
+        oldKey: oldStatusKey,
+        newKey: getStatusMessageKey(request),
+      });
+      updateActiveRequest(context.channelId, context.threadId, {
+        statusMessageTs: legacyStatusTs,
+        statusStreamActive: false,
+        statusStreamTs: undefined,
+      }, { immediate: true });
+      log.info("Switched Slack status to legacy message after stream recreation failed", {
+        channelId: context.channelId,
+        statusTs: legacyStatusTs,
+        ...extra,
+      });
+      return;
+    }
+
+    updateActiveRequest(context.channelId, context.threadId, {
+      statusStreamActive: false,
+      statusStreamTs: undefined,
+    }, { immediate: true });
+  }
+
+  async function recreateStatusStreamFromSnapshot(currentState: SessionMessageState): Promise<boolean> {
+    if (!streamingRequested || !deps.im.startStatusStream || !deps.im.appendStatusStream) return false;
+
+    const oldStatusTs = request.statusMessageTs;
+    const oldStreamTs = streamingStatusTs ?? request.statusStreamTs;
+    const oldStatusKey = getStatusMessageKey(request);
+
+    try {
+      await deps.im.deleteMessage(context.channelId, oldStatusTs);
+    } catch (err) {
+      log.warn("Failed to delete stale Slack AI status card before recreation", {
+        channelId: context.channelId,
+        statusTs: oldStatusTs,
+        error: String(err),
+      });
+    }
+
+    let nextStatusTs: string | undefined;
+    try {
+      nextStatusTs = await deps.im.startStatusStream(
+        context.channelId,
+        context.replyThreadId,
+        {
+          recipientUserId: context.userId,
+          seedPlanTitle: `${providerLabel} is running...`,
+        }
+      );
+    } catch (err) {
+      log.warn("Failed to start replacement Slack AI status card; falling back to legacy status updates", {
+        channelId: context.channelId,
+        oldStatusTs,
+        oldStreamTs,
+        error: String(err),
+      });
+      await switchToLegacyStatusFromSnapshot(currentState, { oldStatusTs, oldStreamTs });
+      return false;
+    }
+    if (!nextStatusTs) {
+      log.warn("Failed to recreate Slack AI status card; falling back to legacy status updates", {
+        channelId: context.channelId,
+        oldStatusTs,
+        oldStreamTs,
+      });
+      await switchToLegacyStatusFromSnapshot(currentState, { oldStatusTs, oldStreamTs });
+      return false;
+    }
+
+    const nextDiffer = createStatusStreamDiffer();
+    const { chunks, commit } = nextDiffer.diff({
+      state: currentState,
+      workingPath: cwd,
+      startedAt: request.startedAt,
+      runMode,
+    });
+    try {
+      if (chunks.length > 0) {
+        await deps.im.appendStatusStream(context.channelId, nextStatusTs, chunks);
+      }
+      commit();
+    } catch (err) {
+      log.warn("Failed to seed replacement Slack AI status card; falling back to legacy status updates", {
+        channelId: context.channelId,
+        oldStatusTs,
+        oldStreamTs,
+        newStatusTs: nextStatusTs,
+        error: String(err),
+      });
+      if (deps.im.stopStatusStream) {
+        try {
+          await deps.im.stopStatusStream(context.channelId, nextStatusTs);
+        } catch (stopErr) {
+          log.debug("Failed to stop unseeded replacement Slack AI status card", {
+            channelId: context.channelId,
+            statusTs: nextStatusTs,
+            error: String(stopErr),
+          });
+        }
+      }
+      try {
+        await deps.im.deleteMessage(context.channelId, nextStatusTs);
+      } catch (deleteErr) {
+        log.debug("Failed to delete unseeded replacement Slack AI status card", {
+          channelId: context.channelId,
+          statusTs: nextStatusTs,
+          error: String(deleteErr),
+        });
+      }
+      await switchToLegacyStatusFromSnapshot(currentState, {
+        failedStreamTs: nextStatusTs,
+        oldStatusTs,
+        oldStreamTs,
+      });
+      return false;
+    }
+
+    statusTs = nextStatusTs;
+    request.statusMessageTs = nextStatusTs;
+    request.statusStreamActive = true;
+    request.statusStreamTs = nextStatusTs;
+    useStreaming = true;
+    streamingStatusTs = nextStatusTs;
+    streamDiffer = nextDiffer;
+    migrateLiveStatusMessageKey({
+      liveEventHistory,
+      liveParsedState,
+      oldKey: oldStatusKey,
+      newKey: getStatusMessageKey(request),
+    });
+
+    updateActiveRequest(context.channelId, context.threadId, {
+      statusMessageTs: nextStatusTs,
+      statusStreamActive: true,
+      statusStreamTs: nextStatusTs,
+    }, { immediate: true });
+
+    log.info("Recreated Slack AI status card after stale stream state", {
+      channelId: context.channelId,
+      oldStatusTs,
+      newStatusTs: nextStatusTs,
+      oldStreamTs,
+    });
+    return true;
   }
 
   const result = await runTrackedRequest({
@@ -839,6 +1071,7 @@ export async function runOpenRequest(
           useStreaming = false;
           streamingStatusTs = undefined;
         }
+        lastLegacyStatusUpdateAt = now;
       }
 
       // Streaming path: diff state -> chunks -> chat.appendStream.
@@ -849,6 +1082,7 @@ export async function runOpenRequest(
           state: currentState,
           workingPath: cwd,
           startedAt: request.startedAt,
+          runMode,
         });
         if (chunks.length > 0) {
           try {
@@ -859,6 +1093,32 @@ export async function runOpenRequest(
             // (idempotent for Slack's task_update / plan_update).
             commit();
           } catch (err) {
+            if (isNonRecoverableStreamStateError(err)) {
+              log.warn("Slack AI status stream is no longer active; recreating card", {
+                channelId: context.channelId,
+                statusTs,
+                error: String(err),
+              });
+              try {
+                if (await recreateStatusStreamFromSnapshot(currentState) || !useStreaming) {
+                  return;
+                }
+              } catch (recreateErr) {
+                log.warn("Slack AI status card recreation failed; falling back to legacy status updates", {
+                  channelId: context.channelId,
+                  statusTs,
+                  error: String(recreateErr),
+                });
+                useStreaming = false;
+                streamingStatusTs = undefined;
+                request.statusStreamActive = false;
+                request.statusStreamTs = undefined;
+                updateActiveRequest(context.channelId, context.threadId, {
+                  statusStreamActive: false,
+                  statusStreamTs: undefined,
+                }, { immediate: true });
+              }
+            }
             // appendStream failed (rate limit, streaming_state_conflict,
             // network blip…). Don't crash the tick and don't commit() —
             // the next tick will re-emit the still-pending delta.
@@ -887,6 +1147,17 @@ export async function runOpenRequest(
         statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
       });
       if (!request.statusFrozen) {
+        if (now - lastLegacyStatusUpdateAt < legacyProgressIntervalMs) {
+          updateActiveRequest(context.channelId, context.threadId, {
+            statusMessageTs: request.statusMessageTs,
+            currentText: request.currentText,
+            todos: request.todos,
+            statusFrozen: request.statusFrozen,
+          });
+          return;
+        }
+        lastLegacyStatusUpdateAt = now;
+
         const updatedStatusTs = await deps.im.updateMessage(context.channelId, statusTs, statusText);
         if (typeof updatedStatusTs === "string" && updatedStatusTs !== statusTs) {
           statusTs = updatedStatusTs;
@@ -917,6 +1188,7 @@ export async function runOpenRequest(
             if (typeof replacementStatusTs === "string" && replacementStatusTs.length > 0) {
               statusTs = replacementStatusTs;
               request.statusMessageTs = replacementStatusTs;
+              lastLegacyStatusUpdateAt = Date.now();
               // Persist the new statusTs immediately so a crash before the
               // next debounced save doesn't leave disk pointing at the old
               // rate-limited TS (which would mis-route recovery edits).
@@ -956,6 +1228,7 @@ export async function runOpenRequest(
     onFail: (failureMessage) => {
       failActiveRequest(context.channelId, context.threadId, failureMessage);
     },
+    progressIntervalMs,
     publishFinalText: async (text) => {
       // If we were rendering status via the streaming API, terminate the
       // stream first. This converts the live plan card to a static block
@@ -1067,6 +1340,7 @@ export async function runTrackedRequest(
     onComplete,
     onFail,
     publishFinalText,
+    progressIntervalMs: requestedProgressIntervalMs,
     failureLogLabel,
     agentResultDetailId,
     threadKey,
@@ -1075,7 +1349,7 @@ export async function runTrackedRequest(
     model,
   } = params;
 
-  const progressIntervalMs = getMessageUpdateIntervalMs();
+  const progressIntervalMs = requestedProgressIntervalMs ?? getMessageUpdateIntervalMs();
   let progressInFlight = false;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
   let stopWatcher: (() => void) | null = null;
