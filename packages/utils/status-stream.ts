@@ -31,6 +31,10 @@
 
 import type { SessionMessageState, SessionTodo, SessionTool } from "./session-inspector";
 import type { StatusStreamChunk } from "@/core/types";
+import {
+  TOOL_DISPLAY_CONFIG,
+  type StatusMessageFormat,
+} from "@/config/web";
 import { formatElapsedTime, trimToolPath } from "./status";
 
 type TaskStatus = "pending" | "in_progress" | "complete" | "error";
@@ -47,7 +51,6 @@ type TaskRow = RowFingerprint & {
 };
 
 const MAX_TODO_ROWS = 5;
-const MAX_TOOL_ROWS = 6;
 
 function mapToolStatus(status: string): TaskStatus {
   switch (status) {
@@ -149,14 +152,17 @@ function buildContextRow(runMode: string | undefined, workingPath: string): Task
 
 function buildCurrentStatusRow(state: SessionMessageState): TaskRow {
   const phase = state.phaseStatus?.trim() || "Working";
-  const detail = state.thinkingText?.trim() || state.currentText?.trim();
+  const thinking = state.thinkingText?.trim();
+  const detail = thinking && /\bthinking\b/i.test(phase)
+    ? `${phase}: ${thinking}`
+    : phase;
   const waitingForUser = /\b(waiting|question|approval|permission|confirm|choose|select|input)\b/i.test(phase);
   const finalizing = /\b(done|complete|completed|finalizing|finalized)\b/i.test(phase);
   return {
     id: "meta:phase",
     title: "Current status",
     status: waitingForUser ? "in_progress" : finalizing ? "complete" : "in_progress",
-    details: truncateField(detail ? `${phase}: ${detail}` : phase, 220),
+    details: truncateField(detail, 220),
   };
 }
 
@@ -228,9 +234,17 @@ function fingerprintsEqual(a: RowFingerprint, b: RowFingerprint): boolean {
   );
 }
 
-function selectRecentTools(tools: SessionTool[]): SessionTool[] {
+function selectRecentTools(
+  tools: SessionTool[],
+  statusMessageFormat: StatusMessageFormat
+): { hiddenCount: number; visibleTools: SessionTool[] } {
+  const { itemLimit } = TOOL_DISPLAY_CONFIG[statusMessageFormat];
   const visible = tools.filter((tool) => tool.id);
-  return visible.slice(Math.max(0, visible.length - MAX_TOOL_ROWS));
+  const hiddenCount = Math.max(0, visible.length - itemLimit);
+  return {
+    hiddenCount,
+    visibleTools: hiddenCount > 0 ? visible.slice(-itemLimit) : visible,
+  };
 }
 
 function aggregateStatuses(statuses: TaskStatus[]): TaskStatus {
@@ -281,10 +295,18 @@ function buildTasksRow(todos: SessionTodo[]): TaskRow {
   };
 }
 
-function buildToolsRow(tools: SessionTool[], workingPath: string): TaskRow {
-  const visibleTools = selectRecentTools(tools);
-  const details = visibleTools.length > 0
-    ? visibleTools.map((tool) => `- ${formatToolStatus(tool.status)}: ${buildTaskTitle(tool, workingPath)}`).join("\n")
+function buildToolsRow(
+  tools: SessionTool[],
+  workingPath: string,
+  statusMessageFormat: StatusMessageFormat
+): TaskRow {
+  const { hiddenCount, visibleTools } = selectRecentTools(tools, statusMessageFormat);
+  const toolLines = visibleTools.map((tool) => `- ${formatToolStatus(tool.status)}: ${buildTaskTitle(tool, workingPath)}`);
+  const details = toolLines.length > 0
+    ? [
+      ...(hiddenCount > 0 ? [`- done: previous ${hiddenCount} tool calls completed`] : []),
+      ...toolLines,
+    ].join("\n")
     : "- pending: no active tool call";
   return {
     id: "group:tools",
@@ -295,12 +317,12 @@ function buildToolsRow(tools: SessionTool[], workingPath: string): TaskRow {
 }
 
 function buildTaskRows(input: StatusStreamDiffInput): TaskRow[] {
-  const { state, workingPath, runMode } = input;
+  const { state, workingPath, runMode, statusMessageFormat = "medium" } = input;
   return [
     buildContextRow(runMode, workingPath),
     buildCurrentStatusRow(state),
     buildTasksRow(state.todos),
-    buildToolsRow(state.tools, workingPath),
+    buildToolsRow(state.tools, workingPath, statusMessageFormat),
   ];
 }
 
@@ -309,6 +331,7 @@ export type StatusStreamDiffInput = {
   workingPath: string;
   startedAt: number;
   runMode?: string;
+  statusMessageFormat?: StatusMessageFormat;
 };
 
 export type StatusStreamDiffResult = {
@@ -346,7 +369,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
   let lastPlanTitle: string | undefined;
 
   return {
-    diff({ state, workingPath, startedAt, runMode }) {
+    diff({ state, workingPath, startedAt, runMode, statusMessageFormat }) {
       const chunks: StatusStreamChunk[] = [];
       // Pending updates accumulated this tick. Only applied to
       // lastFingerprints / lastPlanTitle when commit() runs, so a network
@@ -363,7 +386,7 @@ export function createStatusStreamDiffer(): StatusStreamDiffer {
         planTitleChanged = true;
       }
 
-      for (const row of buildTaskRows({ state, workingPath, startedAt, runMode })) {
+      for (const row of buildTaskRows({ state, workingPath, startedAt, runMode, statusMessageFormat })) {
         const { id, ...fp } = row;
         const prev = lastFingerprints.get(id);
         if (prev && fingerprintsEqual(prev, fp)) continue;

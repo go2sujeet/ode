@@ -764,6 +764,7 @@ export async function runOpenRequest(
     : null;
   const providerId = deps.agent.getProviderForSession(sessionId);
   const runMode = options?.agent === "plan" ? "plan mode" : "build mode";
+  const statusMessageFormat = getUserGeneralSettings().defaultStatusMessageFormat;
 
   // One differ instance per run; keeps last-seen fingerprints so we only
   // send chunks for tools whose shape actually changed.
@@ -860,7 +861,7 @@ export async function runOpenRequest(
       request,
       workingPath: cwd,
       state: currentState,
-      statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
+      statusMessageFormat,
     });
     const legacyStatusTs = await deps.im.sendMessage(
       context.channelId,
@@ -949,6 +950,7 @@ export async function runOpenRequest(
       workingPath: cwd,
       startedAt: request.startedAt,
       runMode,
+      statusMessageFormat,
     });
     try {
       if (chunks.length > 0) {
@@ -1083,6 +1085,7 @@ export async function runOpenRequest(
           workingPath: cwd,
           startedAt: request.startedAt,
           runMode,
+          statusMessageFormat,
         });
         if (chunks.length > 0) {
           try {
@@ -1144,7 +1147,7 @@ export async function runOpenRequest(
         request,
         workingPath: cwd,
         state: currentState,
-        statusMessageFormat: getUserGeneralSettings().defaultStatusMessageFormat,
+        statusMessageFormat,
       });
       if (!request.statusFrozen) {
         if (now - lastLegacyStatusUpdateAt < legacyProgressIntervalMs) {

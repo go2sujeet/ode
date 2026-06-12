@@ -173,6 +173,27 @@ describe("createStatusStreamDiffer", () => {
     expect(chunks).toContainEqual({ type: "task_update", id: "meta:phase", title: "Current status", status: "in_progress", details: "Running tool: bash" });
   });
 
+  it("does not render cumulative assistant draft text as the current status", () => {
+    const differ = createStatusStreamDiffer();
+    const { chunks } = differ.diff({
+      state: baseState({
+        phaseStatus: "Working",
+        currentText: "Working: first update. Working: second update. Working: third update.",
+      }),
+      workingPath: cwd,
+      startedAt: 0,
+    });
+
+    const phaseChunk = chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "meta:phase");
+    expect(phaseChunk).toMatchObject({
+      type: "task_update",
+      id: "meta:phase",
+      title: "Current status",
+      status: "in_progress",
+      details: "Working",
+    });
+  });
+
   it("renders todos ahead of recent tool slots", () => {
     const differ = createStatusStreamDiffer();
     const { chunks } = differ.diff({
@@ -222,6 +243,11 @@ describe("createStatusStreamDiffer", () => {
       .filter((chunk) => chunk.id === "group:tools")
       .map((chunk) => chunk.id);
     expect(firstToolIds).toEqual(["group:tools"]);
+    const firstToolChunk = first.chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "group:tools");
+    const firstDetails = firstToolChunk?.type === "task_update" ? firstToolChunk.details ?? "" : "";
+    expect(firstDetails).not.toContain("previous");
+    expect(firstDetails).toContain("echo 1");
+    expect(firstDetails).toContain("echo 6");
 
     const second = differ.diff({
       state: baseState({ tools: makeTools(7) }),
@@ -233,6 +259,48 @@ describe("createStatusStreamDiffer", () => {
       .filter((chunk) => chunk.id === "group:tools")
       .map((chunk) => chunk.id);
     expect(secondToolIds).toEqual(["group:tools"]);
+    const secondToolChunk = second.chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "group:tools");
+    const secondDetails = secondToolChunk?.type === "task_update" ? secondToolChunk.details ?? "" : "";
+    expect(secondDetails).toContain("- done: previous 1 tool calls completed");
+    expect(secondDetails).not.toContain("echo 1");
+    expect(secondDetails).toContain("echo 2");
+    expect(secondDetails).toContain("echo 7");
+  });
+
+  it("uses the configured live-status format limit for Slack AI Card tool rows", () => {
+    const makeTools = (count: number) => Array.from({ length: count }, (_, index) => ({
+      id: `tool-${index + 1}`,
+      name: "bash",
+      status: "completed",
+      input: { command: `echo ${index + 1}` },
+    }));
+
+    const minimum = createStatusStreamDiffer().diff({
+      state: baseState({ tools: makeTools(6) }),
+      workingPath: cwd,
+      startedAt: 0,
+      statusMessageFormat: "minimum",
+    });
+    const minimumToolChunk = minimum.chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "group:tools");
+    const minimumDetails = minimumToolChunk?.type === "task_update" ? minimumToolChunk.details ?? "" : "";
+    expect(minimumDetails).toContain("- done: previous 2 tool calls completed");
+    expect(minimumDetails).not.toContain("echo 1");
+    expect(minimumDetails).not.toContain("echo 2");
+    expect(minimumDetails).toContain("echo 3");
+    expect(minimumDetails).toContain("echo 6");
+
+    const aggressive = createStatusStreamDiffer().diff({
+      state: baseState({ tools: makeTools(9) }),
+      workingPath: cwd,
+      startedAt: 0,
+      statusMessageFormat: "aggressive",
+    });
+    const aggressiveToolChunk = aggressive.chunks.find((chunk) => chunk.type === "task_update" && chunk.id === "group:tools");
+    const aggressiveDetails = aggressiveToolChunk?.type === "task_update" ? aggressiveToolChunk.details ?? "" : "";
+    expect(aggressiveDetails).toContain("- done: previous 1 tool calls completed");
+    expect(aggressiveDetails).not.toContain("echo 1");
+    expect(aggressiveDetails).toContain("echo 2");
+    expect(aggressiveDetails).toContain("echo 9");
   });
 
   it("builds a plain-text final title for Slack plan_update chunks", () => {
