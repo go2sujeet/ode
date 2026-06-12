@@ -40,14 +40,17 @@ async function waitFor(check: () => boolean, timeoutMs = 1500): Promise<void> {
   }
 }
 
-async function withFastMessageUpdates<T>(run: () => Promise<T>): Promise<T> {
+async function withMessageUpdateInterval<T>(
+  intervalMs: number,
+  run: () => Promise<T>
+): Promise<T> {
   const current = loadOdeConfig();
   const previousValue = current.user.IM_MESSAGE_UPDATE_INTERVAL_MS;
   updateOdeConfig((config) => ({
     ...config,
     user: {
       ...config.user,
-      IM_MESSAGE_UPDATE_INTERVAL_MS: 250,
+      IM_MESSAGE_UPDATE_INTERVAL_MS: intervalMs,
     },
   }));
 
@@ -62,6 +65,10 @@ async function withFastMessageUpdates<T>(run: () => Promise<T>): Promise<T> {
       },
     }));
   }
+}
+
+async function withFastMessageUpdates<T>(run: () => Promise<T>): Promise<T> {
+  return withMessageUpdateInterval(250, run);
 }
 
 function createFakeIm(logs: {
@@ -119,6 +126,7 @@ function createFakeAgent(params?: {
   delayMs?: number;
   responseText?: string;
   errorMessage?: string;
+  emitToolEvent?: boolean;
 }) {
   const sentPrompts: string[] = [];
   const supportsEventStream = Boolean(params?.supportsEventStream);
@@ -143,6 +151,25 @@ function createFakeAgent(params?: {
     subscribeToSession: (_sessionId, handler) => {
       if (supportsEventStream) {
         const delay = params?.streamStopAfterMs ?? 10;
+        if (params?.emitToolEvent) {
+          setTimeout(() => {
+            handler({
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "tool_1",
+                  sessionID: "session-resilience",
+                  type: "tool",
+                  tool: "Read",
+                  state: {
+                    status: "running",
+                    input: { filePath: "/tmp/repo/README.md" },
+                  },
+                },
+              },
+            });
+          }, 10);
+        }
         const timer = setTimeout(() => {
           handler({
             type: "message.part.updated",
@@ -484,6 +511,184 @@ describe("core runtime resilience e2e", () => {
 
     deleteSession(channelId, threadId);
   });
+
+  it("recreates the Slack AI card when append finds a stale stream", async () => {
+    process.env.ODE_SLACK_STATUS_STREAMING = "1";
+    const logs = {
+      sends: [] as Array<{ channelId: string; threadId: string; text: string; messageTs: string }>,
+      starts: [] as Array<{ channelId: string; threadId: string; messageTs: string }>,
+      appends: [] as Array<{ channelId: string; messageTs: string; chunks: unknown[] }>,
+      stops: [] as Array<{ channelId: string; messageTs: string }>,
+      deletes: [] as Array<{ channelId: string; messageTs: string }>,
+    };
+    let nextSendTs = 0;
+    let nextStreamTs = 0;
+    let failedFirstAppend = false;
+    const im: IMAdapter = {
+      sendMessage: async (channelId, threadId, text) => {
+        nextSendTs += 1;
+        const messageTs = `ts-${nextSendTs}`;
+        logs.sends.push({ channelId, threadId, text, messageTs });
+        return messageTs;
+      },
+      updateMessage: async () => {},
+      deleteMessage: async (channelId, messageTs) => {
+        logs.deletes.push({ channelId, messageTs });
+      },
+      fetchThreadHistory: async () => null,
+      buildAgentContext: async () => ({ slack: { channelId: "C", threadId: "T", userId: "U" } }),
+      startStatusStream: async (channelId, threadId) => {
+        nextStreamTs += 1;
+        const messageTs = `stream-${nextStreamTs}`;
+        logs.starts.push({ channelId, threadId, messageTs });
+        return messageTs;
+      },
+      appendStatusStream: async (channelId, messageTs, chunks) => {
+        if (!failedFirstAppend && messageTs === "stream-1") {
+          failedFirstAppend = true;
+          throw new Error("message_not_in_streaming_state");
+        }
+        logs.appends.push({ channelId, messageTs, chunks });
+      },
+      stopStatusStream: async (channelId, messageTs) => {
+        logs.stops.push({ channelId, messageTs });
+      },
+    };
+    const { agent } = createFakeAgent({
+      supportsEventStream: true,
+      emitToolEvent: true,
+      streamStopAfterMs: 2500,
+      delayMs: 2600,
+      responseText: "finished after stream recreation",
+    });
+    const runtime = createCoreRuntime({ platform: "slack", im, agent });
+    const channelId = uniqueId("CE2E-STREAM-STALE");
+    const threadId = uniqueId("TE2E-STREAM-STALE");
+
+    await runtime.handleInboundEvent(toInboundEvent({
+      channelId,
+      threadId,
+      userId: "UE2E-stream-stale",
+      messageId: uniqueId("ME2E-stream-stale"),
+      text: "trigger stale stream recovery",
+    }));
+
+    await waitFor(
+      () => logs.stops.some((entry) => entry.messageTs === "stream-2"),
+      5000
+    );
+
+    expect(logs.starts.map((entry) => entry.messageTs)).toEqual(["stream-1", "stream-2"]);
+    expect(logs.deletes).toContainEqual({ channelId, messageTs: "stream-1" });
+    expect(logs.appends.some((entry) => entry.messageTs === "stream-2")).toBe(true);
+    const stream2Chunks = logs.appends
+      .filter((entry) => entry.messageTs === "stream-2")
+      .flatMap((entry) => entry.chunks);
+    expect(stream2Chunks).toContainEqual(expect.objectContaining({
+      id: "result",
+      status: "complete",
+      title: "Result",
+      type: "task_update",
+    }));
+    expect(logs.stops).toContainEqual({ channelId, messageTs: "stream-2" });
+
+    deleteSession(channelId, threadId);
+  }, 10_000);
+
+  it("cleans up a replacement Slack AI card when seeding it fails", async () => {
+    await withMessageUpdateInterval(5_000, async () => {
+      process.env.ODE_SLACK_STATUS_STREAMING = "1";
+      const logs = {
+        sends: [] as Array<{ channelId: string; threadId: string; text: string; messageTs: string }>,
+        starts: [] as Array<{ channelId: string; threadId: string; messageTs: string }>,
+        appends: [] as Array<{ channelId: string; messageTs: string; chunks: unknown[] }>,
+        stops: [] as Array<{ channelId: string; messageTs: string }>,
+        deletes: [] as Array<{ channelId: string; messageTs: string }>,
+        updates: [] as Array<{ channelId: string; messageTs: string; text: string }>,
+      };
+      let nextSendTs = 0;
+      let nextStreamTs = 0;
+      let failedFirstAppend = false;
+      const im: IMAdapter = {
+        sendMessage: async (channelId, threadId, text) => {
+          nextSendTs += 1;
+          const messageTs = `ts-${nextSendTs}`;
+          logs.sends.push({ channelId, threadId, text, messageTs });
+          return messageTs;
+        },
+        updateMessage: async (channelId, messageTs, text) => {
+          logs.updates.push({ channelId, messageTs, text });
+        },
+        deleteMessage: async (channelId, messageTs) => {
+          logs.deletes.push({ channelId, messageTs });
+        },
+        fetchThreadHistory: async () => null,
+        buildAgentContext: async () => ({ slack: { channelId: "C", threadId: "T", userId: "U" } }),
+        startStatusStream: async (channelId, threadId) => {
+          nextStreamTs += 1;
+          const messageTs = `stream-${nextStreamTs}`;
+          logs.starts.push({ channelId, threadId, messageTs });
+          return messageTs;
+        },
+        appendStatusStream: async (channelId, messageTs, chunks) => {
+          if (!failedFirstAppend && messageTs === "stream-1") {
+            failedFirstAppend = true;
+            throw new Error("message_not_in_streaming_state");
+          }
+          if (messageTs === "stream-2") {
+            throw new Error("rate_limited while seeding replacement stream");
+          }
+          logs.appends.push({ channelId, messageTs, chunks });
+        },
+        stopStatusStream: async (channelId, messageTs) => {
+          logs.stops.push({ channelId, messageTs });
+        },
+      };
+      const { agent } = createFakeAgent({
+        supportsEventStream: true,
+        emitToolEvent: true,
+        streamStopAfterMs: 2500,
+        delayMs: 3800,
+        responseText: "finished after replacement fallback",
+      });
+      const runtime = createCoreRuntime({ platform: "slack", im, agent });
+      const channelId = uniqueId("CE2E-STREAM-SEED-FAIL");
+      const threadId = uniqueId("TE2E-STREAM-SEED-FAIL");
+
+      await runtime.handleInboundEvent(toInboundEvent({
+        channelId,
+        threadId,
+        userId: "UE2E-stream-seed-fail",
+        messageId: uniqueId("ME2E-stream-seed-fail"),
+        text: "trigger replacement stream seed failure",
+      }));
+
+      await waitFor(() => {
+        const savedRequest = loadSession(channelId, threadId)?.activeRequest;
+        return Boolean(
+          savedRequest?.statusStreamActive === false &&
+            savedRequest.statusMessageTs &&
+            logs.sends.some((entry) => entry.messageTs === savedRequest.statusMessageTs)
+        );
+      }, 12_000);
+
+      const savedRequest = loadSession(channelId, threadId)?.activeRequest;
+      const fallbackMessage = logs.sends.find(
+        (entry) => entry.messageTs === savedRequest?.statusMessageTs
+      );
+      await sleep(1_200);
+      expect(logs.starts.map((entry) => entry.messageTs)).toEqual(["stream-1", "stream-2"]);
+      expect(logs.deletes).toContainEqual({ channelId, messageTs: "stream-1" });
+      expect(logs.stops).toContainEqual({ channelId, messageTs: "stream-2" });
+      expect(logs.deletes).toContainEqual({ channelId, messageTs: "stream-2" });
+      expect(savedRequest?.statusStreamActive).toBe(false);
+      expect(savedRequest?.statusStreamTs).toBeUndefined();
+      expect(fallbackMessage).toBeDefined();
+      expect(logs.updates.some((entry) => entry.messageTs === fallbackMessage?.messageTs)).toBe(false);
+
+      deleteSession(channelId, threadId);
+    });
+  }, 20_000);
 
   it("does not crash when the initial status send throws", async () => {
     const logs = { sends: [], updates: [] } as {
