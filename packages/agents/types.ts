@@ -13,13 +13,15 @@ export interface OpenCodeOptions {
 }
 
 export interface PlatformContext {
-  platform?: "slack" | "discord" | "lark";
+  platform?: "slack" | "discord" | "lark" | "github";
   channelId: string;
   threadId: string;
   userId: string;
   threadHistory?: string;
   hasGitHubToken?: boolean;
   channelSystemMessage?: string;
+  issueTitle?: string;
+  repoFullName?: string;
 }
 
 // Backward-compatible alias: OpenCode transport still expects `slack` key.

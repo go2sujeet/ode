@@ -1,4 +1,4 @@
-export type BotPlatform = "slack" | "discord" | "lark";
+export type BotPlatform = "slack" | "discord" | "lark" | "github";
 
 export type BotKey = Readonly<{
   platform: BotPlatform;
