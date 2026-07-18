@@ -99,10 +99,54 @@ ODE is a project that connects many AI coding agents with IM message apps. When 
 - Prefer `Bun.file` over `node:fs` for new file IO where practical, while respecting existing local style.
 
 ## Skills
-- Available repo skills include `agent-browser`, `slack-developer-researcher`, `opencode-developer-researcher`, `codex-cli-reference`, `qwen-code-skill`, `goose-cli-skill`, `kimi-cli-skill`, `kiro-cli-skill`, and `kilo-cli-skill`.
+- Available repo skills span web development, UI/design, testing, code quality, docs, DevOps, and productivity.
+- Platform skills: `agent-browser`, `slack-developer-researcher`, `opencode-developer-researcher`, `codex-cli-reference`, `qwen-code-skill`, `goose-cli-skill`, `kimi-cli-skill`, `kiro-cli-skill`, `kilo-cli-skill`.
 - Use `agent-browser` for browser automation tasks.
 - Use the matching CLI skill when changing or debugging an agent provider integration.
 - If you discover new Slack/OpenCode/CLI-agent updates during development, update the matching skill doc under `.agents/skills/` (mirrored via `.claude/skills/` when present).
+
+### Ponytail (YAGNI, DRY, minimal code)
+- `ponytail` — forces laziest solution: stdlib > custom code, YAGNI, one line > fifty
+- `ponytail-review` — code review for over-engineering: what to delete, simplify, or replace
+- `ponytail-audit` — whole-repo over-engineering audit: ranked deletion candidates
+- `ponytail-help` — quick-reference card for all ponytail modes/commands
+- `ponytail-debt` — harvest `ponytail:` comments into a debt ledger
+- `ponytail-gain` — measured ponytail impact scoreboard (less code, less cost, more speed)
+
+### Caveman (ultra-compressed communication)
+- `caveman` — ultra-compressed mode, cuts output tokens ~65%. Levels: lite, full, ultra, wenyan-*
+- `caveman-commit` — compressed Conventional Commits messages (subject ≤50 chars)
+- `caveman-compress` — compress natural language memory files into caveman format
+- `caveman-help` — quick-reference card for all caveman modes/commands
+- `caveman-review` — ultra-compressed code review comments (one line: location, problem, fix)
+- `caveman-stats` — real token usage & savings for current session
+
+### UI/Design (cutting-edge, no mediocre UI)
+- `emil-design-eng` — design engineering patterns by Emil Kowalski (shadcn/ui creator)
+- `frontend-design` — Anthropics frontend design guidelines
+- `web-design-guidelines` — Vercel web design guidelines
+- `ui-ux-pro-max` — next-level UI/UX
+- `design-taste-frontend` + `high-end-visual-design` + `minimalist-ui` — design taste and visual quality
+- `image-to-code` + `imagegen-frontend-web` — convert images/designs to frontend code
+- `shadcn` — shadcn/ui component installation and usage
+- `vercel-react-best-practices` + `vercel-composition-patterns` — React/Next.js composition
+- `tailwind-design-system` — Tailwind CSS design system patterns
+- `design-motion-principles` + `motion-designer` + `web-motion-design` + `motion` — animation and motion principles
+- `remotion-best-practices` — programmatic video/motion for the web
+
+### Other
+- `agent-browser` — browser automation CLI for AI agents
+- `cavecrew` — delegate to caveman-style subagents (investigator, builder, reviewer) with compressed output
+- `code-review` — review changes since a fixed point (Standards + Spec axes)
+- `diagnosing-bugs` — diagnosis loop for hard bugs and performance regressions
+- `improve-codebase-architecture` — scan codebase for deepening opportunities, visual HTML report
+- `resolving-merge-conflicts` — guide for resolving in-progress git merge/rebase conflicts
+- `tdd` — test-driven development (red-green-refactor)
+- `create-agentsmd` — generate AGENTS.md for a repository
+- `setup-pre-commit` — set up Husky pre-commit hooks with lint-staged, typecheck, tests
+- `using-git-worktrees` — isolated workspace via native tools or git worktree fallback
+- `docx` + `pptx` + `pdf` — document manipulation skills
+- Load any skill via `npx skills add <owner/repo@skill>` or reference from `.agents/skills/`.
 
 ## Agent Live Status Workflow
 - Use `packages/live-status-harness/fixed-prompt.md` as the baseline stream-capture prompt.
