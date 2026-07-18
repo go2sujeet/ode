@@ -54,8 +54,9 @@ function getClientForBaseUrl(baseUrl: string): OpencodeClient {
 }
 
 function getServerCommand(): { command: string; args: string[] } {
+  const command = typeof Bun !== "undefined" && Bun.which("opencode") || "opencode";
   return {
-    command: "opencode",
+    command,
     args: ["serve", "--hostname", "127.0.0.1", "--port", "0", "--print-logs"],
   };
 }
@@ -181,10 +182,16 @@ async function ensureServerStarted(): Promise<void> {
   const { command, args } = getServerCommand();
   runtimeState.serverStartPromise = (async () => {
     log.debug("Starting managed OpenCode server", { command: [command, ...args].join(" ") });
-    const processHandle = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env },
-    });
+    let processHandle: ChildProcess;
+    try {
+      processHandle = spawn(command, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env },
+      });
+    } catch (err) {
+      log.error("Failed to start managed OpenCode server - is opencode CLI installed?", { command, error: String(err) });
+      throw err;
+    }
     runtimeState.managedServerProcess = processHandle;
 
     const discoveredUrl = new Promise<string>((resolve, reject) => {
