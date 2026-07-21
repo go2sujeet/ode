@@ -2,7 +2,7 @@
 
 [Official Doc](https://ode.fun/docs/quickstart)
 
-Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Codex and much more) to your favorite chat apps (Slack, Discord, and Lark). Perfect for personal or team developers working on the go.
+Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Codex and much more) to your favorite chat apps (Slack, Discord, Lark, and GitHub). Perfect for personal or team developers working on the go.
 
 ![Ode demo](static/ode-demo.png)
 
@@ -21,7 +21,7 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
 * **Channel based settings** lets you configure multiple work directories easily in one machine and one slack workspace.
 * **Work in parallel**, multiple threads can work together and isolated by worktree, multiple channels can also work together, just send messages.
 * **Team focused**, just allow people to join channel to give them permissions to work together.
-* Ode supports multiple chat tools including Slack, Discord, and Lark.
+* Ode supports multiple chat tools including Slack, Discord, Lark, and GitHub.
 
 ## Setup
 
@@ -32,6 +32,7 @@ Ode is a agent tool that bridges your coding agents (OpenCode, Claude Code, Code
   - **Slack** - follow [this doc](https://ode.fun/docs/chat-app-setup/slack) to get your APP TOKEN (xapp...) and BOT TOKEN (xbot..).
   - **Discord** - follow [this doc](https://ode.fun/docs/chat-app-setup/discord) to get your BOT TOKEN.
   - **飞书** - Just CN version for now, as Lark global is not supportting long connection with socket yet. Prepare the larkAppId and larkAppSecret.
+  - **GitHub** - see [`packages/ims/github/README.md`](packages/ims/github/README.md) for webhook and PAT setup.
 
 ### Installation and Running
 
@@ -73,6 +74,7 @@ Settings UI can be accessible via http://127.0.0.1:9293 or use `/setting` comman
 | Slack | <img src="https://img.shields.io/badge/Slack-111111?style=for-the-badge&logo=slack&logoColor=white" alt="Slack logo" /> | [slack.com](https://slack.com/) |
 | Discord | <img src="https://img.shields.io/badge/Discord-111111?style=for-the-badge&logo=discord&logoColor=white" alt="Discord logo" /> | [discord.com](https://discord.com/) |
 | 飞书（CN） | <img src="https://img.shields.io/badge/Lark-111111?style=for-the-badge&logo=lark&logoColor=white" alt="Lark logo" /> | [www.larksuite.com](https://www.larksuite.com/) |
+| GitHub | <img src="https://img.shields.io/badge/GitHub-111111?style=for-the-badge&logo=github&logoColor=white" alt="GitHub logo" /> | [github.com](https://github.com/) |
 
 ## Usage
 

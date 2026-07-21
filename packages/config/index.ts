@@ -49,6 +49,8 @@ export {
   setGitHubInfoForUser,
   setUserGeneralSettings,
   clearGitHubInfoForUser,
+  getGitHubWorkspaces,
+  getGitHubTargetRepos,
   setChannelModel,
   setChannelAgentProvider,
   ODE_CONFIG_FILE,

@@ -5,7 +5,7 @@ import { loadOdeConfig } from "@/config/local/ode-store";
 // a user-supplied channel locator into a concrete `(platform, workspaceId,
 // channelId)` tuple backed by the persisted Ode config.
 
-export type ResolvedChannelPlatform = "slack" | "discord" | "lark";
+export type ResolvedChannelPlatform = "slack" | "discord" | "lark" | "github";
 
 export type ResolvedChannel = {
   platform: ResolvedChannelPlatform;

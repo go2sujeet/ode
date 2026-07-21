@@ -7,6 +7,8 @@ import {
   stopDiscordRuntime,
   startLarkRuntime,
   stopLarkRuntime,
+  startGitHubRuntime,
+  stopGitHubRuntime,
   deliveryStats,
 } from "@/ims";
 import { type ChildProcess } from "child_process";
@@ -147,6 +149,8 @@ async function refreshNonSlackRuntimes(reason: string): Promise<void> {
   await startDiscordRuntime(reason);
   await stopLarkRuntime("config change");
   await startLarkRuntime(reason);
+  await stopGitHubRuntime("config change");
+  await startGitHubRuntime(reason);
 }
 
 async function refreshSlackRuntime(reason: string): Promise<void> {
@@ -309,6 +313,7 @@ async function main(): Promise<void> {
       startSlackRuntime("startup"),
       startDiscordRuntime("startup"),
       startLarkRuntime("startup"),
+      startGitHubRuntime("startup"),
     ]);
   });
   await timeStartupStep("cron scheduler", () => startCronJobScheduler());
@@ -337,6 +342,7 @@ async function main(): Promise<void> {
       await stopSlackRuntime("shutdown");
       await stopDiscordRuntime("shutdown");
       await stopLarkRuntime("shutdown");
+      await stopGitHubRuntime("shutdown");
       if (webDevServer) {
         webDevServer.kill();
         webDevServer = null;

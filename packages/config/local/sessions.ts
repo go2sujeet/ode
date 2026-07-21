@@ -83,7 +83,7 @@ export interface PersistedSession {
   channelId: string;
   threadId: string;
   providerId?: AgentProviderId;
-  platform?: "slack" | "discord" | "lark";
+  platform?: "slack" | "discord" | "lark" | "github";
   workingDirectory: string;
   threadOwnerUserId?: string;
   participantBotIds?: string[];
@@ -497,7 +497,7 @@ export async function loadAllSessionsAsync(): Promise<PersistedSession[]> {
 }
 
 export async function getSessionsWithPendingRequests(
-  platform?: "slack" | "discord" | "lark"
+  platform?: "slack" | "discord" | "lark" | "github"
 ): Promise<PersistedSession[]> {
   const sessions = await loadAllSessionsAsync();
   return sessions.filter((s) => {

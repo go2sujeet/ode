@@ -19,7 +19,7 @@ import { loadOdeConfig } from "./ode-store";
 // We keep at most `MAX_THREADS` threads; pruning cascades to their details.
 // ---------------------------------------------------------------------------
 
-export type PlatformId = "slack" | "discord" | "lark";
+export type PlatformId = "slack" | "discord" | "lark" | "github";
 
 export type MessageDetailKind =
   | "user_prompt"

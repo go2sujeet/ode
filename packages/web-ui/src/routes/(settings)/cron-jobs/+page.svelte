@@ -4,7 +4,7 @@
   import { Badge, Button, Card, Input, Label, Select, Textarea } from "$lib/components/ui";
   import { locale } from "$lib/i18n";
 
-  type CronJobPlatform = "slack" | "discord" | "lark";
+  type CronJobPlatform = "slack" | "discord" | "lark" | "github";
   type CronJobRunStatus = "idle" | "running" | "success" | "failed";
 
   type CronJobRecord = {

@@ -28,12 +28,14 @@
           ? "workspace"
           : "general"
   );
-  let pendingWorkspaceType = $state<"slack" | "discord" | "lark">("slack");
+  let pendingWorkspaceType = $state<"slack" | "discord" | "lark" | "github">("slack");
   let pendingSlackAppToken = $state("");
   let pendingSlackBotToken = $state("");
   let pendingDiscordBotToken = $state("");
   let pendingLarkAppKey = $state("");
   let pendingLarkAppSecret = $state("");
+  let pendingGitHubToken = $state("");
+  let pendingGitHubBotName = $state("");
   let isAddWorkspaceDialogOpen = $state(false);
 
   const selectedWorkspace = $derived(getSelectedWorkspace($page.params.workspaceName ?? "", $localSettingStore.config.workspaces));
@@ -48,6 +50,7 @@
     if (pendingWorkspaceType === "lark") {
       return pendingLarkAppKey.trim().length > 0 && pendingLarkAppSecret.trim().length > 0;
     }
+    if (pendingWorkspaceType === "github") return pendingGitHubToken.trim().length > 0;
     return pendingSlackAppToken.trim().length > 0 && pendingSlackBotToken.trim().length > 0;
   });
 
@@ -56,16 +59,20 @@
       ? await localSettingStore.discoverDiscordWorkspace(pendingDiscordBotToken)
       : pendingWorkspaceType === "lark"
         ? await localSettingStore.discoverLarkWorkspace(pendingLarkAppKey, pendingLarkAppSecret)
-        : await localSettingStore.discoverSlackWorkspace(
-          pendingSlackAppToken,
-          pendingSlackBotToken
-        );
+        : pendingWorkspaceType === "github"
+          ? await localSettingStore.discoverGitHubWorkspace(pendingGitHubToken, pendingGitHubBotName || "ode")
+          : await localSettingStore.discoverSlackWorkspace(
+            pendingSlackAppToken,
+            pendingSlackBotToken
+          );
     if (!workspace) return;
     pendingSlackAppToken = "";
     pendingSlackBotToken = "";
     pendingDiscordBotToken = "";
     pendingLarkAppKey = "";
     pendingLarkAppSecret = "";
+    pendingGitHubToken = "";
+    pendingGitHubBotName = "";
     pendingWorkspaceType = "slack";
     isAddWorkspaceDialogOpen = false;
     await goto(getWorkspacePath(workspace));
@@ -141,9 +148,10 @@
     void goto("/", { replaceState: true });
   }
 
-  function getWorkspaceLogo(type: "slack" | "discord" | "lark"): string {
+  function getWorkspaceLogo(type: "slack" | "discord" | "lark" | "github"): string {
     if (type === "discord") return "/discord-logo.svg";
     if (type === "lark") return "/lark-logo.png";
+    if (type === "github") return "/github-logo.svg";
     return "/slack-logo.svg";
   }
 
@@ -337,6 +345,7 @@
             <option value="slack">Slack</option>
             <option value="discord">Discord</option>
             <option value="lark">Lark</option>
+            <option value="github">GitHub</option>
           </Select>
         </div>
 
@@ -373,6 +382,28 @@
               on:input={onPendingDiscordBotTokenInput}
               autocomplete="new-password"
               placeholder="Bot token"
+            />
+          </div>
+        {:else if pendingWorkspaceType === "github"}
+          <div class="grid gap-2">
+            <Label for="new-workspace-github-token">GitHub Token</Label>
+            <Input
+              id="new-workspace-github-token"
+              type="password"
+              value={pendingGitHubToken}
+              on:input={(e) => (pendingGitHubToken = (e.currentTarget as HTMLInputElement).value)}
+              autocomplete="new-password"
+              placeholder="ghp_..."
+            />
+          </div>
+          <div class="grid gap-2">
+            <Label for="new-workspace-github-bot-name">Bot Name</Label>
+            <Input
+              id="new-workspace-github-bot-name"
+              type="text"
+              value={pendingGitHubBotName}
+              on:input={(e) => (pendingGitHubBotName = (e.currentTarget as HTMLInputElement).value)}
+              placeholder="ode"
             />
           </div>
         {:else}

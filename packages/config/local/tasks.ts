@@ -18,7 +18,7 @@ import { loadOdeConfig } from "./ode-store";
 // so persistence, WAL, and test helpers stay consistent across the codebase.
 // ---------------------------------------------------------------------------
 
-export type TaskPlatform = "slack" | "discord" | "lark";
+export type TaskPlatform = "slack" | "discord" | "lark" | "github";
 export type TaskStatus = "pending" | "running" | "success" | "failed" | "cancelled";
 
 export type TaskRecord = {

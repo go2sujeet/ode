@@ -1,5 +1,6 @@
 import type { Elysia } from "elysia";
-import { uploadDiscordFile, uploadLarkFile, uploadSlackFile } from "@/ims";
+import { uploadDiscordFile, uploadLarkFile, uploadSlackFile, createComment, parseRepoFullName } from "@/ims";
+import { getGitHubWorkspaces, getGitHubTargetRepos } from "@/config";
 import { attachDiscordBotToken, attachLarkCredentials } from "../config-validation";
 import { jsonResponse, readJsonBody, runRoute } from "../http";
 import { resolveChannelLocator } from "./channel-resolver";
@@ -103,6 +104,42 @@ export function registerSendRoutes(app: Elysia): void {
           if (message === "Channel not found in configured workspaces") return 404;
           if (message.includes("not configured")) return 400;
           if (message.startsWith("File not found")) return 400;
+          return 500;
+        },
+      },
+    );
+  });
+
+  app.post("/api/send/github-comment", async ({ request }: { request: Request }) => {
+    return runRoute(
+      async () => {
+        const body = await readJsonBody(request);
+        const repo = getString(body, "repo");
+        const issueNumber = typeof body.issueNumber === "number" ? body.issueNumber : parseInt(getString(body, "issueNumber"), 10);
+        const messageBody = getString(body, "body");
+        if (!repo) throw new Error("repo is required (owner/repo)");
+        if (!Number.isFinite(issueNumber)) throw new Error("issueNumber is required");
+        if (!messageBody) throw new Error("body is required");
+
+        const { owner, repo: repoName } = parseRepoFullName(repo);
+        if (!owner || !repoName) throw new Error(`Invalid repo format: ${repo}`);
+
+        const repoKey = `${owner}/${repoName}`;
+        const ws = getGitHubWorkspaces().find((w) => {
+          const repos = getGitHubTargetRepos();
+          return repos?.includes(repoKey);
+        });
+        if (!ws) throw new Error(`No GitHub workspace configured for ${repoKey}`);
+
+        const commentId = await createComment({ token: ws.token, owner, repo: repoName, issueNumber, body: messageBody });
+        return { commentId };
+      },
+      (result) => jsonResponse(200, { ok: true, result }),
+      {
+        fallbackMessage: "Failed to post GitHub comment",
+        resolveStatus: (m) => {
+          if (m.startsWith("repo is required") || m.startsWith("issueNumber is required") || m.startsWith("body is required")) return 400;
+          if (m.startsWith("Invalid repo format") || m.startsWith("No GitHub workspace configured")) return 400;
           return 500;
         },
       },

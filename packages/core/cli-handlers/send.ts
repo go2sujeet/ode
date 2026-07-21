@@ -72,10 +72,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 function printSendHelp(): void {
   console.log(
     [
-      "ode send - upload files/images to a chat channel",
+      "ode send - upload files/images or post GitHub comments",
       "",
       "Usage:",
       "  ode send file <path> --channel <channelId> [--thread <threadId>] [--filename <name>] [--title <title>] [--comment <text>]",
+      "  ode send github-comment --repo <owner/repo> --issue <number> --message <text>",
       "",
       "Notes:",
       "  Ode auto-detects the platform (Slack / Discord / Lark) from the channel.",
@@ -85,6 +86,7 @@ function printSendHelp(): void {
       "  Use this command to post screenshots, rendered designs, or any binary asset.",
       "  For visual checks (layout diffs, screenshots of running UI), prefer uploading the",
       "  artifact directly into the current thread so reviewers can see it inline.",
+      "  For github-comment: posts a comment on a GitHub issue or PR.",
     ].join("\n"),
   );
 }
@@ -129,6 +131,29 @@ async function handleSendFile(args: CliArgs): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+async function handleSendGitHubComment(args: CliArgs): Promise<void> {
+  const { flags } = parseFlags(args, {
+    repo: true,
+    issue: true,
+    message: true,
+  });
+
+  const repo = flags.repo as string | undefined;
+  const issue = flags.issue as string | undefined;
+  const message = flags.message as string | undefined;
+
+  if (!repo) throw new Error("--repo is required (e.g. owner/repo)");
+  if (!issue) throw new Error("--issue is required (issue or PR number)");
+  if (!message) throw new Error("--message is required");
+
+  const result = await apiFetch<{ commentId: number }>("/api/send/github-comment", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ repo, issueNumber: parseInt(issue, 10), body: message }),
+  });
+  console.log(JSON.stringify(result, null, 2));
+}
+
 export async function handleSendCommand(args: CliArgs): Promise<number> {
   const sub = args[0];
   if (!sub || sub === "help" || sub === "--help" || sub === "-h") {
@@ -139,6 +164,10 @@ export async function handleSendCommand(args: CliArgs): Promise<number> {
     const rest = args.slice(1);
     if (sub === "file") {
       await handleSendFile(rest);
+      return 0;
+    }
+    if (sub === "github-comment") {
+      await handleSendGitHubComment(rest);
       return 0;
     }
     console.error(`Unknown send subcommand: ${sub}`);

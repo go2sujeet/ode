@@ -3,7 +3,7 @@ import { getWorkspaces } from "@/config";
 export function validateWorkspaceConfig(config: {
   workspaces: Array<{
     id: string;
-    type: "slack" | "discord" | "lark";
+    type: "slack" | "discord" | "lark" | "github";
     name: string;
     slackAppToken?: string;
     slackBotToken?: string;
@@ -11,6 +11,7 @@ export function validateWorkspaceConfig(config: {
     larkAppKey?: string;
     larkAppId?: string;
     larkAppSecret?: string;
+    githubToken?: string;
   }>;
 }): string | null {
   const idCounts = new Map<string, number>();
@@ -41,6 +42,15 @@ export function validateWorkspaceConfig(config: {
         return `Missing Lark app key/app secret for workspace: ${label}`;
       }
       larkAppKeyCounts.set(appId, (larkAppKeyCounts.get(appId) ?? 0) + 1);
+      continue;
+    }
+
+    if (workspace.type === "github") {
+      const token = workspace.githubToken?.trim() ?? "";
+      if (!token) {
+        const label = workspace.name.trim() || workspace.id;
+        return `Missing GitHub token for workspace: ${label}`;
+      }
       continue;
     }
 

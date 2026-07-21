@@ -101,7 +101,7 @@ const updateSchema = z.object({
 
 const workspaceSchema = z.object({
   id: z.string(),
-  type: z.enum(["slack", "discord", "lark"]).optional().default("slack"),
+  type: z.enum(["slack", "discord", "lark", "github"]).optional().default("slack"),
   name: z.string().optional().default(""),
   domain: z.string().optional().default(""),
   status: z.enum(["active", "paused"]).optional().default("active"),
@@ -115,6 +115,13 @@ const workspaceSchema = z.object({
   larkAppKey: z.string().optional().default(""),
   larkAppId: z.string().optional().default(""),
   larkAppSecret: z.string().optional().default(""),
+  // GitHub workspace fields
+  githubToken: z.string().optional().default(""),
+  githubWebhookSecret: z.string().optional().default(""),
+  githubBotName: z.string().optional().default("ode"),
+  githubAppId: z.string().optional().default(""),
+  githubPrivateKey: z.string().optional().default(""),
+  githubInstallationId: z.string().optional().default(""),
   channelDetails: z.array(channelDetailSchema).optional().default([]),
 });
 

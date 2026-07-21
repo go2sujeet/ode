@@ -149,7 +149,7 @@ async function sendResultToChannel(
  * `packages/ims/shared/synthetic-owner.ts`).
  */
 function seedCronChannelThreadSession(params: {
-  platform: "slack" | "discord" | "lark";
+  platform: "slack" | "discord" | "lark" | "github";
   channelId: string;
   realThreadId: string;
   sessionId: string;

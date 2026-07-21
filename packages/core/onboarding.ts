@@ -229,27 +229,28 @@ async function selectAgentsWithKeyboard(agents: AgentOption[], defaultSelected: 
   });
 }
 
-async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord" | "lark"> {
+async function askWorkspaceType(rl: Interface): Promise<"slack" | "discord" | "lark" | "github"> {
   if (process.stdin.isTTY && process.stdout.isTTY) {
     rl.pause();
     try {
       const choice = await selectSingleOptionWithKeyboard(
         "Workspace type:",
-        ["Slack", "Discord", "Lark"],
+        ["Slack", "Discord", "Lark", "GitHub"],
         0
       );
-      return choice === 0 ? "slack" : choice === 1 ? "discord" : "lark";
+      return choice === 0 ? "slack" : choice === 1 ? "discord" : choice === 2 ? "lark" : "github";
     } finally {
       rl.resume();
     }
   }
 
   while (true) {
-    const value = (await ask(rl, "Workspace type ([s]lack / [d]iscord / [l]ark): ")).toLowerCase();
+    const value = (await ask(rl, "Workspace type ([s]lack / [d]iscord / [l]ark / [g]ithub): ")).toLowerCase();
     if (value === "s" || value === "slack") return "slack";
     if (value === "d" || value === "discord") return "discord";
     if (value === "l" || value === "lark") return "lark";
-    console.log("Please enter slack, discord, or lark.");
+    if (value === "g" || value === "github") return "github";
+    console.log("Please enter slack, discord, lark, or github.");
   }
 }
 
@@ -263,7 +264,7 @@ function printConnectedWorkspaces(workspaces: WorkspaceConfig[]): void {
   for (const workspace of workspaces) {
     const label = workspace.name || workspace.id;
     const domain = workspace.domain ? ` (${workspace.domain})` : "";
-    const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : "Slack";
+    const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : workspace.type === "github" ? "GitHub" : "Slack";
     const indicator = "\x1b[32m●\x1b[0m";
     console.log(`${indicator} [${typeLabel}] ${label}${domain}`);
   }
@@ -314,6 +315,12 @@ async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeCon
         larkAppKey: discoveredWorkspace.larkAppKey ?? discoveredWorkspace.larkAppId ?? "",
         larkAppId: discoveredWorkspace.larkAppKey ?? discoveredWorkspace.larkAppId ?? "",
         larkAppSecret: discoveredWorkspace.larkAppSecret ?? "",
+        githubToken: discoveredWorkspace.githubToken ?? "",
+        githubWebhookSecret: discoveredWorkspace.githubWebhookSecret ?? "",
+        githubBotName: discoveredWorkspace.githubBotName ?? "",
+        githubAppId: discoveredWorkspace.githubAppId ?? "",
+        githubPrivateKey: discoveredWorkspace.githubPrivateKey ?? "",
+        githubInstallationId: discoveredWorkspace.githubInstallationId ?? "",
         channelDetails: discoveredWorkspace.channelDetails.map((channel) => ({
           ...channel,
           agentProvider: channel.agentProvider ?? "opencode",
@@ -331,7 +338,7 @@ async function setupWorkspaces(rl: Interface, config: OdeConfig): Promise<OdeCon
           workspaces: [...nextConfig.workspaces, workspace],
         };
         saveOdeConfig(nextConfig);
-        const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : "Slack";
+    const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : workspace.type === "github" ? "GitHub" : "Slack";
         console.log(`Connected ${typeLabel} workspace: ${workspace.name || workspace.id}`);
       }
 

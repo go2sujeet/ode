@@ -93,6 +93,12 @@ function mergeDashboardConfig(config: OdeConfig, dashboardConfig: DashboardConfi
     larkAppKey: workspace.larkAppKey ?? workspace.larkAppId ?? "",
     larkAppId: workspace.larkAppId ?? workspace.larkAppKey ?? "",
     larkAppSecret: workspace.larkAppSecret ?? "",
+    githubToken: workspace.githubToken ?? "",
+    githubWebhookSecret: workspace.githubWebhookSecret ?? "",
+    githubBotName: workspace.githubBotName ?? "",
+    githubAppId: workspace.githubAppId ?? "",
+    githubPrivateKey: workspace.githubPrivateKey ?? "",
+    githubInstallationId: workspace.githubInstallationId ?? "",
     channelDetails: workspace.channelDetails.map((channel) => ({
       ...channel,
       agentProvider: channel.agentProvider ?? "opencode",
@@ -402,4 +408,38 @@ export function clearGitHubInfoForUser(userId: string): void {
     delete githubInfos[userId];
     return { ...config, githubInfos };
   });
+}
+
+export function getGitHubWorkspaces(): Array<{
+  workspaceId: string;
+  workspaceName: string;
+  token: string;
+  webhookSecret: string;
+  botName: string;
+  appId: string;
+  privateKey: string;
+  installationId: string;
+}> {
+  const active = getWorkspaces().filter((workspace) => workspace.type === "github" && workspace.status === "active");
+  const candidates = active.length > 0 ? active : getWorkspaces().filter((workspace) => workspace.type === "github");
+  return candidates
+    .map((workspace) => ({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name || workspace.id,
+      token: workspace.githubToken?.trim() || "",
+      webhookSecret: workspace.githubWebhookSecret?.trim() || "",
+      botName: workspace.githubBotName?.trim() || "ode",
+      appId: workspace.githubAppId?.trim() || "",
+      privateKey: workspace.githubPrivateKey?.trim() || "",
+      installationId: workspace.githubInstallationId?.trim() || "",
+    }))
+    .filter((entry) => entry.token.length > 0);
+}
+
+export function getGitHubTargetRepos(): string[] | null {
+  const repos = getWorkspaces()
+    .filter((workspace) => workspace.type === "github")
+    .flatMap((workspace) => workspace.channelDetails);
+  const ids = repos.map((repo) => repo.id).filter(Boolean);
+  return ids.length > 0 ? ids : null;
 }
