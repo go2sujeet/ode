@@ -23,7 +23,7 @@
     state?: SessionMessageState;
     workingDirectory: string;
     provider?: AgentStatusProvider;
-    platform?: "slack" | "discord" | "lark";
+    platform?: "slack" | "discord" | "lark" | "github";
     text?: string;
   } = $props();
 

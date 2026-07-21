@@ -5,7 +5,7 @@ import * as path from "path";
 import { loadOdeConfig } from "./ode-store";
 import { validateCronExpression } from "@/core/cron/expression";
 
-export type CronJobPlatform = "slack" | "discord" | "lark";
+export type CronJobPlatform = "slack" | "discord" | "lark" | "github";
 export type CronJobRunStatus = "idle" | "running" | "success" | "failed";
 
 export type CronJobRecord = {

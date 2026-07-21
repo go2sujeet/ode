@@ -24,7 +24,7 @@ export function resolveFallbackModel(
 }
 
 export function createWorkspaceCredentialId(
-  platform: "slack" | "discord" | "lark",
+  platform: "slack" | "discord" | "lark" | "github",
   credential: string
 ): string {
   const normalized = credential.trim();

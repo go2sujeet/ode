@@ -26,7 +26,7 @@ function resolveWorktreeId(threadId: string, rawChannelId: string, cwd: string):
 }
 
 type BootstrapDeps = {
-  platform: "slack" | "discord" | "lark";
+  platform: "slack" | "discord" | "lark" | "github";
   im: IMAdapter;
   agent: AgentAdapter;
 };

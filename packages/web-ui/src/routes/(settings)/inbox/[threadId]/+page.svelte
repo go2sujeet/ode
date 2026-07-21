@@ -10,7 +10,7 @@
 
   type MessageThreadSummary = {
     id: string;
-    platform: "slack" | "discord" | "lark";
+    platform: "slack" | "discord" | "lark" | "github";
     workspaceId: string | null;
     workspaceName: string | null;
     channelId: string;

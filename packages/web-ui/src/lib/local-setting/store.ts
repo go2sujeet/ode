@@ -123,6 +123,9 @@ function validateWorkspaceConfig(config: DashboardConfig): string | null {
       const appSecret = workspace.larkAppSecret?.trim() ?? "";
       return !appId || !appSecret;
     }
+    if (workspace.type === "github") {
+      return !(workspace.githubToken?.trim() ?? "");
+    }
     const appToken = workspace.slackAppToken?.trim() ?? "";
     const botToken = workspace.slackBotToken?.trim() ?? "";
     return !appToken || !botToken;
@@ -793,6 +796,62 @@ async function discoverLarkWorkspace(
   }
 }
 
+async function discoverGitHubWorkspace(
+  githubToken: string,
+  githubBotName: string
+): Promise<DashboardConfig["workspaces"][number] | null> {
+  const token = githubToken.trim();
+  const botName = githubBotName.trim() || "ode";
+  if (!token) {
+    store.update((state) => ({
+      ...state,
+      message: "Validation failed: GitHub token is required.",
+    }));
+    return null;
+  }
+
+  store.update((state) => ({ ...state, isAddingWorkspace: true, message: "" }));
+  const workspace: DashboardConfig["workspaces"][number] = {
+    id: `github-${botName}`,
+    type: "github",
+    name: `GitHub (${botName})`,
+    domain: "github.com",
+    status: "active",
+    channels: 0,
+    members: 0,
+    lastSync: "",
+    githubToken: token,
+    githubBotName: botName,
+    channelDetails: [],
+  };
+
+  let addedWorkspace: DashboardConfig["workspaces"][number] | null = null;
+  let duplicateId = "";
+  store.update((state) => {
+    if (state.config.workspaces.some((w: DashboardConfig["workspaces"][number]) => w.id === workspace.id)) {
+      duplicateId = workspace.id;
+      return { ...state, isAddingWorkspace: false };
+    }
+    addedWorkspace = workspace;
+    return {
+      ...state,
+      isAddingWorkspace: false,
+      config: {
+        ...state.config,
+        workspaces: [...state.config.workspaces, workspace],
+      },
+      message: `Added GitHub workspace: ${workspace.name}`,
+    };
+  });
+
+  if (duplicateId) {
+    store.update((state) => ({ ...state, message: `Workspace already exists: ${duplicateId}` }));
+    return null;
+  }
+
+  return addedWorkspace;
+}
+
 export const localSettingStore = {
   subscribe: store.subscribe,
   loadConfig,
@@ -804,6 +863,7 @@ export const localSettingStore = {
   discoverSlackWorkspace,
   discoverDiscordWorkspace,
   discoverLarkWorkspace,
+  discoverGitHubWorkspace,
   updateConfig,
   updateWorkspace,
   removeWorkspace,

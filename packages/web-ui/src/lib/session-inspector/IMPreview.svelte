@@ -24,7 +24,7 @@
     currentStep?: string;
   };
 
-  type PreviewPlatform = "slack" | "discord" | "lark";
+  type PreviewPlatform = "slack" | "discord" | "lark" | "github";
 
   let previewPlatform: PreviewPlatform = $state("slack");
 
@@ -60,6 +60,7 @@
           <option value="slack">Slack</option>
           <option value="discord">Discord</option>
           <option value="lark">Lark</option>
+          <option value="github">GitHub</option>
         </select>
       </label>
       <div class="event-number">Event {selectedEventIndex + 1} of {events.length}</div>

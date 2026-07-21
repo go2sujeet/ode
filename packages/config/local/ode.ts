@@ -93,6 +93,12 @@ function mergeDashboardConfig(config: OdeConfig, dashboardConfig: DashboardConfi
     larkAppKey: workspace.larkAppKey ?? workspace.larkAppId ?? "",
     larkAppId: workspace.larkAppId ?? workspace.larkAppKey ?? "",
     larkAppSecret: workspace.larkAppSecret ?? "",
+    githubToken: workspace.githubToken ?? "",
+    githubWebhookSecret: workspace.githubWebhookSecret ?? "",
+    githubBotName: workspace.githubBotName ?? "",
+    githubAppId: workspace.githubAppId ?? "",
+    githubPrivateKey: workspace.githubPrivateKey ?? "",
+    githubInstallationId: workspace.githubInstallationId ?? "",
     channelDetails: workspace.channelDetails.map((channel) => ({
       ...channel,
       agentProvider: channel.agentProvider ?? "opencode",

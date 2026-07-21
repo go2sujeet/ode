@@ -11,7 +11,7 @@
   } from "@/shared/agent-provider";
   import { localSettingStore } from "$lib/local-setting/store";
 
-  type TaskPlatform = "slack" | "discord" | "lark";
+  type TaskPlatform = "slack" | "discord" | "lark" | "github";
   type TaskStatus = "pending" | "running" | "success" | "failed" | "cancelled";
 
   type TaskRecord = {

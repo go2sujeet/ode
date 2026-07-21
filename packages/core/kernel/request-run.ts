@@ -46,7 +46,7 @@ import {
  * messages, while ODE_SLACK_STATUS_STREAMING remains a debug override.
  */
 function isStatusStreamingEnabled(
-  platform: "slack" | "discord" | "lark" | undefined,
+  platform: "slack" | "discord" | "lark" | "github" | undefined,
   channelId: string
 ): boolean {
   const override = process.env.ODE_SLACK_STATUS_STREAMING?.toLowerCase();
@@ -127,7 +127,7 @@ function isNonRecoverableStreamStateError(error: unknown): boolean {
 type RunnerDeps = {
   im: IMAdapter;
   agent: AgentAdapter;
-  platform?: "slack" | "discord" | "lark";
+  platform?: "slack" | "discord" | "lark" | "github";
 };
 
 type RunOpenRequestParams = {

@@ -18,7 +18,7 @@ async function stopRecoveredStatusStream(im: IMAdapter, request: ActiveRequest):
 
 export async function recoverPendingRequests(
   im: IMAdapter,
-  platform?: "slack" | "discord" | "lark",
+  platform?: "slack" | "discord" | "lark" | "github",
   options?: { startedBeforeMs?: number }
 ): Promise<void> {
   const pendingSessions = await getSessionsWithPendingRequests(platform);

@@ -80,7 +80,7 @@ export type DashboardConfig = {
   };
   workspaces: {
     id: string;
-    type: "slack" | "discord" | "lark";
+    type: "slack" | "discord" | "lark" | "github";
     name: string;
     domain: string;
     status: "active" | "paused";
@@ -94,6 +94,12 @@ export type DashboardConfig = {
     larkAppKey?: string;
     larkAppId?: string;
     larkAppSecret?: string;
+    githubToken?: string;
+    githubWebhookSecret?: string;
+    githubBotName?: string;
+    githubAppId?: string;
+    githubPrivateKey?: string;
+    githubInstallationId?: string;
     channelDetails: {
       id: string;
       name: string;
@@ -260,7 +266,7 @@ const sanitizeWorkspace = (
   const discordBotToken = asString(workspace.discordBotToken, "");
   const larkAppKey = asString(workspace.larkAppKey, "") || asString(workspace.larkAppId, "");
   const larkAppSecret = asString(workspace.larkAppSecret, "");
-  const type = workspace.type === "discord" ? "discord" : workspace.type === "lark" ? "lark" : "slack";
+  const type = workspace.type === "discord" ? "discord" : workspace.type === "lark" ? "lark" : workspace.type === "github" ? "github" : "slack";
 
   return {
     id: asString(workspace.id) || fallbackId,
@@ -278,6 +284,12 @@ const sanitizeWorkspace = (
     larkAppKey: larkAppKey || undefined,
     larkAppId: larkAppKey || undefined,
     larkAppSecret: larkAppSecret || undefined,
+    githubToken: asString(workspace.githubToken, "") || undefined,
+    githubWebhookSecret: asString(workspace.githubWebhookSecret, "") || undefined,
+    githubBotName: asString(workspace.githubBotName, "") || undefined,
+    githubAppId: asString(workspace.githubAppId, "") || undefined,
+    githubPrivateKey: asString(workspace.githubPrivateKey, "") || undefined,
+    githubInstallationId: asString(workspace.githubInstallationId, "") || undefined,
     channelDetails,
   };
 };

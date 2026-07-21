@@ -33,7 +33,7 @@ import type { RawInboundEvent } from "@/core/model/raw-inbound-event";
 import type { RuntimeRequestContext } from "@/core/kernel/request-context";
 
 export type RuntimeDeps = {
-  platform: "slack" | "discord" | "lark";
+  platform: "slack" | "discord" | "lark" | "github";
   im: IMAdapter;
   agent: AgentAdapter;
 };

@@ -3,7 +3,7 @@ import { getWorkspaces } from "@/config";
 export function validateWorkspaceConfig(config: {
   workspaces: Array<{
     id: string;
-    type: "slack" | "discord" | "lark";
+    type: "slack" | "discord" | "lark" | "github";
     name: string;
     slackAppToken?: string;
     slackBotToken?: string;

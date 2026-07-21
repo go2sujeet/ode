@@ -113,7 +113,7 @@
 
   function onWorkspaceFieldInput(
     workspaceId: string,
-    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "slackStatusMode" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret",
+    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "slackStatusMode" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret" | "githubToken" | "githubWebhookSecret" | "githubBotName" | "githubAppId" | "githubPrivateKey" | "githubInstallationId",
     value: string
   ): void {
     localSettingStore.updateWorkspace(workspaceId, (workspace) => ({
@@ -125,7 +125,7 @@
 
   function onWorkspaceTextInput(
     workspaceId: string,
-    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret",
+    field: "name" | "domain" | "slackAppToken" | "slackBotToken" | "discordBotToken" | "larkAppKey" | "larkAppId" | "larkAppSecret" | "githubToken" | "githubWebhookSecret" | "githubBotName" | "githubAppId" | "githubPrivateKey" | "githubInstallationId",
     event: Event
   ): void {
     onWorkspaceFieldInput(workspaceId, field, (event.currentTarget as HTMLInputElement).value);
@@ -252,6 +252,12 @@
       }
       if (!(workspace.larkAppSecret?.trim() ?? "")) {
         errors.push("Lark App Secret is required.");
+      }
+      return errors;
+    }
+    if (workspace.type === "github") {
+      if (!(workspace.githubToken?.trim() ?? "")) {
+        errors.push("GitHub Token is required.");
       }
       return errors;
     }
@@ -405,6 +411,39 @@
             value={selectedWorkspace.discordBotToken ?? ""}
             on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "discordBotToken", event)}
             autocomplete="new-password"
+          />
+        </div>
+      {:else if selectedWorkspace.type === "github"}
+        <div class="grid gap-2">
+          <Label for="workspace-github-token">GitHub Token</Label>
+          <Input
+            id="workspace-github-token"
+            type="password"
+            value={selectedWorkspace.githubToken ?? ""}
+            on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "githubToken", event)}
+            autocomplete="new-password"
+          />
+        </div>
+
+        <div class="grid gap-2">
+          <Label for="workspace-github-webhook-secret">GitHub Webhook Secret</Label>
+          <Input
+            id="workspace-github-webhook-secret"
+            type="password"
+            value={selectedWorkspace.githubWebhookSecret ?? ""}
+            on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "githubWebhookSecret", event)}
+            autocomplete="new-password"
+          />
+        </div>
+
+        <div class="grid gap-2">
+          <Label for="workspace-github-bot-name">Bot Name</Label>
+          <Input
+            id="workspace-github-bot-name"
+            type="text"
+            value={selectedWorkspace.githubBotName ?? ""}
+            on:input={(event) => onWorkspaceTextInput(selectedWorkspace.id, "githubBotName", event)}
+            placeholder="ode"
           />
         </div>
       {:else}

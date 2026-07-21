@@ -221,7 +221,7 @@ async function sendResultToChannel(
  * first human replier can claim the thread via session-bootstrap.
  */
 function seedChannelThreadSession(params: {
-  platform: "slack" | "discord" | "lark";
+  platform: "slack" | "discord" | "lark" | "github";
   channelId: string;
   realThreadId: string;
   sessionId: string;
