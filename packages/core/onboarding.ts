@@ -264,7 +264,7 @@ function printConnectedWorkspaces(workspaces: WorkspaceConfig[]): void {
   for (const workspace of workspaces) {
     const label = workspace.name || workspace.id;
     const domain = workspace.domain ? ` (${workspace.domain})` : "";
-    const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : "Slack";
+    const typeLabel = workspace.type === "discord" ? "Discord" : workspace.type === "lark" ? "Lark" : workspace.type === "github" ? "GitHub" : "Slack";
     const indicator = "\x1b[32m●\x1b[0m";
     console.log(`${indicator} [${typeLabel}] ${label}${domain}`);
   }

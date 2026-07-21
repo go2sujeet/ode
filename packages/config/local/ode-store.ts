@@ -121,7 +121,9 @@ function normalizeConfig(config: OdeConfig): OdeConfig {
         ? "discord" as const
         : workspace.type === "lark"
           ? "lark" as const
-          : "slack" as const,
+          : workspace.type === "github"
+            ? "github" as const
+            : "slack" as const,
     channelDetails: workspace.channelDetails.map((channel) => ({
       ...channel,
       baseBranch: normalizeBaseBranch(channel.baseBranch),
